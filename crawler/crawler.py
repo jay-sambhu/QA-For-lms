@@ -11,9 +11,10 @@ from .network import NetworkMonitor
 
 class WebsiteCrawler:
 
-    def __init__(self, start_url, max_pages=30):
+    def __init__(self, start_url, max_pages=30, auth_token=None):
         self.start_url = self.normalize_url(start_url)
         self.max_pages = max_pages
+        self.auth_token = auth_token
 
         parsed = urlparse(self.start_url)
         self.domain = parsed.netloc
@@ -73,12 +74,16 @@ class WebsiteCrawler:
                 headless=True
             )
 
-            page = await browser.new_page(
-                viewport={
+            kwargs = {
+                "viewport": {
                     "width": 1366,
                     "height": 768
                 }
-            )
+            }
+            if self.auth_token:
+                kwargs["extra_http_headers"] = {"Authorization": f"Bearer {self.auth_token}"}
+                
+            page = await browser.new_page(**kwargs)
 
             monitor = NetworkMonitor()
 
@@ -266,7 +271,8 @@ async def main():
 
     crawler = WebsiteCrawler(
         "https://dplms.com",
-        max_pages=30
+        max_pages=30,
+        auth_token=None
     )
 
     await crawler.crawl()

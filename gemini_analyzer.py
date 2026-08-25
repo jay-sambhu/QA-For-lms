@@ -32,12 +32,6 @@ class GeminiQAAnalyzer:
         self.api_key = api_key if api_key is not None else os.getenv("GOOGLE_API_KEY")
         self.model_client = model_client
         self.model_name = model_name
-        if self.model_client is None and self.api_key:
-            try:
-                from browser_use import ChatGoogle
-                self.model_client = ChatGoogle(model=model_name, api_key=self.api_key)
-            except Exception:
-                self.model_client = None
 
     @staticmethod
     def find_latest_findings(results_dir="results"):
@@ -119,24 +113,51 @@ class GeminiQAAnalyzer:
             "third-party analytics are normally informational. Use screenshots only when available and "
             "never claim visual observations when screenshot analysis is unavailable. Required fields: "
             + json.dumps(sorted(REQUIRED_FIELDS))
+            + ". Make sure 'evidence_used' is a JSON array of strings."
             + "\nEvidence:\n"
             + json.dumps(evidence, indent=2, ensure_ascii=False)
         )
 
     async def _call_model(self, prompt):
-        if self.model_client is None:
-            raise RuntimeError("Gemini client unavailable")
-        if hasattr(self.model_client, "ainvoke"):
-            response = await self.model_client.ainvoke(prompt)
-        elif hasattr(self.model_client, "invoke"):
-            response = self.model_client.invoke(prompt)
-        elif callable(self.model_client):
-            response = self.model_client(prompt)
-            if hasattr(response, "__await__"):
-                response = await response
-        else:
-            raise TypeError("Unsupported Gemini client")
-        return getattr(response, "content", response)
+        if self.model_client is not None:
+            if hasattr(self.model_client, "ainvoke"):
+                response = await self.model_client.ainvoke(prompt)
+            elif hasattr(self.model_client, "invoke"):
+                response = self.model_client.invoke(prompt)
+            elif callable(self.model_client):
+                response = self.model_client(prompt)
+                if hasattr(response, "__await__"):
+                    response = await response
+            else:
+                raise TypeError("Unsupported Gemini mock client")
+            return getattr(response, "content", response)
+
+        if not self.api_key:
+            raise RuntimeError("Gemini API key unavailable")
+            
+        import urllib.request
+        import json
+        import asyncio
+        
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
+        headers = {"Content-Type": "application/json"}
+        data = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.0}
+        }
+        
+        req = urllib.request.Request(url, data=json.dumps(data).encode("utf-8"), headers=headers, method="POST")
+        
+        def fetch():
+            with urllib.request.urlopen(req) as response:
+                return json.loads(response.read().decode("utf-8"))
+                
+        try:
+            response_data = await asyncio.to_thread(fetch)
+            text = response_data["candidates"][0]["content"]["parts"][0]["text"]
+            return text
+        except Exception as e:
+            raise RuntimeError(f"Gemini API request failed: {e}")
 
     @staticmethod
     def parse_response(response):
@@ -168,8 +189,8 @@ class GeminiQAAnalyzer:
             raise ValueError("Invalid severity")
         if parsed["confidence"] not in CONFIDENCES:
             raise ValueError("Invalid confidence")
-        if not isinstance(parsed["evidence_used"], list):
-            raise ValueError("evidence_used must be a list")
+        if not isinstance(parsed.get("evidence_used"), list):
+            parsed["evidence_used"] = [str(parsed.get("evidence_used", ""))] if parsed.get("evidence_used") else []
         return {field: cls._redact(parsed[field]) for field in REQUIRED_FIELDS}
 
     @classmethod
@@ -191,8 +212,8 @@ class GeminiQAAnalyzer:
 
     async def analyze_candidate(self, candidate, target=""):
         prompt = self.build_prompt(candidate, target)
-        if self.model_client is None:
-            return self.fallback("Gemini analysis failed; manual review required.")
+        if self.model_client is None and not self.api_key:
+            return self.fallback("Gemini API key unavailable; manual review required.")
         try:
             raw = await self._call_model(prompt)
             return self.validate_response(raw)
