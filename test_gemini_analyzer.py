@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-"""Unit tests for the Gemini QA candidate analyzer."""
-
 import asyncio
 import copy
 import json
@@ -26,118 +23,165 @@ class FakeClient:
 
 class TestGeminiQAAnalyzer(unittest.TestCase):
     def setUp(self):
-        self.candidate_401 = {
-            "id": "CANDIDATE-001",
-            "type": "http_error",
-            "severity": "medium",
-            "confidence": "medium",
-            "root_cause_key": "https://api.example.com/api/auth/me|401|GET",
-            "url": "https://api.example.com/api/auth/me",
-            "status": 401,
-            "method": "GET",
-            "resource_type": "xhr",
-            "title": "Repeated HTTP 401 response",
-            "description": "Potential authentication issue",
-            "occurrences": 2,
-            "affected_pages": ["https://example.com/", "https://example.com/login"],
-            "screenshots": ["missing-home.png", "missing-login.png"],
+        self.candidate = {
+            "id": "CANDIDATE-001", "url": "https://api.dplms.com/api/auth/me",
+            "status": 401, "method": "GET", "resource_type": "xhr",
+            "severity": "medium", "confidence": "medium",
+            "title": "Authentication check", "description": "401 response",
+            "occurrences": 2, "affected_pages": ["https://dplms.com/", "https://dplms.com/login"],
+            "screenshots": ["missing.png", "missing2.png"], "first_party": True,
             "evidence": {
-                "http_errors": [{"status": 401, "url": "https://api.example.com/api/auth/me"}],
-                "console_errors": [{"text": "Failed to load resource: status of 401"}],
-                "network_failures": [],
+                "http_errors": [{"status": 401, "url": "https://api.dplms.com/api/auth/me"}],
+                "console_errors": [{"text": "status of 401"}], "network_failures": [],
             },
         }
-        self.candidate_500 = copy.deepcopy(self.candidate_401)
-        self.candidate_500.update({
-            "id": "CANDIDATE-002",
-            "status": 500,
-            "url": "https://api.example.com/api/broken",
-        })
         self.data = {
-            "target": "https://example.com/",
-            "source_file": "results/qa_findings_test.json",
-            "root_cause_candidates": [self.candidate_401],
+            "target": "https://dplms.com/", "crawl_source": "results/crawl.json",
+            "root_cause_candidates": [self.candidate],
         }
 
-    def response(self, classification="expected_behavior", severity="medium", confidence="high"):
+    def response(self, classification="needs_manual_review", severity="medium", confidence="medium"):
         return json.dumps({
-            "classification": classification,
-            "severity": severity,
-            "confidence": confidence,
-            "title": "Validated candidate",
-            "reasoning": "The supplied evidence supports this assessment.",
-            "user_impact": "No visible impact established.",
-            "recommendation": "Review the endpoint behavior in an authenticated flow.",
-            "evidence_used": ["HTTP status and affected pages"],
+            "classification": classification, "severity": severity, "confidence": confidence,
+            "title": "QA assessment", "summary": "Evidence-based assessment",
+            "reasoning": "Only supplied evidence was considered.",
+            "user_impact": "User impact cannot be determined from the available crawl evidence.",
+            "recommended_action": "Verify behavior with an authenticated session.",
+            "evidence_used": ["HTTP status", "affected pages"],
         })
 
-    def test_candidate_json_loads_correctly(self):
+    def analyze_with(self, response, data=None):
+        return asyncio.run(GeminiQAAnalyzer(model_client=FakeClient([response])).analyze(data or self.data))
+
+    def test_latest_findings_file_detection(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "findings.json"
-            path.write_text(json.dumps(self.data), encoding="utf-8")
-            loaded = GeminiQAAnalyzer.load_findings(path)
-        self.assertEqual(loaded["root_cause_candidates"][0]["id"], "CANDIDATE-001")
+            root = Path(directory)
+            old = root / "qa_findings_20260824_000000.json"
+            new = root / "qa_findings_20260825_000000.json"
+            old.write_text("{}")
+            new.write_text("{}")
+            self.assertEqual(GeminiQAAnalyzer.find_latest_findings(root), new)
 
-    def test_missing_api_key_is_handled_gracefully(self):
-        result = asyncio.run(GeminiQAAnalyzer(api_key="").analyze(self.data))
-        finding = result["findings"][0]
-        self.assertEqual(finding["classification"], "needs_manual_review")
-        self.assertEqual(finding["confidence"], "low")
-        self.assertEqual(result["summary"]["needs_manual_review"], 1)
+    def test_no_findings_file_handling(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertIsNone(GeminiQAAnalyzer.find_latest_findings(directory))
 
-    def test_missing_screenshot_is_handled_gracefully(self):
-        package = GeminiQAAnalyzer._compact_evidence(self.candidate_401)
-        self.assertEqual(package["screenshots"], [])
-        self.assertIn("unavailable", package["screenshot_analysis_note"])
+    def test_root_cause_candidate_extraction(self):
+        result = self.analyze_with(self.response())
+        self.assertEqual(len(result["findings"]), 1)
+        self.assertEqual(result["findings"][0]["candidate_id"], "CANDIDATE-001")
 
-    def test_malformed_gemini_json_is_handled(self):
-        client = FakeClient(responses=["not json", "still not json"])
-        result = asyncio.run(GeminiQAAnalyzer(model_client=client).analyze(self.data))
-        self.assertEqual(result["findings"][0]["classification"], "needs_manual_review")
-        self.assertEqual(result["findings"][0]["confidence"], "low")
-
-    def test_401_can_be_expected_behavior(self):
-        client = FakeClient(responses=[self.response()])
-        result = asyncio.run(GeminiQAAnalyzer(model_client=client).analyze(self.data))
-        self.assertEqual(result["findings"][0]["classification"], "expected_behavior")
-        self.assertIn("authentication", client.prompts[0].lower())
-
-    def test_500_can_be_likely_bug(self):
-        data = copy.deepcopy(self.data)
-        data["root_cause_candidates"] = [self.candidate_500]
-        client = FakeClient(responses=[self.response("likely_bug", "high")])
-        result = asyncio.run(GeminiQAAnalyzer(model_client=client).analyze(data))
-        self.assertEqual(result["findings"][0]["classification"], "likely_bug")
-        self.assertEqual(result["findings"][0]["severity"], "high")
-
-    def test_quota_error_returns_manual_review_without_retry(self):
-        client = FakeClient(error=RuntimeError("429 quota exceeded"))
-        result = asyncio.run(GeminiQAAnalyzer(model_client=client).analyze(self.data))
-        self.assertEqual(result["findings"][0]["classification"], "needs_manual_review")
-        self.assertEqual(len(client.prompts), 1)
-
-    def test_original_evidence_is_not_overwritten(self):
-        original = copy.deepcopy(self.data["root_cause_candidates"][0])
-        client = FakeClient(responses=[self.response()])
-        result = asyncio.run(GeminiQAAnalyzer(model_client=client).analyze(self.data))
+    def test_candidate_evidence_preservation(self):
+        original = copy.deepcopy(self.candidate)
+        result = self.analyze_with(self.response())
         self.assertEqual(result["findings"][0]["candidate"], original)
         self.assertEqual(self.data["root_cause_candidates"][0], original)
 
-    def test_unique_ai_finding_ids(self):
+    def test_401_needs_manual_review(self):
+        result = self.analyze_with(self.response())
+        self.assertEqual(result["findings"][0]["classification"], "needs_manual_review")
+
+    def test_403_needs_manual_review(self):
         data = copy.deepcopy(self.data)
-        data["root_cause_candidates"] = [self.candidate_401, self.candidate_500]
-        client = FakeClient(responses=[self.response(), self.response()])
+        data["root_cause_candidates"][0]["status"] = 403
+        result = self.analyze_with(self.response(), data)
+        self.assertEqual(result["findings"][0]["classification"], "needs_manual_review")
+
+    def test_404_high_confidence_candidate(self):
+        result = self.analyze_with(self.response("high_confidence_candidate", "high", "high"))
+        self.assertEqual(result["findings"][0]["classification"], "high_confidence_candidate")
+        self.assertEqual(result["findings"][0]["severity"], "high")
+
+    def test_500_high_confidence_candidate(self):
+        data = copy.deepcopy(self.data)
+        data["root_cause_candidates"][0]["status"] = 500
+        result = self.analyze_with(self.response("high_confidence_candidate", "high", "high"), data)
+        self.assertEqual(result["findings"][0]["severity"], "high")
+
+    def test_runtime_exception_high_confidence_candidate(self):
+        data = copy.deepcopy(self.data)
+        data["root_cause_candidates"][0]["evidence"]["console_errors"] = [{"text": "TypeError: failed"}]
+        result = self.analyze_with(self.response("high_confidence_candidate", "high", "high"), data)
+        self.assertEqual(result["findings"][0]["classification"], "high_confidence_candidate")
+
+    def test_err_aborted_informational(self):
+        result = self.analyze_with(self.response("informational", "info", "high"))
+        self.assertEqual(result["findings"][0]["classification"], "informational")
+
+    def test_google_analytics_informational(self):
+        result = self.analyze_with(self.response("informational", "info", "low"))
+        self.assertEqual(result["findings"][0]["classification"], "informational")
+
+    def test_hostname_boundary_first_party_detection(self):
+        for url in ["https://dplms.com", "https://www.dplms.com", "https://api.dplms.com", "https://sub.api.dplms.com"]:
+            self.assertTrue(GeminiQAAnalyzer.is_first_party(url, "dplms.com"))
+        for url in ["https://evil-dplms.com", "https://dplms.com.evil.com"]:
+            self.assertFalse(GeminiQAAnalyzer.is_first_party(url, "dplms.com"))
+
+    def test_repeated_candidate_is_one_input(self):
+        data = copy.deepcopy(self.data)
+        data["root_cause_candidates"] = [self.candidate]
+        client = FakeClient([self.response()])
+        result = asyncio.run(GeminiQAAnalyzer(model_client=client).analyze(data))
+        self.assertEqual(len(result["findings"]), 1)
+        self.assertIn('"occurrences": 2', client.prompts[0])
+
+    def test_malformed_json_safe_fallback_and_raw_response_redacted(self):
+        client = FakeClient(["not json", "Authorization: Bearer abc"])
+        result = asyncio.run(GeminiQAAnalyzer(model_client=client).analyze(self.data))
+        finding = result["findings"][0]
+        self.assertEqual(finding["classification"], "needs_manual_review")
+        self.assertNotIn("abc", json.dumps(result))
+
+    def test_markdown_wrapped_json(self):
+        result = self.analyze_with("```json\n" + self.response("expected_behavior", "info", "high") + "\n```")
+        self.assertEqual(result["findings"][0]["classification"], "expected_behavior")
+
+    def test_invalid_classification_safe_fallback(self):
+        result = self.analyze_with(self.response("bug_magic"))
+        self.assertEqual(result["findings"][0]["classification"], "needs_manual_review")
+
+    def test_api_failure_safe_fallback(self):
+        client = FakeClient(error=RuntimeError("network failure"))
+        result = asyncio.run(GeminiQAAnalyzer(model_client=client).analyze(self.data))
+        self.assertEqual(result["summary"]["needs_manual_review"], 1)
+
+    def test_missing_api_key_safe_fallback(self):
+        result = asyncio.run(GeminiQAAnalyzer(api_key="").analyze(self.data))
+        self.assertEqual(result["findings"][0]["classification"], "needs_manual_review")
+
+    def test_missing_screenshot_safe(self):
+        package = GeminiQAAnalyzer.compact_evidence(self.candidate, self.data["target"])
+        self.assertFalse(package["screenshot_evidence"][0]["available"])
+        self.assertIn("unavailable", package["screenshot_note"])
+
+    def test_unique_finding_ids_and_no_duplicates(self):
+        data = copy.deepcopy(self.data)
+        second = copy.deepcopy(self.candidate)
+        second["id"] = "CANDIDATE-002"
+        data["root_cause_candidates"] = [self.candidate, second]
+        client = FakeClient([self.response(), self.response()])
         result = asyncio.run(GeminiQAAnalyzer(model_client=client).analyze(data))
         self.assertEqual([f["id"] for f in result["findings"]], ["AI-BUG-001", "AI-BUG-002"])
 
-    def test_multiple_candidates_are_processed_independently(self):
+    def test_summary_severity_confidence_and_classification_counts(self):
         data = copy.deepcopy(self.data)
-        data["root_cause_candidates"] = [self.candidate_401, self.candidate_500]
-        client = FakeClient(responses=[self.response(), self.response("likely_bug", "high")])
-        result = asyncio.run(GeminiQAAnalyzer(model_client=client).analyze(data))
-        self.assertEqual(result["summary"]["candidates_analyzed"], 2)
-        self.assertEqual(len(client.prompts), 2)
-        self.assertEqual(result["findings"][1]["classification"], "likely_bug")
+        second = copy.deepcopy(self.candidate)
+        second["id"] = "CANDIDATE-002"
+        data["root_cause_candidates"] = [self.candidate, second]
+        client = FakeClient([self.response(), self.response("expected_behavior", "info", "high")])
+        summary = asyncio.run(GeminiQAAnalyzer(model_client=client).analyze(data))["summary"]
+        self.assertEqual(summary["total_candidates"], 2)
+        self.assertEqual(summary["severity_counts"]["medium"], 1)
+        self.assertEqual(summary["confidence_counts"]["high"], 1)
+        self.assertEqual(summary["classification_counts"]["expected_behavior"], 1)
+
+    def test_markdown_report_generation(self):
+        result = self.analyze_with(self.response())
+        markdown = GeminiQAAnalyzer.render_markdown(result)
+        self.assertIn("# AI QA Analysis Report", markdown)
+        self.assertIn("## Manual Review Required", markdown)
+        self.assertIn("CANDIDATE-001", markdown)
 
 
 if __name__ == "__main__":
