@@ -6,7 +6,7 @@ from urllib.parse import urljoin, urlparse, urlunparse
 
 from playwright.async_api import async_playwright
 
-from network import NetworkMonitor
+from .network import NetworkMonitor
 
 
 class WebsiteCrawler:
