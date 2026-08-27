@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
 Standalone test for URL normalization logic without external dependencies.
+
+WARNING — this file contains its own COPY of normalize_url and therefore does
+NOT test the shipped implementation in crawler/crawler.py. The copy below is
+deliberately simplified (no default-port stripping, no duplicate-slash
+collapsing, no userinfo preservation, no non-http scheme passthrough) and will
+diverge from the real crawler over time. It is kept only as a dependency-free
+smoke test of the basic rules. For the authoritative test, run
+test_url_normalization.py, which imports WebsiteCrawler directly.
 """
 
 from urllib.parse import urlparse

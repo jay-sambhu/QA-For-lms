@@ -23,8 +23,15 @@ class SecretRedactor:
         (re.compile(r"(?i)(bearer\s+)[^\s,;\"]+"), r"\1[REDACTED]"),
         # JWT-like tokens (header.payload.signature)
         (re.compile(r"eyJ[a-zA-Z0-9_-]{5,}\.eyJ[a-zA-Z0-9_-]{5,}\.[a-zA-Z0-9_-]{10,}"), "[REDACTED_JWT]"),
-        # API keys, tokens, passwords, secrets in JSON or URLs or Headers
-        (re.compile(r"(?i)((?:api[_ -]?key|token|password|passwd|secret|cookie|private[_ -]?key)\s*[:=]\s*[\"']?)[^\s,;\"'&]+"), r"\1[REDACTED]"),
+        # API keys, tokens, passwords, secrets in JSON or URLs or Headers.
+        # The lookbehind stops short names from matching the tail of an ordinary
+        # word: without it `?monkey=1` and `?sortkey=name` were rewritten to
+        # `?mon[REDACTED]`, corrupting URLs the reader needs to reproduce the
+        # bug. Letters and digits are rejected before the name; `_`, `-` and
+        # punctuation are allowed, so `user_session_id=` and `X-API-Key:` still
+        # redact. The `["']?` before the separator matches a JSON key's closing
+        # quote -- without it `{"token": "secret"}` was never redacted at all.
+        (re.compile(r"(?i)(?<![A-Za-z0-9])((?:api[_ -]?key|token|password|passwd|secret|cookie|private[_ -]?key)[\"']?\s*[:=]\s*[\"']?)[^\s,;\"'&]+"), r"\1[REDACTED]"),
     ]
 
     @classmethod
@@ -46,15 +53,37 @@ class SecretRedactor:
 class QAReportGenerator:
     """Generates the final QA report."""
 
-    def __init__(self, results_dir="results"):
+    def __init__(self, results_dir="results", base_dir=None):
         self.results_dir = Path(results_dir)
+        # Screenshot paths recorded by the crawler are relative to the repo
+        # root, so existence checks are resolved against that, not the CWD.
+        self.base_dir = Path(base_dir) if base_dir else Path.cwd()
+
+    def _screenshot_exists(self, screenshot):
+        """Check whether a recorded screenshot path resolves to a real file."""
+        if not screenshot:
+            return False
+
+        path = Path(screenshot)
+        if path.is_absolute():
+            return path.exists()
+
+        return (self.base_dir / path).exists() or path.exists()
 
     def find_latest_gemini_report(self):
         """Find the latest gemini_qa_report_*.json in the results directory."""
         if not self.results_dir.exists():
             return None
             
-        reports = sorted(self.results_dir.glob("gemini_qa_report_*.json"), reverse=True)
+        # By mtime, not name: run ids may be UUIDs (from the API) rather than
+        # timestamps, so filename order is not chronological order. The name is
+        # the tiebreak because mtime granularity is coarse enough that two files
+        # written in the same tick would otherwise order arbitrarily.
+        reports = sorted(
+            self.results_dir.glob("gemini_qa_report_*.json"),
+            key=lambda path: (path.stat().st_mtime, path.name),
+            reverse=True,
+        )
         return reports[0] if reports else None
 
     def generate_json_report(self, source_path, raw_data):
@@ -68,22 +97,38 @@ class QAReportGenerator:
         # But wait, we can try to read it from crawl_result if it exists.
         pages_crawled = 0
         crawl_result_path = safe_data.get("source", {}).get("crawl_result")
-        if crawl_result_path and Path(crawl_result_path).exists():
-            try:
-                with open(crawl_result_path, "r", encoding="utf-8") as f:
-                    crawl_data = json.load(f)
-                    pages_crawled = crawl_data.get("pages_crawled", 0)
-            except Exception:
-                pass
+        if crawl_result_path:
+            candidates = [Path(crawl_result_path)]
+            if not candidates[0].is_absolute():
+                candidates.insert(0, self.base_dir / crawl_result_path)
+            for path in candidates:
+                if not path.exists():
+                    continue
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        crawl_data = json.load(f)
+                        pages_crawled = crawl_data.get("pages_crawled", 0)
+                    break
+                except (OSError, json.JSONDecodeError):
+                    continue
         
         timestamp = datetime.now().isoformat()
-        
+
+        # Stage 3 records how many candidates the model failed to analyse. That
+        # number has to reach the reader: without it a scan where every Gemini
+        # call failed looks identical to a scan where the model genuinely
+        # returned "needs manual review" for everything.
+        source_summary = safe_data.get("summary", {}) or {}
+        analysis_failures = source_summary.get("analysis_failures", 0) or 0
+
         report = {
             "report_metadata": {
                 "generated_at": timestamp,
                 "source_report": str(source_path),
                 "target": safe_data.get("target", "Unknown"),
-                "pages_crawled": pages_crawled
+                "pages_crawled": pages_crawled,
+                "ai_analysis_failures": analysis_failures,
+                "ai_analysis_degraded": bool(analysis_failures),
             },
             "summary": {
                 "total_candidates": 0,
@@ -91,7 +136,8 @@ class QAReportGenerator:
                 "potential_issues": 0,
                 "manual_review": 0,
                 "informational": 0,
-                "ignored": 0
+                "ignored": 0,
+                "analysis_failures": analysis_failures
             },
             "severity": {
                 "critical": 0,
@@ -141,7 +187,17 @@ class QAReportGenerator:
                 "evidence": candidate.get("evidence", {}),
                 "recommendation": finding.get("recommended_action", ""),
                 "manual_verification": finding.get("reasoning", "Needs manual verification."),
-                "affected_pages_count": candidate.get("occurrences", len(candidate.get("affected_pages", []))),
+                # Page count, not event count. Stage 2 redefined `occurrences`
+                # to mean raw events (one page can fail an endpoint 30 times)
+                # and moved the page count to `affected_page_count`, so reading
+                # `occurrences` here reported "affects 30 pages" for a single
+                # page. Both numbers are now carried explicitly.
+                "affected_pages_count": candidate.get(
+                    "affected_page_count", len(candidate.get("affected_pages", []))
+                ),
+                "occurrence_count": candidate.get(
+                    "occurrences", len(candidate.get("affected_pages", []))
+                ),
                 "screenshots": candidate.get("screenshots", [])
             }
             
@@ -157,6 +213,20 @@ class QAReportGenerator:
         
         md = [
             "# QA Test Report\n",
+        ]
+
+        # A warning banner, not a buried counter: a report built on failed AI
+        # analysis must not read like a clean result.
+        if meta.get("ai_analysis_degraded"):
+            md.append(
+                f"> **Warning — AI analysis was incomplete.** "
+                f"{meta['ai_analysis_failures']} candidate(s) could not be analysed by "
+                f"Gemini, so their classification, severity and recommendation below are "
+                f"deterministic fallbacks rather than AI verdicts. Re-run the scan once "
+                f"the model is reachable.\n"
+            )
+
+        md += [
             "## 1. Executive Summary\n",
             f"- **Target website:** {meta['target']}",
             f"- **Test date/time:** {meta['generated_at']}",
@@ -197,43 +267,58 @@ class QAReportGenerator:
         md.append("## 3. Findings Summary\n")
         md.append("| ID | Severity | Classification | Confidence | Page | URL |")
         md.append("|----|----------|----------------|------------|------|-----|")
-        
+
         for f in json_report["findings"]:
-            page = f['page'] if len(f['page']) <= 50 else f"{f['page'][:47]}..."
-            url = f['url'] if len(f['url']) <= 50 else f"{f['url'][:47]}..."
-            md.append(f"| {f['id']} | {f['severity'].upper()} | {f['classification']} | {f['confidence']} | {page} | {url} |")
-            
+            page = self._truncate(f.get("page"))
+            url = self._truncate(f.get("url"))
+            md.append(
+                f"| {f['id']} | {f['severity'].upper()} | {f['classification']} "
+                f"| {f['confidence']} | {page} | {url} |"
+            )
+
         md.append("\n## 4. Detailed Findings\n")
-        
+
         for f in json_report["findings"]:
             md.append(f"### {f['id']} — {f['title']}\n")
-            md.append(f"**Severity:** {f['severity'].upper()}")
-            md.append(f"**Confidence:** {f['confidence'].title()}")
-            md.append(f"**Classification:** {f['classification']}\n")
-            
-            md.append(f"**Page:** {f['page']}")
+
+            # Bullets rather than bare lines: consecutive plain lines are
+            # merged into a single paragraph by every Markdown renderer, which
+            # collapsed all of these labels onto one line.
+            md.append(f"- **Severity:** {f['severity'].upper()}")
+            md.append(f"- **Confidence:** {f['confidence'].title()}")
+            md.append(f"- **Classification:** {f['classification']}")
+            md.append(f"- **Page:** {f.get('page') or 'N/A'}")
+
             if f.get('affected_pages_count', 1) > 1:
-                md.append(f"*(and {f['affected_pages_count'] - 1} other affected pages)*")
-            md.append(f"**URL:** {f['url']}\n")
-            
-            md.append(f"**Description:**\n{f['description']}\n")
-            
+                md.append(
+                    f"- **Also affects:** {f['affected_pages_count'] - 1} other page(s)"
+                )
+
+            occurrences = f.get('occurrence_count', 0)
+            if occurrences > f.get('affected_pages_count', 0):
+                md.append(f"- **Total occurrences:** {occurrences}")
+
+            md.append(f"- **URL:** {f.get('url') or 'N/A'}")
+            md.append("")
+
+            md.append(f"**Description:**\n\n{f['description']}\n")
+
             # Screenshots
-            if f.get("screenshots"):
-                md.append("**Screenshot:**")
-                for s in f["screenshots"]:
-                    # Check if screenshot actually exists
-                    if Path(s).exists():
-                        md.append(f"[{s}](../{s})")
+            screenshots = f.get("screenshots") or []
+            if screenshots:
+                md.append("**Screenshot:**\n")
+                for s in screenshots:
+                    if self._screenshot_exists(s):
+                        md.append(f"- [{s}](../{s})")
                     else:
-                        md.append("Screenshot: Not available")
+                        md.append(f"- Screenshot: Not available ({s})")
             else:
                 md.append("**Screenshot:** Not available")
             md.append("")
-                
+
             # Evidence
-            md.append("**Evidence:**")
-            ev = f.get("evidence", {})
+            md.append("**Evidence:**\n")
+            ev = f.get("evidence", {}) or {}
             has_evidence = False
             if ev.get("http_errors"):
                 md.append("- HTTP Errors:")
@@ -250,43 +335,55 @@ class QAReportGenerator:
                 for e in ev["network_failures"][:3]:
                     md.append(f"  - {e.get('failure')} for {e.get('url')}")
                 has_evidence = True
-                
+
             if not has_evidence:
                 md.append("No specific event evidence recorded.")
             md.append("")
-                
-            md.append(f"**Recommendation:**\n{f['recommendation']}\n")
-            md.append(f"**Manual Verification:**\n{f['manual_verification']}\n")
+
+            md.append(f"**Recommendation:**\n\n{f['recommendation']}\n")
+            md.append(f"**Manual Verification:**\n\n{f['manual_verification']}\n")
             md.append("---\n")
-            
+
         return "\n".join(md)
 
-    def generate(self, source_path=None):
+    @staticmethod
+    def _truncate(value, limit=50):
+        """Truncate a table cell value, tolerating None."""
+        text = str(value or "")
+        if not text:
+            return "N/A"
+        if len(text) > limit:
+            text = f"{text[:limit - 3]}..."
+        # A literal pipe would split the Markdown table cell.
+        return text.replace("|", "\\|")
+
+    def generate(self, source_path=None, run_id=None):
         """Run the full generator pipeline."""
         if source_path is None:
             source_path = self.find_latest_gemini_report()
-            
+
         if not source_path:
             print("ERROR: No gemini_qa_report found. Exit gracefully.")
             return None
-            
+
         print(f"Loading source report: {source_path}")
-        
+
         with open(source_path, "r", encoding="utf-8") as f:
             raw_data = json.load(f)
-            
+
         json_report = self.generate_json_report(source_path, raw_data)
         markdown_content = self.generate_markdown_report(json_report)
-        
-        self.results_dir.mkdir(exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        final_json_path = self.results_dir / f"final_qa_report_{timestamp}.json"
-        final_md_path = self.results_dir / f"final_qa_report_{timestamp}.md"
-        
+
+        # parents=True: results_dir may be nested and not yet created.
+        self.results_dir.mkdir(parents=True, exist_ok=True)
+        suffix = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        final_json_path = self.results_dir / f"final_qa_report_{suffix}.json"
+        final_md_path = self.results_dir / f"final_qa_report_{suffix}.md"
+
         with open(final_json_path, "w", encoding="utf-8") as f:
             json.dump(json_report, f, indent=2, ensure_ascii=False)
-            
+
         with open(final_md_path, "w", encoding="utf-8") as f:
             f.write(markdown_content)
             
@@ -296,6 +393,12 @@ class QAReportGenerator:
         print("\n============================================================")
         print("FINAL QA REPORT")
         print("============================================================")
+        if json_report["report_metadata"].get("ai_analysis_degraded"):
+            print(
+                f"\nWARNING: AI analysis incomplete — "
+                f"{json_report['report_metadata']['ai_analysis_failures']} candidate(s) "
+                f"fell back to deterministic classification.\n"
+            )
         print(f"\nSource:\n{source_path}\n")
         print(f"Target:\n{json_report['report_metadata']['target']}\n")
         print(f"Pages:\n{json_report['report_metadata']['pages_crawled']}\n")
@@ -316,8 +419,10 @@ class QAReportGenerator:
         print(f"{final_md_path}\n")
         
         return {
-            "json_path": final_json_path,
-            "md_path": final_md_path,
+            # Strings, not Path objects: callers embed these in stdout that the
+            # API parses, and in JSON payloads that must be serializable.
+            "json_path": str(final_json_path),
+            "md_path": str(final_md_path),
             "json_report": json_report
         }
 

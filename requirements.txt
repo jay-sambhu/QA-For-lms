@@ -1,0 +1,31 @@
+# AI QA Agent — Python dependencies
+#
+# Pinned to the versions currently installed in .venv so that a fresh
+# environment reproduces the one this code was verified against.
+#
+#   python -m venv .venv
+#   .venv/bin/pip install -r requirements.txt
+#   .venv/bin/playwright install chromium
+#
+# Requires Python 3.12 (the existing .venv is built for cpython-3.12; the
+# playwright and pydantic wheels are ABI-specific).
+
+# --- Stage 1: crawling ---
+playwright==1.62.0
+
+# --- Configuration ---
+python-dotenv==1.2.2
+
+# --- Stage 3: Gemini analysis ---
+# gemini_analyzer.py calls the REST API through urllib from the standard
+# library, so no Google SDK is required for the core pipeline.
+
+# --- SaaS API (api/main.py) ---
+fastapi==0.141.1
+uvicorn==0.52.4
+pydantic==2.12.5
+supabase==2.31.0
+
+# --- Optional: AI-driven exploration (explorer.py) ---
+# Only needed to run explorer.py; the four-stage pipeline does not import it.
+browser-use==0.13.8

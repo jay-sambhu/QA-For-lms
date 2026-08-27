@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -61,6 +62,25 @@ class TestGeminiQAAnalyzer(unittest.TestCase):
             old.write_text("{}")
             new.write_text("{}")
             self.assertEqual(GeminiQAAnalyzer.find_latest_findings(root), new)
+
+    def test_latest_findings_prefers_newest_not_highest_name(self):
+        """A UUID run id must not lose to a lexicographically larger name.
+
+        The API names each run after its scan UUID, so filename order carries no
+        chronological meaning. Selecting by name picked whichever id happened to
+        sort highest, which meant a concurrent scan could analyse another scan's
+        crawl output.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            # 'z...' sorts after 'a...', but is written first and back-dated.
+            stale = root / "qa_findings_zzzzzzzz-0000-0000-0000-000000000000.json"
+            fresh = root / "qa_findings_aaaaaaaa-0000-0000-0000-000000000000.json"
+            stale.write_text("{}")
+            fresh.write_text("{}")
+            os.utime(stale, (1_000_000, 1_000_000))
+
+            self.assertEqual(GeminiQAAnalyzer.find_latest_findings(root), fresh)
 
     def test_no_findings_file_handling(self):
         with tempfile.TemporaryDirectory() as directory:

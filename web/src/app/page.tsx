@@ -1,18 +1,86 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { Search, Loader2, ArrowRight, ShieldCheck, Bug, FileText, LogIn, LogOut } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Search, Loader2, ArrowRight, ShieldCheck, Bug, FileText, LogOut, AlertTriangle } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type Session } from '@supabase/supabase-js';
 import styles from './page.module.css';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+/*
+ * These are read at build time by Next.js. If they are missing the Supabase
+ * client cannot be constructed, so we detect that here and render an
+ * actionable configuration error instead of throwing an opaque
+ * "supabaseUrl is required" from deep inside the SDK.
+ */
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const supabase =
+  supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
+
+/*
+ * Shape of `final_qa_report_<timestamp>.json`, which is what
+ * `GET /api/scans/{id}` embeds as `results`. This must stay in sync with
+ * `qa_report_generator.py::generate_json_report`.
+ */
+type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info';
+
+interface Finding {
+  id: string;
+  classification: string;
+  severity: Severity;
+  confidence: string;
+  title: string;
+  page: string;
+  url: string;
+  description: string;
+  recommendation: string;
+  manual_verification: string;
+  affected_pages_count: number;
+  occurrence_count?: number;
+  screenshots: string[];
+  evidence?: {
+    http_errors?: unknown[];
+    console_errors?: unknown[];
+    network_failures?: unknown[];
+  };
+}
+
+interface QAReport {
+  report_metadata: {
+    generated_at: string;
+    source_report: string;
+    target: string;
+    pages_crawled: number;
+    // Set by stage 4 when Gemini calls failed. A report built on failed AI
+    // analysis must not be presented as a clean result.
+    ai_analysis_failures?: number;
+    ai_analysis_degraded?: boolean;
+  };
+  summary: {
+    total_candidates: number;
+    confirmed_bugs: number;
+    potential_issues: number;
+    manual_review: number;
+    informational: number;
+    ignored: number;
+    analysis_failures?: number;
+  };
+  severity: Record<Severity, number>;
+  findings: Finding[];
+}
+
+type ScanStatus = '' | 'pending' | 'running' | 'completed' | 'failed' | 'error';
+
+const POLL_INTERVAL_MS = 3000;
 
 export default function Home() {
-  const [session, setSession] = useState<any>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  // `supabase` is a module constant, so when it is null there is no session to
+  // wait for and we are "loaded" from the first render. Deriving the initial
+  // value avoids a setState call in the effect body below, which would trigger
+  // a cascading render.
+  const [sessionLoaded, setSessionLoaded] = useState(!supabase);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
@@ -22,103 +90,215 @@ export default function Home() {
   const [maxPages, setMaxPages] = useState('10');
   const [loading, setLoading] = useState(false);
   const [scanId, setScanId] = useState<string | null>(null);
-  const [status, setStatus] = useState<string>('');
-  const [results, setResults] = useState<any>(null);
+  const [status, setStatus] = useState<ScanStatus>('');
+  const [scanError, setScanError] = useState('');
+  const [results, setResults] = useState<QAReport | null>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-    });
+    if (!supabase) return;
+
+    // `sessionLoaded` gates the whole UI, so this promise must settle on every
+    // path. Without the catch, an unreachable Supabase project or a bad URL
+    // leaves the app on the loading spinner forever with no explanation.
+    supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Failed to restore session:', error);
+          setAuthError(`Could not reach the authentication service: ${error.message}`);
+          return;
+        }
+        setSession(data.session);
+      })
+      .catch((err: unknown) => {
+        console.error('Failed to restore session:', err);
+        setAuthError(
+          err instanceof Error
+            ? `Could not reach the authentication service: ${err.message}`
+            : 'Could not reach the authentication service.',
+        );
+      })
+      .finally(() => {
+        setSessionLoaded(true);
+      });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSignUp = useCallback(async () => {
+    if (!supabase) return;
     setAuthLoading(true);
     setAuthError('');
     const { error } = await supabase.auth.signUp({ email, password });
-    if (error) setAuthError(error.message);
-    else setAuthError('Check your email for the confirmation link!');
+    setAuthError(error ? error.message : 'Check your email for the confirmation link!');
     setAuthLoading(false);
-  };
+  }, [email, password]);
 
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSignIn = useCallback(async () => {
+    if (!supabase) return;
     setAuthLoading(true);
     setAuthError('');
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) setAuthError(error.message);
     setAuthLoading(false);
-  };
+  }, [email, password]);
 
   const handleSignOut = async () => {
+    if (!supabase) return;
     await supabase.auth.signOut();
+    // Clear scan state so a different user never sees the previous one's report.
+    setScanId(null);
+    setStatus('');
+    setResults(null);
+    setScanError('');
+    setLoading(false);
   };
 
   const startScan = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url || !session) return;
-    
+
     setLoading(true);
     setResults(null);
+    setScanError('');
     try {
+      const parsedMaxPages = parseInt(maxPages, 10);
+
       const res = await fetch('/api/scans', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
+          Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ url, max_pages: parseInt(maxPages) })
+        body: JSON.stringify({
+          url,
+          max_pages: Number.isFinite(parsedMaxPages) ? parsedMaxPages : 10,
+        }),
       });
-      
+
       if (!res.ok) {
-        throw new Error("Failed to start scan");
+        // Surface the server's reason instead of a generic message.
+        let detail = `Request failed with status ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body?.detail) detail = String(body.detail);
+        } catch {
+          /* response had no JSON body */
+        }
+        throw new Error(detail);
       }
-      
+
       const data = await res.json();
       setScanId(data.scan_id);
       setStatus('pending');
     } catch (err) {
       console.error(err);
       setStatus('error');
+      setScanError(err instanceof Error ? err.message : 'Failed to start scan');
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (!scanId || status === 'completed' || status === 'failed') return;
+    if (!scanId || !session) return;
+    if (status === 'completed' || status === 'failed' || status === 'error') return;
 
-    const interval = setInterval(async () => {
+    let cancelled = false;
+
+    const poll = async () => {
       try {
-        const res = await fetch(`/api/scans/${scanId}`);
+        // The status endpoint is owner-scoped, so the access token is required.
+        const res = await fetch(`/api/scans/${scanId}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (cancelled) return;
+
+        // A 401 or 404 will never recover on its own: the token is no longer
+        // valid, or the scan does not exist / is not ours. Polling those
+        // forever leaves the user watching a spinner that can never finish, so
+        // stop and say why. Other failures (502, network blips) are treated as
+        // transient and retried on the next tick.
+        if (res.status === 401 || res.status === 403) {
+          setStatus('error');
+          setLoading(false);
+          setScanError('Your session expired. Sign in again to see this scan.');
+          return;
+        }
+        if (res.status === 404) {
+          setStatus('error');
+          setLoading(false);
+          setScanError('This scan is no longer available.');
+          return;
+        }
         if (!res.ok) return;
+
         const data = await res.json();
+        if (cancelled) return;
+
         setStatus(data.status);
+
         if (data.status === 'completed' || data.status === 'failed') {
           setLoading(false);
-          setResults(data.results);
-          clearInterval(interval);
+          setResults(data.results ?? null);
+          if (data.status === 'failed') {
+            setScanError('The scan pipeline failed. Check the API logs for details.');
+          }
         }
       } catch (err) {
-        console.error("Polling error:", err);
+        console.error('Polling error:', err);
       }
-    }, 3000);
+    };
 
-    return () => clearInterval(interval);
-  }, [scanId, status]);
+    const interval = setInterval(poll, POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [scanId, status, session]);
+
+  if (!supabase) {
+    return (
+      <main className={styles.main}>
+        <div className={styles.container} style={{ maxWidth: '520px', margin: 'auto' }}>
+          <div className={`glass-panel ${styles.actionPanel}`}>
+            <div className={styles.header}>
+              <AlertTriangle size={48} color="var(--danger)" />
+              <h2>Configuration required</h2>
+              <p className={styles.subtext}>
+                Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and{' '}
+                <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> in <code>web/.env.local</code>, then
+                restart the dev server.
+              </p>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Avoid flashing the sign-in screen before the stored session is restored.
+  if (!sessionLoaded) {
+    return (
+      <main className={styles.main}>
+        <div className={styles.container} style={{ margin: 'auto', textAlign: 'center' }}>
+          <Loader2 className="pulse" size={40} color="var(--primary)" />
+        </div>
+      </main>
+    );
+  }
 
   if (!session) {
     return (
       <main className={styles.main}>
         <div className={styles.container} style={{ maxWidth: '400px', margin: 'auto' }}>
-          <motion.div 
+          <motion.div
             className={`glass-panel ${styles.actionPanel}`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -128,30 +308,56 @@ export default function Home() {
               <h2>Welcome to Antigravity QA</h2>
               <p className={styles.subtext}>Please sign in to access the platform.</p>
             </div>
-            
-            <form className={styles.form}>
-              <input 
-                type="email" 
-                placeholder="Email Address" 
-                className="input-field" 
+
+            {/* onSubmit makes the Enter key sign in rather than doing nothing. */}
+            <form
+              className={styles.form}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void handleSignIn();
+              }}
+            >
+              <input
+                type="email"
+                placeholder="Email Address"
+                className="input-field"
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                required
               />
-              <input 
-                type="password" 
-                placeholder="Password" 
-                className="input-field" 
+              <input
+                type="password"
+                placeholder="Password"
+                className="input-field"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                required
               />
-              
-              {authError && <div style={{ color: 'var(--danger)', fontSize: '0.9rem', textAlign: 'center' }}>{authError}</div>}
-              
+
+              {authError && (
+                <div style={{ color: 'var(--danger)', fontSize: '0.9rem', textAlign: 'center' }}>
+                  {authError}
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                <button type="button" onClick={handleSignIn} className="btn btn-primary" style={{ flex: 1 }} disabled={authLoading}>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  style={{ flex: 1 }}
+                  disabled={authLoading}
+                >
                   {authLoading ? <Loader2 className="pulse" /> : 'Sign In'}
                 </button>
-                <button type="button" onClick={handleSignUp} className="btn" style={{ flex: 1, background: 'rgba(255,255,255,0.1)' }} disabled={authLoading}>
+                <button
+                  type="button"
+                  onClick={() => void handleSignUp()}
+                  className="btn"
+                  style={{ flex: 1, background: 'rgba(255,255,255,0.1)' }}
+                  disabled={authLoading}
+                >
                   Sign Up
                 </button>
               </div>
@@ -162,18 +368,27 @@ export default function Home() {
     );
   }
 
+  const severity = results?.severity;
+  const summary = results?.summary;
+  const findings = results?.findings ?? [];
+  const showForm = !scanId || status === 'completed' || status === 'failed' || status === 'error';
+
   return (
     <main className={styles.main}>
       <div style={{ position: 'absolute', top: 20, right: 20 }}>
-        <button onClick={handleSignOut} className="btn" style={{ background: 'rgba(255,255,255,0.1)', padding: '8px 16px', fontSize: '0.9rem' }}>
+        <button
+          onClick={handleSignOut}
+          className="btn"
+          style={{ background: 'rgba(255,255,255,0.1)', padding: '8px 16px', fontSize: '0.9rem' }}
+        >
           <LogOut size={16} /> Sign Out
         </button>
       </div>
 
       <div className={styles.container}>
-        
+
         {/* Header Section */}
-        <motion.div 
+        <motion.div
           className={styles.header}
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -182,27 +397,31 @@ export default function Home() {
           <div className={styles.badge}>
             <ShieldCheck size={16} /> AI-Powered QA Platform
           </div>
-          <h1 className={styles.title}>Automate Your Web Testing with <span className={styles.gradientText}>Antigravity QA</span></h1>
+          <h1 className={styles.title}>
+            Automate Your Web Testing with{' '}
+            <span className={styles.gradientText}>Antigravity QA</span>
+          </h1>
           <p className={styles.subtitle}>
-            Enter any URL below. Our AI QA Agent will crawl your site, detect deterministic bugs, and use Gemini to generate a professional QA report—all while you wait.
+            Enter any URL below. Our AI QA Agent will crawl your site, detect deterministic bugs,
+            and use Gemini to generate a professional QA report—all while you wait.
           </p>
         </motion.div>
 
         {/* Action Panel */}
-        <motion.div 
+        <motion.div
           className={`glass-panel ${styles.actionPanel}`}
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5, delay: 0.2 }}
         >
-          {!scanId || status === 'completed' || status === 'failed' ? (
+          {showForm ? (
             <form onSubmit={startScan} className={styles.form}>
               <div className={styles.inputGroup}>
                 <Search className={styles.inputIcon} size={20} />
-                <input 
-                  type="url" 
-                  placeholder="https://example.com" 
-                  className="input-field" 
+                <input
+                  type="url"
+                  placeholder="https://example.com"
+                  className="input-field"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   style={{ paddingLeft: '48px' }}
@@ -210,9 +429,10 @@ export default function Home() {
                 />
               </div>
               <div className={styles.optionsGroup}>
-                <label>Max Pages:</label>
-                <select 
-                  className="input-field" 
+                <label htmlFor="max-pages">Max Pages:</label>
+                <select
+                  id="max-pages"
+                  className="input-field"
                   style={{ width: '120px' }}
                   value={maxPages}
                   onChange={(e) => setMaxPages(e.target.value)}
@@ -223,63 +443,127 @@ export default function Home() {
                   <option value="50">50 pages</option>
                 </select>
                 <button type="submit" className="btn btn-primary" disabled={loading}>
-                  {loading ? <><Loader2 className="pulse" /> Starting...</> : <>Run QA Scan <ArrowRight size={18} /></>}
+                  {loading ? (
+                    <>
+                      <Loader2 className="pulse" /> Starting...
+                    </>
+                  ) : (
+                    <>
+                      Run QA Scan <ArrowRight size={18} />
+                    </>
+                  )}
                 </button>
               </div>
+              {scanError && (
+                <div
+                  style={{
+                    color: 'var(--danger)',
+                    fontSize: '0.9rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  <AlertTriangle size={16} /> {scanError}
+                </div>
+              )}
             </form>
           ) : (
             <div className={styles.statusPanel}>
               <Loader2 className="pulse" size={48} color="var(--primary)" />
               <h2>Scan in Progress</h2>
-              <p>Status: <span style={{ textTransform: 'uppercase', color: 'var(--accent)' }}>{status}</span></p>
-              <p className={styles.subtext}>The agent is currently crawling and analyzing your website. This may take a few minutes...</p>
+              <p>
+                Status:{' '}
+                <span style={{ textTransform: 'uppercase', color: 'var(--accent)' }}>{status}</span>
+              </p>
+              <p className={styles.subtext}>
+                The agent is currently crawling and analyzing your website. This may take a few
+                minutes...
+              </p>
             </div>
           )}
         </motion.div>
 
         {/* Results Section */}
         {results && status === 'completed' && (
-          <motion.div 
+          <motion.div
             className={`glass-panel ${styles.resultsPanel}`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
           >
             <div className={styles.resultsHeader}>
-              <h2><FileText size={24} /> QA Scan Report for {results.target}</h2>
+              <h2>
+                <FileText size={24} /> QA Scan Report for{' '}
+                {results.report_metadata?.target ?? 'Unknown target'}
+              </h2>
             </div>
-            
+
+            {/* The markdown report warns about failed AI analysis; the UI has to
+                as well, otherwise a scan where every Gemini call failed looks
+                identical to a clean one. */}
+            {results.report_metadata?.ai_analysis_degraded && (
+              <div className={styles.degradedBanner}>
+                <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <span>
+                  <strong>AI analysis was incomplete.</strong>{' '}
+                  {results.report_metadata.ai_analysis_failures ?? 0} finding(s) could not be
+                  analysed by the model, so their severity and recommendation below are
+                  deterministic fallbacks rather than AI verdicts. Re-run the scan once the model
+                  is reachable.
+                </span>
+              </div>
+            )}
+
             <div className={styles.statsGrid}>
               <div className={styles.statCard}>
                 <h3>Total Findings</h3>
-                <div className={styles.statValue}>{results.summary.total_candidates}</div>
+                <div className={styles.statValue}>{summary?.total_candidates ?? 0}</div>
               </div>
               <div className={styles.statCard}>
                 <h3>Needs Review</h3>
-                <div className={styles.statValue}>{results.summary.needs_manual_review}</div>
+                <div className={styles.statValue}>{summary?.manual_review ?? 0}</div>
               </div>
               <div className={styles.statCard}>
                 <h3>Severity (High/Med/Low)</h3>
                 <div className={styles.statValue}>
-                  {results.summary.severity_counts.high} / {results.summary.severity_counts.medium} / {results.summary.severity_counts.low}
+                  {(severity?.critical ?? 0) + (severity?.high ?? 0)} / {severity?.medium ?? 0} /{' '}
+                  {severity?.low ?? 0}
+                </div>
+              </div>
+              <div className={styles.statCard}>
+                <h3>Pages Crawled</h3>
+                <div className={styles.statValue}>
+                  {results.report_metadata?.pages_crawled ?? 0}
                 </div>
               </div>
             </div>
 
             <div className={styles.findingsList}>
-              {results.findings && results.findings.map((finding: any, idx: number) => (
-                <div key={idx} className={styles.findingItem}>
+              {findings.map((finding, idx) => (
+                <div key={finding.id || idx} className={styles.findingItem}>
                   <div className={styles.findingHeader}>
                     <span className={styles.findingId}>{finding.id}</span>
-                    <span className={`${styles.severityBadge} ${styles[finding.severity]}`}>{finding.severity}</span>
+                    <span className={`${styles.severityBadge} ${styles[finding.severity] ?? ''}`}>
+                      {finding.severity}
+                    </span>
                   </div>
                   <h3>{finding.title}</h3>
-                  <p className={styles.findingDesc}>{finding.summary || finding.reasoning}</p>
+                  <p className={styles.findingDesc}>
+                    {finding.description || finding.manual_verification}
+                  </p>
                   <div className={styles.findingFooter}>
-                    <Bug size={16} /> {finding.candidate?.occurrences || 1} Occurrences across {finding.candidate?.affected_pages?.length || 1} pages
+                    <Bug size={16} /> Affects {finding.affected_pages_count ?? 1}{' '}
+                    {finding.affected_pages_count === 1 ? 'page' : 'pages'}
+                    {/* Pages and events are different numbers: one page can fail
+                        the same request many times. */}
+                    {(finding.occurrence_count ?? 0) > (finding.affected_pages_count ?? 0)
+                      ? ` · ${finding.occurrence_count} occurrences`
+                      : ''}
+                    {finding.page ? ` · ${finding.page}` : ''}
                   </div>
                 </div>
               ))}
-              {(!results.findings || results.findings.length === 0) && (
+              {findings.length === 0 && (
                 <div className={styles.noFindings}>
                   No deterministic bugs or AI candidates found! Your site looks healthy.
                 </div>

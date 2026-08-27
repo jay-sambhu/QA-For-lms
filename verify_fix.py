@@ -2,6 +2,12 @@
 """
 Final comprehensive verification of URL canonicalization fix.
 Verifies all requirements from the task.
+
+WARNING — like test_normalization_standalone.py, this script re-implements
+normalize_url locally instead of importing WebsiteCrawler, so a regression in
+crawler/crawler.py would NOT be caught here. Treat it as a historical record of
+the canonicalization fix, not as a regression test. test_url_normalization.py
+exercises the real implementation.
 """
 
 import json

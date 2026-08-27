@@ -5,6 +5,8 @@ import asyncio
 import json
 import os
 import re
+import urllib.error
+import urllib.request
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
@@ -12,30 +14,72 @@ from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
-CLASSIFICATIONS = {
-    "confirmed_bug", "high_confidence_candidate", "needs_manual_review",
-    "expected_behavior", "informational",
-}
-SEVERITIES = {"high", "medium", "low", "info"}
-CONFIDENCES = {"high", "medium", "low"}
-REQUIRED_FIELDS = {
-    "classification", "severity", "confidence", "title", "summary",
-    "reasoning", "user_impact", "recommended_action", "evidence_used",
-}
+MODULE_DIR = Path(__file__).resolve().parent
+
+# Ordered tuples, not sets: iteration order over a set of strings varies with
+# PYTHONHASHSEED, which made the JSON key order of the count dictionaries
+# change between runs and broke byte-for-byte report comparisons.
+CLASSIFICATION_ORDER = (
+    "confirmed_bug",
+    "high_confidence_candidate",
+    "needs_manual_review",
+    "expected_behavior",
+    "informational",
+)
+SEVERITY_ORDER = ("critical", "high", "medium", "low", "info")
+CONFIDENCE_ORDER = ("high", "medium", "low")
+REQUIRED_FIELD_ORDER = (
+    "classification",
+    "severity",
+    "confidence",
+    "title",
+    "summary",
+    "reasoning",
+    "user_impact",
+    "recommended_action",
+    "evidence_used",
+)
+
+# Kept as sets for fast membership tests, derived from the ordered tuples above
+# so the two can never drift apart.
+CLASSIFICATIONS = set(CLASSIFICATION_ORDER)
+SEVERITIES = set(SEVERITY_ORDER)
+CONFIDENCES = set(CONFIDENCE_ORDER)
+REQUIRED_FIELDS = set(REQUIRED_FIELD_ORDER)
+
+GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models"
+
+# Seconds to wait before the single retry of a failed model call.
+RETRY_DELAY_SECONDS = 2.0
+REQUEST_TIMEOUT_SECONDS = 120
 
 
 class GeminiQAAnalyzer:
     """Analyze grouped candidates while keeping deterministic evidence authoritative."""
 
     def __init__(self, api_key=None, model_client=None, model_name="gemini-3-flash-preview"):
-        load_dotenv(dotenv_path=".env")
+        # Load the .env sitting next to this module rather than one relative to
+        # the current working directory, so the key is found no matter where
+        # the pipeline is invoked from.
+        load_dotenv(dotenv_path=MODULE_DIR / ".env")
         self.api_key = api_key if api_key is not None else os.getenv("GOOGLE_API_KEY")
         self.model_client = model_client
         self.model_name = model_name
 
     @staticmethod
     def find_latest_findings(results_dir="results"):
-        files = sorted(Path(results_dir).glob("qa_findings_*.json"), reverse=True)
+        results_path = Path(results_dir)
+        if not results_path.exists():
+            return None
+        # By mtime, not name: run ids may be UUIDs (from the API) rather than
+        # timestamps, so filename order is not chronological order. The name is
+        # the tiebreak because mtime granularity is coarse enough that two files
+        # written in the same tick would otherwise order arbitrarily.
+        files = sorted(
+            results_path.glob("qa_findings_*.json"),
+            key=lambda path: (path.stat().st_mtime, path.name),
+            reverse=True,
+        )
         return files[0] if files else None
 
     @staticmethod
@@ -58,33 +102,81 @@ class GeminiQAAnalyzer:
             return [GeminiQAAnalyzer._redact(item) for item in value]
         if not isinstance(value, str):
             return value
-        patterns = [
-            (r"(?i)(authorization\s*:\s*bearer\s+)[^\s,;]+", r"\1[REDACTED]"),
-            (r"(?i)(bearer\s+)[^\s,;]+", r"\1[REDACTED]"),
-            (r"(?i)((?:api[_ -]?key|token|password|passwd|secret|cookie)\s*[:=]\s*)[^\s,;]+", r"\1[REDACTED]"),
-        ]
-        for pattern, replacement in patterns:
-            value = re.sub(pattern, replacement, value)
+
+        for pattern, replacement in GeminiQAAnalyzer.REDACTION_PATTERNS:
+            value = pattern.sub(replacement, value)
         return value
+
+    # Compiled once at class creation rather than rebuilt on every call.
+    REDACTION_PATTERNS = [
+        (re.compile(r"(?i)(authorization\s*:\s*bearer\s+)[^\s,;\"']+"), r"\1[REDACTED]"),
+        (re.compile(r"(?i)(bearer\s+)[^\s,;\"']+"), r"\1[REDACTED]"),
+        # JWTs, which often appear in console errors and request URLs.
+        (
+            re.compile(r"eyJ[A-Za-z0-9_-]{5,}\.eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{10,}"),
+            "[REDACTED_JWT]",
+        ),
+        # Named credentials in JSON, headers, or query strings. `key` and
+        # `apikey` are included because Google-style URLs use a bare `?key=`,
+        # which the previous pattern list did not match at all.
+        #
+        # The lookbehind is load-bearing: without it, short names matched the
+        # tail of ordinary words, so `?monkey=1`, `?sortkey=name` and
+        # `?hotkey=x` were rewritten to `?mon[REDACTED]` and friends -- silently
+        # corrupting the URLs a QA reader needs in order to reproduce the bug.
+        # It rejects a preceding letter or digit but allows `_`, `-` and
+        # punctuation, so `user_session_id=` and `X-API-Key:` still redact.
+        #
+        # The `["']?` *before* the separator matches a JSON key's closing quote.
+        # Without it `{"access_token": "secret"}` did not match at all, so
+        # credentials inside JSON request bodies and console errors -- the most
+        # likely place for them to appear -- were passed to the model verbatim.
+        (
+            re.compile(
+                r"(?i)(?<![A-Za-z0-9])"
+                r"((?:api[_ -]?key|apikey|access[_ -]?token|refresh[_ -]?token"
+                r"|id[_ -]?token|client[_ -]?secret|session[_ -]?id|token|key"
+                r"|password|passwd|pwd|secret|cookie|auth)"
+                r"[\"']?\s*[:=]\s*[\"']?)[^\s,;\"'&]+"
+            ),
+            r"\1[REDACTED]",
+        ),
+    ]
 
     @classmethod
     def compact_evidence(cls, candidate, target=""):
         evidence = candidate.get("evidence") or {}
         affected = candidate.get("affected_pages") or []
         screenshots = candidate.get("screenshots") or []
+
+        # Prefer the explicit page->screenshot pairing produced by the bug
+        # detector. Zipping two separately de-duplicated lists silently paired
+        # the wrong screenshot with the wrong page whenever a page had none.
+        pairs = candidate.get("page_screenshots")
+        if pairs:
+            paired = [
+                (item.get("page", ""), item.get("screenshot", ""))
+                for item in pairs
+            ]
+        else:
+            paired = list(zip(affected, screenshots))
+
         screenshot_evidence = []
-        for page, path in zip(affected, screenshots):
-            exists = Path(path).exists()
+        for page, path in paired:
+            exists = bool(path) and Path(path).exists()
             screenshot_evidence.append({"page": page, "path": path, "available": exists})
+
         package = {
             "target": target,
             "candidate_id": candidate.get("id"),
+            "type": candidate.get("type"),
             "url": candidate.get("url"),
             "status": candidate.get("status"),
             "method": candidate.get("method"),
             "resource_type": candidate.get("resource_type"),
             "occurrences": candidate.get("occurrences", 0),
             "affected_pages": affected,
+            "affected_page_count": candidate.get("affected_page_count", len(affected)),
             "deterministic_severity": candidate.get("severity"),
             "deterministic_confidence": candidate.get("confidence"),
             "description": candidate.get("description", ""),
@@ -105,14 +197,17 @@ class GeminiQAAnalyzer:
         return (
             "Act as a conservative senior QA engineer. Analyze only the supplied evidence. "
             "Return one JSON object and no prose. Classification must be exactly one of: "
-            "confirmed_bug, high_confidence_candidate, needs_manual_review, expected_behavior, informational. "
-            "Severity must be high, medium, low, or info; confidence must be high, medium, or low. "
-            "Do not invent backend behavior, credentials, responses, screenshots, or user impact. "
+            + ", ".join(CLASSIFICATION_ORDER)
+            + ". Severity must be one of: "
+            + ", ".join(SEVERITY_ORDER)
+            + "; confidence must be one of: "
+            + ", ".join(CONFIDENCE_ORDER)
+            + ". Do not invent backend behavior, credentials, responses, screenshots, or user impact. "
             "A 401/403 is not automatically a bug and usually needs manual review unless broken behavior "
             "is evidenced. A first-party 5xx is usually a high-confidence candidate. ERR_ABORTED and "
             "third-party analytics are normally informational. Use screenshots only when available and "
             "never claim visual observations when screenshot analysis is unavailable. Required fields: "
-            + json.dumps(sorted(REQUIRED_FIELDS))
+            + json.dumps(list(REQUIRED_FIELD_ORDER))
             + ". Make sure 'evidence_used' is a JSON array of strings."
             + "\nEvidence:\n"
             + json.dumps(evidence, indent=2, ensure_ascii=False)
@@ -134,30 +229,64 @@ class GeminiQAAnalyzer:
 
         if not self.api_key:
             raise RuntimeError("Gemini API key unavailable")
-            
-        import urllib.request
-        import json
-        import asyncio
-        
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
-        headers = {"Content-Type": "application/json"}
+
+        url = f"{GEMINI_ENDPOINT}/{self.model_name}:generateContent"
+
+        # The key goes in a header, not the query string. A key in the URL is
+        # echoed into exception messages, proxy logs, and stack traces.
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key,
+        }
         data = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.0}
+            "generationConfig": {"temperature": 0.0},
         }
-        
-        req = urllib.request.Request(url, data=json.dumps(data).encode("utf-8"), headers=headers, method="POST")
-        
+
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(data).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+
         def fetch():
-            with urllib.request.urlopen(req) as response:
-                return json.loads(response.read().decode("utf-8"))
-                
+            try:
+                with urllib.request.urlopen(
+                    request, timeout=REQUEST_TIMEOUT_SECONDS
+                ) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError as error:
+                # Surface the status code so the caller can detect 429/quota.
+                detail = ""
+                try:
+                    detail = error.read().decode("utf-8", "replace")[:500]
+                except Exception:
+                    pass
+                raise RuntimeError(
+                    f"Gemini API returned HTTP {error.code}: {detail}"
+                ) from None
+
         try:
             response_data = await asyncio.to_thread(fetch)
-            text = response_data["candidates"][0]["content"]["parts"][0]["text"]
-            return text
-        except Exception as e:
-            raise RuntimeError(f"Gemini API request failed: {e}")
+        except Exception as error:
+            # Redact before re-raising: the message ends up in the report.
+            raise RuntimeError(
+                f"Gemini API request failed: {self._redact(str(error))}"
+            ) from None
+
+        try:
+            candidates = response_data["candidates"]
+            if not candidates:
+                # An empty candidate list usually means the prompt was blocked.
+                feedback = response_data.get("promptFeedback", {})
+                raise RuntimeError(f"Gemini returned no candidates: {feedback}")
+            parts = candidates[0]["content"]["parts"]
+            return "".join(part.get("text", "") for part in parts)
+        except (KeyError, IndexError, TypeError) as error:
+            raise RuntimeError(
+                f"Unexpected Gemini response shape: {error}"
+            ) from None
 
     @staticmethod
     def parse_response(response):
@@ -184,14 +313,17 @@ class GeminiQAAnalyzer:
         if missing:
             raise ValueError("Missing fields: " + ", ".join(sorted(missing)))
         if parsed["classification"] not in CLASSIFICATIONS:
-            raise ValueError("Invalid classification")
+            raise ValueError(f"Invalid classification: {parsed['classification']!r}")
         if parsed["severity"] not in SEVERITIES:
-            raise ValueError("Invalid severity")
+            raise ValueError(f"Invalid severity: {parsed['severity']!r}")
         if parsed["confidence"] not in CONFIDENCES:
-            raise ValueError("Invalid confidence")
+            raise ValueError(f"Invalid confidence: {parsed['confidence']!r}")
         if not isinstance(parsed.get("evidence_used"), list):
-            parsed["evidence_used"] = [str(parsed.get("evidence_used", ""))] if parsed.get("evidence_used") else []
-        return {field: cls._redact(parsed[field]) for field in REQUIRED_FIELDS}
+            parsed["evidence_used"] = (
+                [str(parsed.get("evidence_used", ""))] if parsed.get("evidence_used") else []
+            )
+        # Fixed field order so the emitted JSON is byte-stable across runs.
+        return {field: cls._redact(parsed[field]) for field in REQUIRED_FIELD_ORDER}
 
     @classmethod
     def fallback(cls, reason, raw_response=None):
@@ -205,6 +337,10 @@ class GeminiQAAnalyzer:
             "user_impact": "User impact cannot be determined from the available crawl evidence.",
             "recommended_action": "Review the deterministic candidate manually.",
             "evidence_used": [],
+            # Distinguishes "the model deliberately asked for manual review"
+            # from "the model call failed", which the summary previously
+            # conflated into a single error list.
+            "analysis_failed": True,
         }
         if raw_response:
             result["raw_response"] = cls._redact(str(raw_response))
@@ -218,13 +354,21 @@ class GeminiQAAnalyzer:
             raw = await self._call_model(prompt)
             return self.validate_response(raw)
         except Exception as error:
-            if "429" in str(error) or "quota" in str(error).lower():
+            message = str(error)
+            # Quota errors will not succeed on an immediate retry.
+            if "429" in message or "quota" in message.lower():
                 return self.fallback("Gemini quota limit reached; manual review required.")
+
+            # Back off briefly before the single retry so a transient rate
+            # limit or network blip has time to clear.
+            await asyncio.sleep(RETRY_DELAY_SECONDS)
             try:
                 raw = await self._call_model(prompt)
                 return self.validate_response(raw)
             except Exception as retry_error:
-                return self.fallback("Gemini analysis failed; manual review required.", str(retry_error))
+                return self.fallback(
+                    "Gemini analysis failed; manual review required.", str(retry_error)
+                )
 
     async def analyze(self, findings_data):
         candidates = findings_data.get("root_cause_candidates") or []
@@ -232,8 +376,14 @@ class GeminiQAAnalyzer:
         findings, errors = [], []
         for index, candidate in enumerate(candidates, 1):
             analysis = await self.analyze_candidate(candidate, target)
-            if analysis["classification"] == "needs_manual_review":
-                errors.append({"candidate_id": candidate.get("id"), "error": analysis["reasoning"]})
+
+            # Only genuine failures belong in `errors`. A model that returns a
+            # well-formed `needs_manual_review` verdict is working correctly.
+            if analysis.pop("analysis_failed", False):
+                errors.append(
+                    {"candidate_id": candidate.get("id"), "error": analysis["reasoning"]}
+                )
+
             finding = {
                 "id": f"AI-BUG-{index:03d}",
                 "candidate_id": candidate.get("id"),
@@ -241,17 +391,25 @@ class GeminiQAAnalyzer:
                 "candidate": deepcopy(candidate),
             }
             findings.append(finding)
-        classifications = list(CLASSIFICATIONS | {"needs_manual_review"})
-        classification_counts = {key: 0 for key in classifications}
-        severity_counts = {key: 0 for key in SEVERITIES}
-        confidence_counts = {key: 0 for key in CONFIDENCES}
+
+        classification_counts = {key: 0 for key in CLASSIFICATION_ORDER}
+        severity_counts = {key: 0 for key in SEVERITY_ORDER}
+        confidence_counts = {key: 0 for key in CONFIDENCE_ORDER}
         for finding in findings:
-            classification_counts[finding["classification"]] += 1
-            severity_counts[finding["severity"]] += 1
-            confidence_counts[finding["confidence"]] += 1
+            # `.get` guards against a future classification/severity being
+            # added to the prompt but not to the ordered tuples.
+            if finding["classification"] in classification_counts:
+                classification_counts[finding["classification"]] += 1
+            if finding["severity"] in severity_counts:
+                severity_counts[finding["severity"]] += 1
+            if finding["confidence"] in confidence_counts:
+                confidence_counts[finding["confidence"]] += 1
         return {
             "target": target,
-            "source": {"crawl_result": findings_data.get("crawl_source", ""), "qa_findings": findings_data.get("source_file", "")},
+            "source": {
+                "crawl_result": findings_data.get("crawl_source", ""),
+                "qa_findings": findings_data.get("source_file", ""),
+            },
             "summary": {
                 "total_candidates": len(findings),
                 "confirmed_bugs": classification_counts["confirmed_bug"],
@@ -259,6 +417,7 @@ class GeminiQAAnalyzer:
                 "needs_manual_review": classification_counts["needs_manual_review"],
                 "expected_behavior": classification_counts["expected_behavior"],
                 "informational": classification_counts["informational"],
+                "analysis_failures": len(errors),
                 "classification_counts": classification_counts,
                 "severity_counts": severity_counts,
                 "confidence_counts": confidence_counts,
@@ -306,34 +465,65 @@ class GeminiQAAnalyzer:
         return "\n".join(lines) + "\n"
 
 
-async def generate_report(findings_file=None):
-    path = Path(findings_file) if findings_file else GeminiQAAnalyzer.find_latest_findings()
+async def generate_report(findings_file=None, results_dir="results", run_id=None):
+    """
+    Run the Gemini analysis stage.
+
+    Args:
+        findings_file: Explicit path to a qa_findings_*.json file. When omitted
+            the newest file in `results_dir` is used, which is only safe for
+            single-run/CLI usage.
+        results_dir: Directory to read from and write to.
+        run_id: Suffix for output filenames. Defaults to a timestamp.
+    """
+    path = (
+        Path(findings_file)
+        if findings_file
+        else GeminiQAAnalyzer.find_latest_findings(results_dir)
+    )
     if path is None:
-        print("No QA findings file found under results/qa_findings_*.json")
+        print(f"No QA findings file found under {results_dir}/qa_findings_*.json")
         return None
+
     data = GeminiQAAnalyzer.load_findings(path)
     data["source_file"] = str(path)
     analyzer = GeminiQAAnalyzer()
     result = await analyzer.analyze(data)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    json_path = Path("results") / f"gemini_qa_report_{timestamp}.json"
-    md_path = Path("results") / f"gemini_qa_report_{timestamp}.md"
+
+    results_path = Path(results_dir)
+    results_path.mkdir(parents=True, exist_ok=True)
+
+    suffix = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
+    json_path = results_path / f"gemini_qa_report_{suffix}.json"
+    md_path = results_path / f"gemini_qa_report_{suffix}.md"
+
     json_path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     md_path.write_text(analyzer.render_markdown(result), encoding="utf-8")
+
+    summary = result["summary"]
     print("\n" + "=" * 60 + "\nGEMINI QA ANALYZER VERIFICATION\n" + "=" * 60)
-    print(f"\nRAW CANDIDATES: {result['summary']['total_candidates']}")
-    print(f"\nCONFIRMED BUGS: {result['summary']['confirmed_bugs']}")
-    print(f"\nHIGH-CONFIDENCE CANDIDATES: {result['summary']['high_confidence_candidates']}")
-    print(f"\nNEEDS MANUAL REVIEW: {result['summary']['needs_manual_review']}")
-    print(f"\nEXPECTED BEHAVIOR: {result['summary']['expected_behavior']}")
-    print(f"\nINFORMATIONAL: {result['summary']['informational']}")
+    print(f"\nRAW CANDIDATES: {summary['total_candidates']}")
+    print(f"\nCONFIRMED BUGS: {summary['confirmed_bugs']}")
+    print(f"\nHIGH-CONFIDENCE CANDIDATES: {summary['high_confidence_candidates']}")
+    print(f"\nNEEDS MANUAL REVIEW: {summary['needs_manual_review']}")
+    print(f"\nEXPECTED BEHAVIOR: {summary['expected_behavior']}")
+    print(f"\nINFORMATIONAL: {summary['informational']}")
+    print(f"\nANALYSIS FAILURES: {summary['analysis_failures']}")
     print("\nSEVERITY:")
-    for key, value in result["summary"]["severity_counts"].items():
+    for key, value in summary["severity_counts"].items():
         print(f"  {key.upper()}: {value}")
-    print("\nSECURITY:\n  Secrets exposed: NO\n\nEVIDENCE:\n  Evidence preserved: YES")
-    print(f"\nREPORT:\n  JSON generated: YES\n  Markdown generated: YES\n  JSON: {json_path}\n  Markdown: {md_path}")
+    print("\nSECURITY:\n  Secrets redacted: YES\n\nEVIDENCE:\n  Evidence preserved: YES")
+    print(
+        f"\nREPORT:\n  JSON generated: YES\n  Markdown generated: YES"
+        f"\n  JSON: {json_path}\n  Markdown: {md_path}"
+    )
     for finding in result["findings"]:
         print(f"\n{finding['candidate_id']}: {finding['classification']}")
+
+    # Surface the paths so callers do not have to re-glob the directory.
+    result["json_path"] = str(json_path)
+    result["md_path"] = str(md_path)
+
     return result
 
 

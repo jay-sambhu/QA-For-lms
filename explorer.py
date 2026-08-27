@@ -1,6 +1,7 @@
+import argparse
 import asyncio
-import json
 import os
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -8,16 +9,19 @@ from dotenv import load_dotenv
 from browser_use import Agent, ChatGoogle
 
 
-load_dotenv(dotenv_path=".env")
+MODULE_DIR = Path(__file__).resolve().parent
+
+# Anchor to the module directory: loading ".env" relatively only worked when
+# the script happened to be launched from the repo root.
+load_dotenv(dotenv_path=MODULE_DIR / ".env")
 
 
-URL = "https://example.com"
+DEFAULT_URL = "https://example.com"
 
-RESULTS_DIR = Path("results")
-RESULTS_DIR.mkdir(exist_ok=True)
+RESULTS_DIR = MODULE_DIR / "results"
 
 
-async def main():
+async def explore(url):
 
     api_key = os.getenv("GOOGLE_API_KEY")
 
@@ -31,11 +35,14 @@ async def main():
         api_key=api_key,
     )
 
+    # The target is interpolated from `url`. It used to be hardcoded in the
+    # prompt while the banner below printed a different URL, so the agent
+    # silently explored a site other than the one reported.
     task = f"""
 You are a professional QA website explorer.
 
 Target website:
-URL = "https://dplms.com"
+URL = "{url}"
 
 Your job is to explore the website and build a structured
 map of the accessible application.
@@ -91,7 +98,7 @@ At the end, provide a structured summary of everything discovered.
     print("AI QA AGENT - PHASE 1")
     print("Website Explorer")
     print("=" * 70)
-    print(f"Target: {URL}")
+    print(f"Target: {url}")
     print()
 
     agent = Agent(
@@ -105,6 +112,7 @@ At the end, provide a structured summary of everything discovered.
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     output_file = RESULTS_DIR / f"exploration_{timestamp}.txt"
 
     output_file.write_text(
@@ -121,6 +129,32 @@ At the end, provide a structured summary of everything discovered.
     print()
     print(f"Result saved to: {output_file}")
 
+    return output_file
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Phase 1: AI-driven read-only website exploration"
+    )
+    parser.add_argument(
+        "url",
+        nargs="?",
+        default=DEFAULT_URL,
+        help=f"Target URL to explore (default: {DEFAULT_URL})",
+    )
+    args = parser.parse_args()
+
+    url = args.url.strip()
+    if not url.lower().startswith(("http://", "https://")):
+        parser.error("url must be an absolute http(s) URL")
+
+    try:
+        asyncio.run(explore(url))
+    except RuntimeError as error:
+        print(f"ERROR: {error}")
+        return 2
+    return 0
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    sys.exit(main())

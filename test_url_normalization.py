@@ -4,14 +4,30 @@ Test suite for URL normalization in the crawler.
 """
 
 import sys
+import tempfile
+
 from crawler.crawler import WebsiteCrawler
+
+
+def make_crawler():
+    """Build a crawler whose output dirs land in a temp dir, not the repo.
+
+    WebsiteCrawler creates results/ and screenshots/<run_id>/ in its output
+    directory at construction time, so instantiating it with the default
+    (cwd) left a trail of empty directories in the repo on every test run.
+    """
+    return WebsiteCrawler(
+        "https://dplms.com",
+        max_pages=30,
+        output_dir=tempfile.mkdtemp(prefix="qa_url_test_"),
+    )
 
 
 def test_url_normalization():
     """Test all URL normalization cases."""
     
     # Create a crawler instance to test normalize_url method
-    crawler = WebsiteCrawler("https://dplms.com", max_pages=30)
+    crawler = make_crawler()
     
     test_cases = [
         # (input_url, expected_output, description)
@@ -65,8 +81,8 @@ def test_visited_set_deduplication():
     print("\n\nTesting Visited Set Deduplication")
     print("=" * 80)
     
-    crawler = WebsiteCrawler("https://dplms.com", max_pages=30)
-    
+    crawler = make_crawler()
+
     # Add equivalent URLs to the visited set
     url1 = crawler.normalize_url("https://dplms.com")
     url2 = crawler.normalize_url("https://dplms.com/")
@@ -98,8 +114,8 @@ def test_queue_deduplication():
     print("\n\nTesting Queue Deduplication")
     print("=" * 80)
     
-    crawler = WebsiteCrawler("https://dplms.com", max_pages=30)
-    
+    crawler = make_crawler()
+
     # Clear the initial queue
     crawler.queue.clear()
     
