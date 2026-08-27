@@ -269,6 +269,16 @@ async def get_scan_status(scan_id: str, user=Depends(require_user)):
 
     # If completed, load the JSON results so the frontend can display them easily
     response = dict(scan)
+    
+    if scan.get("status") in ("running", "pending"):
+        progress_path = os.path.join(ROOT_DIR, "results", f"progress_{scan_id}.json")
+        if os.path.exists(progress_path):
+            try:
+                with open(progress_path, "r", encoding="utf-8") as f:
+                    response["progress"] = json.load(f)
+            except Exception:
+                pass
+
     if scan.get("status") == "completed" and scan.get("json_path"):
         response["results"] = None
         resolved = _resolve_report_path(scan["json_path"])

@@ -9,6 +9,7 @@ overlapping scans would read each other's output.
 
 import argparse
 import asyncio
+import json
 import os
 import sys
 from datetime import datetime
@@ -31,6 +32,16 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
     print(f"Run ID: {run_id}")
     print("=" * 60)
 
+    def report_progress(stage, percent, message):
+        progress_file = os.path.join(results_dir, f"progress_{run_id}.json")
+        try:
+            with open(progress_file, "w", encoding="utf-8") as f:
+                json.dump({"stage": stage, "percent": percent, "message": message}, f)
+        except Exception:
+            pass
+
+    report_progress("crawling", 0, "Initializing crawler...")
+
     print("\n[Stage 1] Crawling website...")
     crawler = WebsiteCrawler(
         url,
@@ -38,6 +49,7 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
         auth_token=auth_token,
         output_dir=base_dir,
         run_id=run_id,
+        progress_cb=lambda pct, msg: report_progress("crawling", pct, msg)
     )
     crawl_result = await crawler.crawl()
     crawl_file = crawl_result.get("output_file")
@@ -63,6 +75,8 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
                 print(f"  {page.get('url')}: {page['error']}")
         return None
 
+    report_progress("bug_detection", 60, "Running deterministic bug detector...")
+
     print("\n[Stage 2] Running deterministic bug detector...")
     findings = generate_qa_findings(
         crawl_file=crawl_file,
@@ -72,6 +86,8 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
     if not findings:
         print("ERROR: Stage 2 produced no findings file.")
         return None
+
+    report_progress("ai_analysis", 70, "Running Gemini AI analysis...")
 
     print("\n[Stage 3] Running Gemini AI analysis...")
     gemini_result = await generate_report(
@@ -83,6 +99,8 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
         print("ERROR: Stage 3 produced no Gemini report.")
         return None
 
+    report_progress("report_generation", 90, "Generating final QA report...")
+
     print("\n[Stage 4] Generating final QA report...")
     generator = QAReportGenerator(results_dir=results_dir, base_dir=base_dir)
     result = generator.generate(
@@ -92,6 +110,8 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
     if not result:
         print("ERROR: Stage 4 produced no final report.")
         return None
+
+    report_progress("completed", 100, "Pipeline completed successfully!")
 
     print("\nPipeline completed successfully!")
     # The API parses these two lines from stdout; keep the prefixes stable.

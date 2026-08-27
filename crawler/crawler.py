@@ -19,8 +19,9 @@ DEFAULT_PORTS = {"http": "80", "https": "443"}
 class WebsiteCrawler:
 
     def __init__(self, start_url, max_pages=30, auth_token=None,
-                 output_dir=None, run_id=None):
+                 output_dir=None, run_id=None, progress_cb=None):
         self.start_url = self.normalize_url(start_url)
+        self.progress_cb = progress_cb
 
         parsed = urlparse(self.start_url)
         if parsed.scheme not in FETCHABLE_SCHEMES or not parsed.netloc:
@@ -167,54 +168,72 @@ class WebsiteCrawler:
                 headless=True
             )
 
-            kwargs = {
+            kwargs_desktop = {
                 "viewport": {
                     "width": 1366,
                     "height": 768
                 }
             }
-            if self.auth_token:
-                kwargs["extra_http_headers"] = {"Authorization": f"Bearer {self.auth_token}"}
+            devices_config = {
+                "Desktop Chrome": kwargs_desktop,
+                "iPhone 13": p.devices["iPhone 13"],
+                "iPad (gen 7)": p.devices["iPad (gen 7)"]
+            }
 
-            page = await browser.new_page(**kwargs)
+            contexts = {}
+            pages = {}
 
-            page.on(
-                "response",
-                lambda response: monitor.record_response(
-                    response,
-                    page.url
+            for dev_name, dev_config in devices_config.items():
+                # Make a copy so we don't mutate the global playwright device configs
+                ctx_kwargs = dict(dev_config)
+                if self.auth_token:
+                    ctx_kwargs["extra_http_headers"] = {"Authorization": f"Bearer {self.auth_token}"}
+                
+                context = await browser.new_context(**ctx_kwargs)
+                page = await context.new_page()
+                
+                page.on(
+                    "response",
+                    lambda response, n=dev_name, p=page: monitor.record_response(
+                        response,
+                        f"{p.url} [{n}]"
+                    )
                 )
-            )
 
-            page.on(
-                "requestfailed",
-                lambda request: monitor.record_request_failure(
-                    request,
-                    page.url
+                page.on(
+                    "requestfailed",
+                    lambda request, n=dev_name, p=page: monitor.record_request_failure(
+                        request,
+                        f"{p.url} [{n}]"
+                    )
                 )
-            )
 
-            page.on(
-                "console",
-                lambda message: monitor.record_console(
-                    message,
-                    page.url
+                page.on(
+                    "console",
+                    lambda message, n=dev_name, p=page: monitor.record_console(
+                        message,
+                        f"{p.url} [{n}]"
+                    )
                 )
-            )
+                
+                contexts[dev_name] = context
+                pages[dev_name] = page
 
             try:
                 while self.queue and len(self.visited) < self.max_pages:
 
                     url = self.queue.pop(0)
 
-                    # Queue entries are already normalized, but normalize again
-                    # so externally-seeded queues stay canonical.
                     url = self.normalize_url(url)
 
                     if url in self.visited:
                         continue
 
                     self.visited.add(url)
+                    
+                    if self.progress_cb:
+                        pct = int((len(self.visited) / self.max_pages) * 60)
+                        self.progress_cb(pct, f"Crawling page {len(self.visited)} of {self.max_pages}")
 
                     print()
                     print("=" * 70)
@@ -223,107 +242,89 @@ class WebsiteCrawler:
                     )
                     print(url)
                     print("=" * 70)
-
-                    try:
-
-                        response = await page.goto(
-                            url,
-                            wait_until="domcontentloaded",
-                            timeout=30000
-                        )
-
-                        await page.wait_for_timeout(1500)
-
-                        status = response.status if response else None
-                        title = await page.title()
-
-                        links = await page.locator("a").all()
-
-                        internal_links = []
-
-                        for link in links:
-
-                            href = await link.get_attribute("href")
-
-                            if not href:
-                                continue
-
-                            absolute_url = urljoin(
+                    
+                    # Navigate Desktop first to extract internal links
+                    for dev_name, page in pages.items():
+                        try:
+                            # Use f"{url} [{dev_name}]" as the canonical page ID for this device
+                            page_id = f"{url} [{dev_name}]"
+                            print(f"[{dev_name}] Navigating...")
+                            response = await page.goto(
                                 url,
-                                href
+                                wait_until="domcontentloaded",
+                                timeout=30000
                             )
 
-                            # Normalize the discovered URL
-                            absolute_url = self.normalize_url(absolute_url)
+                            await page.wait_for_timeout(1500)
 
-                            if self.is_internal_url(
-                                absolute_url
-                            ):
-                                internal_links.append(
-                                    absolute_url
-                                )
+                            status = response.status if response else None
+                            title = await page.title()
+                            
+                            internal_links = []
+                            
+                            # Only extract links on Desktop Chrome to avoid duplication
+                            if dev_name == "Desktop Chrome":
+                                links = await page.locator("a").all()
+                                for link in links:
+                                    href = await link.get_attribute("href")
+                                    if not href:
+                                        continue
 
-                                if (
-                                    absolute_url not in self.visited
-                                    and absolute_url not in self.queue
-                                ):
-                                    self.queue.append(
-                                        absolute_url
-                                    )
+                                    absolute_url = urljoin(url, href)
+                                    absolute_url = self.normalize_url(absolute_url)
 
-                        screenshot_path = os.path.join(
-                            self.screenshot_dir,
-                            f"{len(self.visited):03d}_page.png"
-                        )
+                                    if self.is_internal_url(absolute_url):
+                                        internal_links.append(absolute_url)
+                                        if (
+                                            absolute_url not in self.visited
+                                            and absolute_url not in self.queue
+                                        ):
+                                            self.queue.append(absolute_url)
 
-                        await page.screenshot(
-                            path=screenshot_path,
-                            full_page=True
-                        )
+                            safe_dev_name = dev_name.replace(" ", "_")
+                            screenshot_path = os.path.join(
+                                self.screenshot_dir,
+                                f"{len(self.visited):03d}_{safe_dev_name}_page.png"
+                            )
 
-                        # Relative to the output base, not the CWD. Reports and
-                        # screenshots share that base, so this keeps the paths
-                        # valid regardless of where the pipeline was launched.
-                        rel_screenshot = os.path.relpath(
-                            screenshot_path, self.base_dir
-                        )
+                            await page.screenshot(
+                                path=screenshot_path,
+                                full_page=True
+                            )
 
-                        page_data = {
-                            "url": url,
-                            "title": title,
-                            "status": status,
-                            "links": len(internal_links),
-                            "screenshot": rel_screenshot,
-                            "timestamp": datetime.now().isoformat(),
-                        }
+                            rel_screenshot = os.path.relpath(
+                                screenshot_path, self.base_dir
+                            )
 
-                        self.pages.append(page_data)
+                            page_data = {
+                                "url": page_id,
+                                "actual_url": url,
+                                "device": dev_name,
+                                "title": title,
+                                "status": status,
+                                "links": len(internal_links),
+                                "screenshot": rel_screenshot,
+                                "timestamp": datetime.now().isoformat(),
+                            }
 
-                        print(f"Title: {title}")
-                        print(f"HTTP status: {status}")
-                        print(
-                            f"Internal links: "
-                            f"{len(internal_links)}"
-                        )
-                        print(
-                            f"Screenshot: "
-                            f"{rel_screenshot}"
-                        )
+                            self.pages.append(page_data)
 
-                    except Exception as error:
-
-                        print(f"ERROR: {error}")
-
-                        self.pages.append({
-                            "url": url,
-                            "title": None,
-                            "status": None,
-                            "links": 0,
-                            "screenshot": None,
-                            "error": str(error),
-                            "timestamp": datetime.now().isoformat(),
-                        })
+                        except Exception as error:
+                            print(f"ERROR on {dev_name}: {error}")
+                            self.pages.append({
+                                "url": f"{url} [{dev_name}]",
+                                "actual_url": url,
+                                "device": dev_name,
+                                "title": None,
+                                "status": None,
+                                "links": 0,
+                                "screenshot": None,
+                                "error": str(error),
+                                "timestamp": datetime.now().isoformat(),
+                            })
             finally:
+                for context in contexts.values():
+                    await context.close()
                 await browser.close()
 
         successful_pages = [p for p in self.pages if not p.get("error")]

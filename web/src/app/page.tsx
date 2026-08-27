@@ -93,6 +93,7 @@ export default function Home() {
   const [status, setStatus] = useState<ScanStatus>('');
   const [scanError, setScanError] = useState('');
   const [results, setResults] = useState<QAReport | null>(null);
+  const [progress, setProgress] = useState<{percent: number, message: string} | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -156,6 +157,7 @@ export default function Home() {
     setScanId(null);
     setStatus('');
     setResults(null);
+    setProgress(null);
     setScanError('');
     setLoading(false);
   };
@@ -166,6 +168,7 @@ export default function Home() {
 
     setLoading(true);
     setResults(null);
+    setProgress({percent: 0, message: "Initializing..."});
     setScanError('');
     try {
       const parsedMaxPages = parseInt(maxPages, 10);
@@ -245,10 +248,13 @@ export default function Home() {
 
         if (data.status === 'completed' || data.status === 'failed') {
           setLoading(false);
+          setProgress(null);
           setResults(data.results ?? null);
           if (data.status === 'failed') {
             setScanError('The scan pipeline failed. Check the API logs for details.');
           }
+        } else if (data.progress) {
+          setProgress(data.progress);
         }
       } catch (err) {
         console.error('Polling error:', err);
@@ -470,16 +476,32 @@ export default function Home() {
             </form>
           ) : (
             <div className={styles.statusPanel}>
-              <Loader2 className="pulse" size={48} color="var(--primary)" />
+              {!progress && <Loader2 className="pulse" size={48} color="var(--primary)" />}
               <h2>Scan in Progress</h2>
               <p>
                 Status:{' '}
                 <span style={{ textTransform: 'uppercase', color: 'var(--accent)' }}>{status}</span>
               </p>
-              <p className={styles.subtext}>
-                The agent is currently crawling and analyzing your website. This may take a few
-                minutes...
-              </p>
+              
+              {progress ? (
+                <div className={styles.progressWrapper}>
+                  <div className={styles.progressText}>
+                    <span>{progress.message}</span>
+                    <span>{progress.percent}%</span>
+                  </div>
+                  <div className={styles.progressBarContainer}>
+                    <div 
+                      className={styles.progressBarFill} 
+                      style={{ width: `${progress.percent}%` }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <p className={styles.subtext}>
+                  The agent is currently crawling and analyzing your website. This may take a few
+                  minutes...
+                </p>
+              )}
             </div>
           )}
         </motion.div>
