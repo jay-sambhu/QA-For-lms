@@ -3,13 +3,17 @@ import logging
 import os
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
-from uuid import uuid4
+from uuid import uuid4, UUID
 
+# pyrefly: ignore [missing-import]
 from fastapi import Depends, FastAPI, BackgroundTasks, HTTPException, Header
+# pyrefly: ignore [missing-import]
 from pydantic import BaseModel, field_validator
+# pyrefly: ignore [missing-import]
 from dotenv import load_dotenv
+# pyrefly: ignore [missing-import]
 from supabase import create_client, Client
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -112,7 +116,7 @@ def update_scan(
 ):
     data = {"status": status}
     if status == "completed":
-        data["completed_at"] = datetime.now().isoformat()
+        data["completed_at"] = datetime.now(timezone.utc).isoformat()
         data["report_path"] = report_path
         data["json_path"] = json_path
 
@@ -140,10 +144,10 @@ def _resolve_report_path(stored_path: str) -> Optional[str]:
     if not stored_path:
         return None
 
-    candidate = os.path.abspath(os.path.join(ROOT_DIR, stored_path))
-    root_with_sep = os.path.join(ROOT_DIR, "")
+    candidate = os.path.realpath(os.path.join(ROOT_DIR, stored_path))
+    real_root = os.path.realpath(ROOT_DIR)
 
-    if candidate != ROOT_DIR and not candidate.startswith(root_with_sep):
+    if os.path.commonpath([candidate, real_root]) != real_root:
         return None
 
     return candidate
@@ -153,7 +157,11 @@ def run_qa_pipeline(
     scan_id: str, url: str, max_pages: int, auth_token: Optional[str]
 ):
     """Run the QA pipeline as a background subprocess."""
-    update_scan(scan_id, "running")
+    try:
+        update_scan(scan_id, "running")
+    except Exception as error:
+        logger.exception("Failed to update scan %s to running: %s", scan_id, error)
+        return
 
     # --run-id namespaces this scan's output files, so concurrent scans cannot
     # pick up each other's results.
@@ -232,7 +240,7 @@ async def create_scan(
         "user_id": user.id,
         "url": request.url,
         "status": "pending",
-        "created_at": datetime.now().isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat()
     }).execute()
 
     background_tasks.add_task(
@@ -257,8 +265,8 @@ async def list_scans(user=Depends(require_user)):
 
 
 @app.get("/api/scans/{scan_id}")
-async def get_scan_status(scan_id: str, user=Depends(require_user)):
-    scan = get_scan(scan_id)
+async def get_scan_status(scan_id: UUID, user=Depends(require_user)):
+    scan = get_scan(str(scan_id))
 
     # Require ownership. This endpoint previously had no authentication at all,
     # so anyone who knew (or guessed) a scan id could read another user's
