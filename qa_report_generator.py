@@ -13,41 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-class SecretRedactor:
-    """Deterministic secret-redaction layer."""
-    
-    # Common patterns for secrets
-    PATTERNS = [
-        # Bearer/Authorization tokens
-        (re.compile(r"(?i)(authorization\s*:\s*bearer\s+)[^\s,;\"]+"), r"\1[REDACTED]"),
-        (re.compile(r"(?i)(bearer\s+)[^\s,;\"]+"), r"\1[REDACTED]"),
-        # JWT-like tokens (header.payload.signature)
-        (re.compile(r"eyJ[a-zA-Z0-9_-]{5,}\.eyJ[a-zA-Z0-9_-]{5,}\.[a-zA-Z0-9_-]{10,}"), "[REDACTED_JWT]"),
-        # API keys, tokens, passwords, secrets in JSON or URLs or Headers.
-        # The lookbehind stops short names from matching the tail of an ordinary
-        # word: without it `?monkey=1` and `?sortkey=name` were rewritten to
-        # `?mon[REDACTED]`, corrupting URLs the reader needs to reproduce the
-        # bug. Letters and digits are rejected before the name; `_`, `-` and
-        # punctuation are allowed, so `user_session_id=` and `X-API-Key:` still
-        # redact. The `["']?` before the separator matches a JSON key's closing
-        # quote -- without it `{"token": "secret"}` was never redacted at all.
-        (re.compile(r"(?i)(?<![A-Za-z0-9])((?:api[_ -]?key|token|password|passwd|secret|cookie|private[_ -]?key)[\"']?\s*[:=]\s*[\"']?)[^\s,;\"'&]+"), r"\1[REDACTED]"),
-    ]
-
-    @classmethod
-    def redact(cls, data):
-        """Recursively redact secrets from a data structure."""
-        if isinstance(data, dict):
-            return {k: cls.redact(v) for k, v in data.items()}
-        elif isinstance(data, list):
-            return [cls.redact(item) for item in data]
-        elif isinstance(data, str):
-            redacted_str = data
-            for pattern, replacement in cls.PATTERNS:
-                redacted_str = pattern.sub(replacement, redacted_str)
-            return redacted_str
-        else:
-            return data
+from security.redactor import SecretRedactor  # noqa: F401 — re-exported for backward compat
 
 
 class QAReportGenerator:
