@@ -415,8 +415,8 @@ class TestQAFindingClassifier(unittest.TestCase):
         self.assertIn('https://dplms.com/product', candidate['affected_pages'])
         self.assertIn('https://dplms.com/about', candidate['affected_pages'])
 
-    def test_different_endpoints_separate_candidates(self):
-        """Test that different endpoints create separate root-cause candidates."""
+    def test_different_endpoints_401_grouped(self):
+        """Test that different endpoints with 401 are grouped into a single candidate."""
         crawl_result = self.base_crawl_result.copy()
         crawl_result['pages'] = [
             {'url': 'https://dplms.com/', 'title': 'Home', 'status': 200, 'links': 10, 'screenshot': 'screenshots/001_page.png', 'timestamp': '2026-08-25T10:00:00'},
@@ -434,6 +434,43 @@ class TestQAFindingClassifier(unittest.TestCase):
                 'page': 'https://dplms.com/product',
                 'url': 'https://api.dplms.com/api/auth/me?tenant=default',
                 'status': 401,
+                'method': 'GET',
+                'resource_type': 'xhr',
+            }
+        ]
+        
+        classifier = QAFindingClassifier(self.target_domain, crawl_result)
+        findings = classifier.classify()
+        
+        # Should create 2 page-level findings
+        self.assertEqual(len(findings), 2)
+        
+        # Should create 1 separate root-cause candidate because 401s on same host are grouped
+        self.assertEqual(len(classifier.root_cause_candidates), 1)
+        
+        # The URL in the candidate should be one of the original URLs
+        candidate_url = classifier.root_cause_candidates[0].get('url', '')
+        self.assertTrue(candidate_url.startswith('https://api.dplms.com'))
+
+    def test_different_endpoints_non_auth_separate_candidates(self):
+        """Test that different endpoints with non-auth errors create separate root-cause candidates."""
+        crawl_result = self.base_crawl_result.copy()
+        crawl_result['pages'] = [
+            {'url': 'https://dplms.com/', 'title': 'Home', 'status': 200, 'links': 10, 'screenshot': 'screenshots/001_page.png', 'timestamp': '2026-08-25T10:00:00'},
+            {'url': 'https://dplms.com/product', 'title': 'Product', 'status': 200, 'links': 10, 'screenshot': 'screenshots/002_page.png', 'timestamp': '2026-08-25T10:00:00'},
+        ]
+        crawl_result['http_errors'] = [
+            {
+                'page': 'https://dplms.com/',
+                'url': 'https://api.dplms.com/api/cart?tenant=default',
+                'status': 500,
+                'method': 'GET',
+                'resource_type': 'xhr',
+            },
+            {
+                'page': 'https://dplms.com/product',
+                'url': 'https://api.dplms.com/api/auth/me?tenant=default',
+                'status': 500,
                 'method': 'GET',
                 'resource_type': 'xhr',
             }
@@ -500,14 +537,14 @@ class TestQAFindingClassifier(unittest.TestCase):
             {
                 'page': 'https://dplms.com/',
                 'url': 'https://api.dplms.com/api/cart',
-                'status': 401,
+                'status': 500,
                 'method': 'GET',
                 'resource_type': 'xhr',
             },
             {
                 'page': 'https://dplms.com/product',
                 'url': 'https://api.dplms.com/api/cart',
-                'status': 401,
+                'status': 500,
                 'method': 'POST',
                 'resource_type': 'xhr',
             }
@@ -538,11 +575,20 @@ class TestQAFindingClassifier(unittest.TestCase):
         )
         self.assertEqual(key1, key2)
         
-        # Different inputs should produce different keys
+        # Different inputs should produce different keys for non-auth
         key3 = classifier.generate_root_cause_key(
-            'https://api.dplms.com/api/auth/me?tenant=default', 401, 'GET'
+            'https://api.dplms.com/api/auth/me?tenant=default', 500, 'GET'
         )
         self.assertNotEqual(key1, key3)
+        
+        # For auth errors, different paths on the same host should produce the same key
+        key4 = classifier.generate_root_cause_key(
+            'https://api.dplms.com/api/cart?tenant=default', 401, 'GET'
+        )
+        key5 = classifier.generate_root_cause_key(
+            'https://api.dplms.com/api/auth/me?tenant=default', 401, 'GET'
+        )
+        self.assertEqual(key4, key5)
 
 
 def run_tests():

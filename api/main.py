@@ -1,14 +1,18 @@
 import json
+import ipaddress
 import logging
 import os
 import subprocess
 import sys
 from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import urlparse
 from uuid import uuid4, UUID
 
 # pyrefly: ignore [missing-import]
+# pyrefly: ignore [missing-import]
 from fastapi import Depends, FastAPI, BackgroundTasks, HTTPException, Header
+from fastapi.responses import FileResponse
 # pyrefly: ignore [missing-import]
 from pydantic import BaseModel, field_validator
 # pyrefly: ignore [missing-import]
@@ -57,6 +61,38 @@ class ScanRequest(BaseModel):
         value = (value or "").strip()
         if not value.lower().startswith(("http://", "https://")):
             raise ValueError("url must be an absolute http(s) URL")
+
+        # SSRF protection: block private/loopback/link-local/cloud-metadata hosts.
+        # A scan URL is navigated by a real browser with the server's network
+        # identity, so internal endpoints are reachable and their contents end
+        # up in the report returned to the user.
+        parsed = urlparse(value)
+        host = (parsed.hostname or "").lower().strip(".").rstrip(".")
+        if not host:
+            raise ValueError("url must include a valid hostname")
+
+        # Block cloud metadata endpoints by hostname.
+        BLOCKED_HOSTS = {
+            "169.254.169.254",  # AWS / Azure / GCP IMDS
+            "metadata.google.internal",
+            "metadata.google",
+        }
+        if host in BLOCKED_HOSTS:
+            raise ValueError("url targets a reserved address")
+
+        # Block loopback, private, and link-local IPs.
+        try:
+            addr = ipaddress.ip_address(host)
+            if addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved:
+                raise ValueError("url targets a private or reserved address")
+        except ValueError as ip_err:
+            if "targets a" in str(ip_err):
+                raise
+            # host is a hostname, not an IP — additional hostname checks.
+            BLOCKED_PREFIXES = ("localhost", "local", "internal", "intranet")
+            if any(host == p or host.endswith("." + p) for p in BLOCKED_PREFIXES):
+                raise ValueError("url targets a reserved hostname")
+
         return value
 
     @field_validator("max_pages")
@@ -154,7 +190,7 @@ def _resolve_report_path(stored_path: str) -> Optional[str]:
 
 
 def run_qa_pipeline(
-    scan_id: str, url: str, max_pages: int, auth_token: Optional[str]
+    scan_id: str, user_id: str, url: str, max_pages: int, auth_token: Optional[str]
 ):
     """Run the QA pipeline as a background subprocess."""
     try:
@@ -174,8 +210,17 @@ def run_qa_pipeline(
         "--run-id",
         scan_id,
     ]
+    
+    # Store artifacts in isolated user directory
+    user_dir = os.path.join(ROOT_DIR, "user_data", str(user_id))
+    os.makedirs(user_dir, exist_ok=True)
+    cmd.extend(["--output-dir", user_dir])
+
     if auth_token:
-        cmd.extend(["--auth-token", auth_token])
+        # Sanitize auth_token: strip newlines to prevent argument injection
+        safe_token = (auth_token or "").replace("\n", "").replace("\r", "")
+        if safe_token:
+            cmd.extend(["--auth-token", safe_token])
 
     try:
         result = subprocess.run(
@@ -234,6 +279,7 @@ async def create_scan(
     user=Depends(require_user),
 ):
     scan_id = str(uuid4())
+    user_id_str = str(user.id)
 
     supabase.table("scans").insert({
         "id": scan_id,
@@ -244,7 +290,7 @@ async def create_scan(
     }).execute()
 
     background_tasks.add_task(
-        run_qa_pipeline, scan_id, request.url, request.max_pages, request.auth_token
+        run_qa_pipeline, scan_id, user_id_str, request.url, request.max_pages, request.auth_token
     )
 
     return {"scan_id": scan_id, "status": "pending", "message": "Scan queued successfully."}
@@ -279,13 +325,22 @@ async def get_scan_status(scan_id: UUID, user=Depends(require_user)):
     response = dict(scan)
     
     if scan.get("status") in ("running", "pending"):
-        progress_path = os.path.join(ROOT_DIR, "results", f"progress_{scan_id}.json")
-        if os.path.exists(progress_path):
-            try:
-                with open(progress_path, "r", encoding="utf-8") as f:
-                    response["progress"] = json.load(f)
-            except Exception:
-                pass
+        # Progress file is written inside the user's isolated output dir.
+        # Check user_data path first, then fall back to legacy results/ for
+        # scans started before the user_data migration.
+        user_dir = os.path.join(ROOT_DIR, "user_data", str(scan.get("user_id", "")))
+        progress_candidates = [
+            os.path.join(user_dir, "results", f"progress_{scan_id}.json"),
+            os.path.join(ROOT_DIR, "results", f"progress_{scan_id}.json"),
+        ]
+        for progress_path in progress_candidates:
+            if os.path.exists(progress_path):
+                try:
+                    with open(progress_path, "r", encoding="utf-8") as f:
+                        response["progress"] = json.load(f)
+                except Exception:
+                    pass
+                break
 
     if scan.get("status") == "completed" and scan.get("json_path"):
         response["results"] = None
@@ -298,6 +353,35 @@ async def get_scan_status(scan_id: UUID, user=Depends(require_user)):
                 logger.error("Could not read report for scan %s: %s", scan_id, error)
 
     return response
+
+@app.get("/api/scans/{scan_id}/download/{file_type}")
+async def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require_user)):
+    if file_type not in ("json", "md"):
+        raise HTTPException(status_code=400, detail="Invalid file type. Must be 'json' or 'md'")
+
+    scan = get_scan(str(scan_id))
+    if not scan or scan.get("user_id") != user.id:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    if scan.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="Scan is not completed")
+
+    path_key = f"{file_type}_path"
+    stored_path = scan.get(path_key)
+    
+    if not stored_path:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    resolved = _resolve_report_path(stored_path)
+    if not resolved or not os.path.isfile(resolved):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    filename = os.path.basename(resolved)
+    return FileResponse(
+        path=resolved,
+        filename=filename,
+        media_type="application/json" if file_type == "json" else "text/markdown"
+    )
 
 
 @app.get("/")

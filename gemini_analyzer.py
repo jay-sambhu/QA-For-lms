@@ -36,6 +36,8 @@ REQUIRED_FIELD_ORDER = (
     "summary",
     "reasoning",
     "user_impact",
+    "expected_result",
+    "actual_result",
     "recommended_action",
     "evidence_used",
 )
@@ -194,8 +196,10 @@ class GeminiQAAnalyzer:
     @classmethod
     def build_prompt(cls, candidate, target=""):
         evidence = cls.compact_evidence(candidate, target)
+        triage = candidate.get('triage', {})
         return (
             "Act as a conservative senior QA engineer. Analyze only the supplied evidence. "
+            f"The finding was deterministically triaged as {triage.get('classification')} with Priority {triage.get('priority')}. "
             "Return one JSON object and no prose. Classification must be exactly one of: "
             + ", ".join(CLASSIFICATION_ORDER)
             + ". Severity must be one of: "
@@ -203,14 +207,14 @@ class GeminiQAAnalyzer:
             + "; confidence must be one of: "
             + ", ".join(CONFIDENCE_ORDER)
             + ". Do not invent backend behavior, credentials, responses, screenshots, or user impact. "
-            "A 401/403 is not automatically a bug and usually needs manual review unless broken behavior "
-            "is evidenced. A first-party 5xx is usually a high-confidence candidate. ERR_ABORTED and "
-            "third-party analytics are normally informational. Use screenshots only when available and "
-            "never claim visual observations when screenshot analysis is unavailable. Required fields: "
+            "Use the provided deterministic triage data as a strong baseline, but refine the root cause summary and recommendation. "
+            "Required fields: "
             + json.dumps(list(REQUIRED_FIELD_ORDER))
             + ". Make sure 'evidence_used' is a JSON array of strings."
             + "\nEvidence:\n"
             + json.dumps(evidence, indent=2, ensure_ascii=False)
+            + "\nDeterministic Triage:\n"
+            + json.dumps(triage, indent=2, ensure_ascii=False)
         )
 
     async def _call_model(self, prompt):
@@ -326,20 +330,23 @@ class GeminiQAAnalyzer:
         return {field: cls._redact(parsed[field]) for field in REQUIRED_FIELD_ORDER}
 
     @classmethod
-    def fallback(cls, reason, raw_response=None):
+    def fallback(cls, reason, raw_response=None, candidate=None):
+        triage = candidate.get('triage', {}) if candidate else {}
+        root_cause = triage.get('root_cause', {})
+        rec = triage.get('recommendation', {})
+        
         result = {
-            "classification": "needs_manual_review",
-            "severity": "medium",
-            "confidence": "low",
-            "title": "Gemini analysis unavailable",
-            "summary": "Manual review is required because Gemini did not provide a valid analysis.",
+            "classification": triage.get("classification", "needs_manual_review"),
+            "severity": candidate.get("severity", "medium"),
+            "confidence": triage.get("confidence", "low"),
+            "title": candidate.get("title", "Gemini analysis unavailable"),
+            "summary": root_cause.get("summary", "Manual review is required because Gemini did not provide a valid analysis."),
             "reasoning": reason,
-            "user_impact": "User impact cannot be determined from the available crawl evidence.",
-            "recommended_action": "Review the deterministic candidate manually.",
+            "user_impact": triage.get("user_impact", "User impact cannot be determined from the available crawl evidence."),
+            "expected_result": candidate.get("expected_result", "Gemini analysis unavailable; expected result cannot be determined."),
+            "actual_result": candidate.get("actual_result", "Gemini analysis unavailable; actual result cannot be determined."),
+            "recommended_action": rec.get("action", "Review the deterministic candidate manually."),
             "evidence_used": [],
-            # Distinguishes "the model deliberately asked for manual review"
-            # from "the model call failed", which the summary previously
-            # conflated into a single error list.
             "analysis_failed": True,
         }
         if raw_response:
@@ -349,7 +356,7 @@ class GeminiQAAnalyzer:
     async def analyze_candidate(self, candidate, target=""):
         prompt = self.build_prompt(candidate, target)
         if self.model_client is None and not self.api_key:
-            return self.fallback("Gemini API key unavailable; manual review required.")
+            return self.fallback("Gemini API key unavailable; manual review required.", candidate=candidate)
         try:
             raw = await self._call_model(prompt)
             return self.validate_response(raw)
@@ -357,7 +364,7 @@ class GeminiQAAnalyzer:
             message = str(error)
             # Quota errors will not succeed on an immediate retry.
             if "429" in message or "quota" in message.lower():
-                return self.fallback("Gemini quota limit reached; manual review required.")
+                return self.fallback("Gemini quota limit reached; manual review required.", candidate=candidate)
 
             # Back off briefly before the single retry so a transient rate
             # limit or network blip has time to clear.
@@ -367,7 +374,7 @@ class GeminiQAAnalyzer:
                 return self.validate_response(raw)
             except Exception as retry_error:
                 return self.fallback(
-                    "Gemini analysis failed; manual review required.", str(retry_error)
+                    "Gemini analysis failed; manual review required.", str(retry_error), candidate=candidate
                 )
 
     async def analyze(self, findings_data):
@@ -421,6 +428,7 @@ class GeminiQAAnalyzer:
                 "classification_counts": classification_counts,
                 "severity_counts": severity_counts,
                 "confidence_counts": confidence_counts,
+                "triage_metrics": findings_data.get("triage_metrics", {}),
             },
             "findings": findings,
             "errors": errors,
@@ -456,6 +464,8 @@ class GeminiQAAnalyzer:
                     f"**Title:** {finding.get('title', '')}", "",
                     f"**Summary:** {finding.get('summary', '')}", "",
                     f"**Reasoning:** {finding.get('reasoning', '')}", "",
+                    f"**Expected Result:** {finding.get('expected_result', '')}", "",
+                    f"**Actual Result:** {finding.get('actual_result', '')}", "",
                     f"**User impact:** {finding.get('user_impact', '')}", "",
                     f"**Recommended action:** {finding.get('recommended_action', '')}", "",
                 ])

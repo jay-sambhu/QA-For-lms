@@ -92,7 +92,7 @@ def test_visited_set_deduplication():
     crawler.visited.add(url2)
     crawler.visited.add(url3)
     
-    print(f"\nAdded 3 equivalent URLs to visited set:")
+    print("\nAdded 3 equivalent URLs to visited set:")
     print(f"  1. {url1}")
     print(f"  2. {url2}")
     print(f"  3. {url3}")
@@ -122,7 +122,7 @@ def test_queue_deduplication():
     url1 = crawler.normalize_url("https://dplms.com/page")
     url2 = crawler.normalize_url("https://dplms.com/page/")
     
-    print(f"\nTesting with equivalent URLs:")
+    print("\nTesting with equivalent URLs:")
     print(f"  URL 1: {url1}")
     print(f"  URL 2: {url2}")
     

@@ -73,7 +73,7 @@ class QAFindingClassifier:
         'net::ERR_BLOCKED_BY_RESPONSE',  # CORB (Cross-Origin Read Blocking)
     }
 
-    def __init__(self, target_domain, crawl_result):
+    def __init__(self, target_domain, crawl_result, interactive_result=None):
         """
         Initialize the classifier.
 
@@ -81,9 +81,11 @@ class QAFindingClassifier:
             target_domain: The main domain being tested (e.g. 'dplms.com').
                 A full URL is also accepted.
             crawl_result: The crawler result dictionary
+            interactive_result: Optional interactive tester result dictionary
         """
         self.target_domain = normalize_host(target_domain)
         self.crawl_result = crawl_result or {}
+        self.interactive_result = interactive_result or {}
         self.findings = []
         self.root_cause_candidates = []
         self.finding_id_counter = 0
@@ -246,15 +248,21 @@ class QAFindingClassifier:
         """
         Generate a deterministic root-cause grouping key.
 
-        The host is lowercased (hosts are case-insensitive) but the path and
-        query are left as-is, because those *are* case-sensitive and folding
-        them merges genuinely different endpoints such as /User and /user.
+        The host is lowercased (hosts are case-insensitive).
+        Query parameters are stripped to group identical endpoints that vary only
+        by query string (e.g. tracking tokens or tenant IDs). Trailing slashes are stripped.
         """
         parsed = urlparse(url or '')
         host = normalize_host(url)
         tail = parsed.path or ''
-        if parsed.query:
-            tail = f'{tail}?{parsed.query}'
+        
+        # Strip trailing slashes to unify /api/cart/ and /api/cart
+        tail = tail.rstrip('/')
+        
+        if status in (401, 403):
+            # Group all auth errors on a host together, ignoring the path
+            tail = ''
+            method = 'ALL'
 
         scheme = (parsed.scheme or '').lower()
         return f'{scheme}://{host}{tail}|{status}|{(method or "").upper()}'
@@ -579,6 +587,111 @@ class QAFindingClassifier:
 
             self.findings.append(finding)
 
+    def classify_interaction_errors(self):
+        """Classify interaction failures into findings."""
+        for interaction in self.interactive_result.get('interactions', []):
+            if interaction.get('result') != 'failed':
+                continue
+                
+            page = interaction.get('page', '')
+            action = interaction.get('action', '')
+            element_text = interaction.get('element_text', '')
+            
+            evidence = interaction.get('evidence', {})
+            
+            finding = {
+                'id': self.generate_finding_id(),
+                'type': 'interaction_error',
+                'severity': interaction.get('severity', 'high'),
+                'confidence': interaction.get('confidence', 'high'),
+                'page': page,
+                'url': interaction.get('after_url', page),
+                'method': 'INTERACT',
+                'error_text': f"Interaction '{action}' on '{element_text}' failed.",
+                'error_category': 'interaction_failure',
+                'title': self.get_page_title(page),
+                'description': interaction.get('description', 'Interaction failed.'),
+                'root_cause_key': f"interaction_error|{page}|{action}|{element_text}",
+                'evidence': {
+                    'http_errors': evidence.get('http_errors', []),
+                    'console_errors': evidence.get('console_errors', []),
+                    'network_failures': evidence.get('network_failures', []),
+                },
+                'screenshot': evidence.get('screenshot') or self.get_page_screenshot(page),
+                'first_party': True,
+                'deduplicated_count': 1,
+                'interactive_metadata': {
+                    'element_type': interaction.get('element_type'),
+                    'action': action,
+                    'element_text': element_text,
+                    'before_url': interaction.get('before_url'),
+                }
+            }
+            
+            self.findings.append(finding)
+
+    def classify_responsive_issues(self):
+        """Classify responsive and layout issues across devices."""
+        for page_data in self.crawl_result.get('pages', []):
+            if page_data.get('error'):
+                continue
+                
+            responsive = page_data.get('responsive_checks') or {}
+            if not responsive:
+                continue
+
+            has_overflow = responsive.get('horizontal_overflow', False)
+            elements_outside = responsive.get('elements_outside_viewport', 0)
+            forms_outside = responsive.get('forms_outside_viewport', 0)
+            clipped_buttons = responsive.get('clipped_buttons', 0)
+            overflow_pixels = responsive.get('overflow_pixels', 0)
+
+            if not has_overflow and elements_outside == 0 and forms_outside == 0 and clipped_buttons == 0:
+                continue
+
+            # Determine severity
+            if forms_outside > 0 or clipped_buttons > 0:
+                severity = 'high'
+                desc = f"Critical layout issue on {page_data.get('device')}: {forms_outside} form(s) or {clipped_buttons} button(s) clipped outside viewport."
+            elif has_overflow:
+                severity = 'medium'
+                desc = f"Horizontal page overflow on {page_data.get('device')}: scrollWidth exceeds viewport by {overflow_pixels}px ({elements_outside} elements outside bounds)."
+            else:
+                severity = 'low'
+                desc = f"Minor layout boundary issue on {page_data.get('device')}: {elements_outside} element(s) extend past viewport."
+
+            actual_url = page_data.get('actual_url') or page_data.get('url', '').split(' ')[0]
+            dev_name = page_data.get('device', 'Unknown Device')
+            page_id = page_data.get('url', actual_url)
+
+            issue_type = 'overflow' if has_overflow else 'clipped_element'
+
+            finding = {
+                'id': self.generate_finding_id(),
+                'type': 'responsive_issue',
+                'severity': severity,
+                'confidence': 'high',
+                'page': page_id,
+                'actual_url': actual_url,
+                'device': dev_name,
+                'url': actual_url,
+                'title': f"Responsive layout issue on {dev_name}",
+                'description': desc,
+                'root_cause_key': f"responsive_issue|{actual_url}|{issue_type}",
+                'evidence': {
+                    'http_errors': [],
+                    'console_errors': [],
+                    'network_failures': [],
+                    'responsive_checks': responsive,
+                },
+                'screenshot': page_data.get('screenshot') or self.get_page_screenshot(page_id),
+                'first_party': True,
+                'deduplicated_count': 1,
+                'affected_devices': [dev_name]
+            }
+
+            self.findings.append(finding)
+
     def group_findings_by_root_cause(self):
         """
         Group findings by root-cause key to identify repeated issues.
@@ -627,10 +740,17 @@ class QAFindingClassifier:
         all_network_failures = []
         occurrences = 0
 
+        affected_devices = set()
         for finding in findings_in_group:
             page = finding.get('page') or ''
             if page and page not in page_screenshots:
                 page_screenshots[page] = finding.get('screenshot') or ''
+
+            dev = finding.get('device')
+            if dev:
+                affected_devices.add(dev)
+            for d in finding.get('affected_devices', []):
+                affected_devices.add(d)
 
             evidence = finding.get('evidence', {})
             all_http_errors.extend(evidence.get('http_errors', []))
@@ -665,6 +785,7 @@ class QAFindingClassifier:
             'occurrences': occurrences,
             'affected_pages': affected_pages,
             'affected_page_count': page_count,
+            'affected_devices': sorted(list(affected_devices)),
             # Paths only, for consumers that just want to attach images.
             'screenshots': [path for path in page_screenshots.values() if path],
             # Explicit page->screenshot pairing for consumers that need both.
@@ -732,6 +853,22 @@ class QAFindingClassifier:
                     f'Observed on {page_count} crawled pages ({occurrences} occurrences).'
                 )
 
+        elif finding_type == 'interaction_error':
+            action = template.get('interactive_metadata', {}).get('action', 'interaction')
+            element_text = template.get('interactive_metadata', {}).get('element_text', 'element')
+            title = f"Failed {action} on '{element_text}'"
+            parts.append(template.get('description') or 'Interaction failed.')
+            
+            if page_count > 1:
+                parts.append(f'Observed on {page_count} pages ({occurrences} occurrences).')
+
+        elif finding_type == 'responsive_issue':
+            actual_url = template.get('actual_url') or (template.get('url') or '').split(' ')[0]
+            title = f"Responsive layout overflow on {actual_url}"
+            parts.append(template.get('description') or 'Responsive layout issue detected.')
+            if page_count > 1:
+                parts.append(f'Observed across {page_count} device/page instances.')
+
         else:
             title = template.get('description') or 'Finding'
             parts.append(template.get('description') or '')
@@ -744,6 +881,8 @@ class QAFindingClassifier:
         self.classify_http_errors()
         self.classify_console_errors()
         self.classify_network_failures()
+        self.classify_interaction_errors()
+        self.classify_responsive_issues()
         self.group_findings_by_root_cause()
         return self.findings
 
@@ -815,7 +954,7 @@ def find_latest_crawl_result(results_dir='results'):
     return str(crawl_files[0])
 
 
-def generate_qa_findings(crawl_file=None, results_dir='results', run_id=None):
+def generate_qa_findings(crawl_file=None, results_dir='results', run_id=None, interactive_file=None):
     """
     Generate QA findings from a crawler result.
 
@@ -825,6 +964,7 @@ def generate_qa_findings(crawl_file=None, results_dir='results', run_id=None):
             single-run/CLI usage — concurrent runs must pass this explicitly.
         results_dir: Directory to read from and write to.
         run_id: Suffix for the output filename. Defaults to a timestamp.
+        interactive_file: Optional path to an interactive_qa_*.json file.
     """
     if crawl_file is None:
         crawl_file = find_latest_crawl_result(results_dir)
@@ -837,12 +977,17 @@ def generate_qa_findings(crawl_file=None, results_dir='results', run_id=None):
     with open(crawl_file, encoding='utf-8') as f:
         crawl_result = json.load(f)
 
+    interactive_result = None
+    if interactive_file and Path(interactive_file).exists():
+        with open(interactive_file, 'r', encoding='utf-8') as f:
+            interactive_result = json.load(f)
+
     # Extract target domain
     target_url = crawl_result.get('target', '')
     target_domain = normalize_host(target_url)
 
     # Classify findings
-    classifier = QAFindingClassifier(target_domain, crawl_result)
+    classifier = QAFindingClassifier(target_domain, crawl_result, interactive_result=interactive_result)
     findings = classifier.classify()
 
     # Generate output file

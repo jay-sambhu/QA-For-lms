@@ -12,7 +12,7 @@ the QA reader needs in order to reproduce the bug, and is just as damaging
 because it silently rewrites evidence.
 """
 
-import sys
+import unittest
 
 from gemini_analyzer import GeminiQAAnalyzer
 from qa_report_generator import SecretRedactor
@@ -66,125 +66,76 @@ MUST_NOT_CHANGE = [
 ]
 
 
-def _is_redacted(original, redacted, secret):
-    """A secret counts as handled only if it is gone and a marker replaced it."""
-    return secret not in redacted and any(m in redacted for m in REDACTED_MARKERS)
+class TestRedaction(unittest.TestCase):
+    def _is_redacted(self, original, redacted, secret):
+        """A secret counts as handled only if it is gone and a marker replaced it."""
+        return secret not in redacted and any(m in redacted for m in REDACTED_MARKERS)
 
+    def _run_secret_cases(self, redact, cases):
+        for description, payload, secret in cases:
+            with self.subTest(msg=description):
+                result = redact(payload)
+                self.assertTrue(
+                    self._is_redacted(payload, result, secret),
+                    f"Failed to redact secret in {description}.\nIn: {payload}\nOut: {result}"
+                )
 
-def _run_secret_cases(label, redact, cases):
-    print(f"\n{label}: secrets that must be hidden")
-    print("-" * 80)
+    def _run_passthrough_cases(self, redact):
+        for payload in MUST_NOT_CHANGE:
+            with self.subTest(msg=payload):
+                result = redact(payload)
+                self.assertEqual(
+                    payload, result,
+                    f"Benign string was unexpectedly modified.\nIn: {payload}\nOut: {result}"
+                )
 
-    failures = 0
-    for description, payload, secret in cases:
-        result = redact(payload)
-        if _is_redacted(payload, result, secret):
-            print(f"  [PASS] {description}")
-        else:
-            failures += 1
-            print(f"  [FAIL] {description}")
-            print(f"         in:  {payload}")
-            print(f"         out: {result}")
-    return failures
+    def test_gemini_redact_secrets(self):
+        """Test GeminiQAAnalyzer._redact with secrets."""
+        self._run_secret_cases(GeminiQAAnalyzer._redact, COMMON_SECRETS + GEMINI_ONLY_SECRETS)
 
+    def test_gemini_redact_passthrough(self):
+        """Test GeminiQAAnalyzer._redact with benign strings."""
+        self._run_passthrough_cases(GeminiQAAnalyzer._redact)
 
-def _run_passthrough_cases(label, redact):
-    print(f"\n{label}: benign strings that must not be rewritten")
-    print("-" * 80)
+    def test_secret_redactor_secrets(self):
+        """Test SecretRedactor.redact with secrets."""
+        self._run_secret_cases(SecretRedactor.redact, COMMON_SECRETS)
 
-    failures = 0
-    for payload in MUST_NOT_CHANGE:
-        result = redact(payload)
-        if result == payload:
-            print(f"  [PASS] {payload}")
-        else:
-            failures += 1
-            print(f"  [FAIL] {payload}")
-            print(f"         became: {result}")
-    return failures
+    def test_secret_redactor_passthrough(self):
+        """Test SecretRedactor.redact with benign strings."""
+        self._run_passthrough_cases(SecretRedactor.redact)
 
-
-def test_nested_structures():
-    """Redaction must reach into nested dicts and lists, not just top-level."""
-    print("\nNested structure traversal")
-    print("-" * 80)
-
-    payload = {
-        "candidate": {
-            "evidence": {
-                "network_failures": [
-                    {"url": "https://a.com/x?api_key=abc123def456", "failure": "net::ERR"},
-                ],
-                "console_errors": [
-                    {"text": 'auth failed for {"token": "abc123def456"}'},
-                ],
-            },
-            "affected_pages": ["https://a.com/list?monkey=1"],
-            "occurrences": 3,
-            "status": None,
+    def test_nested_structures(self):
+        """Redaction must reach into nested dicts and lists, not just top-level."""
+        payload = {
+            "candidate": {
+                "evidence": {
+                    "network_failures": [
+                        {"url": "https://a.com/x?api_key=abc123def456", "failure": "net::ERR"},
+                    ],
+                    "console_errors": [
+                        {"text": 'auth failed for {"token": "abc123def456"}'},
+                    ],
+                },
+                "affected_pages": ["https://a.com/list?monkey=1"],
+                "occurrences": 3,
+                "status": None,
+            }
         }
-    }
 
-    failures = 0
-    for label, redact in (
-        ("GeminiQAAnalyzer._redact", GeminiQAAnalyzer._redact),
-        ("SecretRedactor.redact", SecretRedactor.redact),
-    ):
-        result = redact(payload)
-        flat = repr(result)
+        for label, redact in (
+            ("GeminiQAAnalyzer", GeminiQAAnalyzer._redact),
+            ("SecretRedactor", SecretRedactor.redact),
+        ):
+            with self.subTest(redactor=label):
+                result = redact(payload)
+                flat = repr(result)
 
-        checks = [
-            ("secret removed from nested list item", "abc123def456" not in flat),
-            ("benign nested URL preserved", "?monkey=1" in flat),
-            ("non-string values preserved", result["candidate"]["occurrences"] == 3),
-            ("None preserved", result["candidate"]["status"] is None),
-            ("input not mutated", "abc123def456" in repr(payload)),
-        ]
-        for name, ok in checks:
-            if ok:
-                print(f"  [PASS] {label}: {name}")
-            else:
-                failures += 1
-                print(f"  [FAIL] {label}: {name}")
-
-    return failures == 0
-
-
-def main():
-    print("\n" + "=" * 80)
-    print("SECRET REDACTION TEST SUITE")
-    print("=" * 80)
-
-    failures = 0
-
-    failures += _run_secret_cases(
-        "GeminiQAAnalyzer._redact",
-        GeminiQAAnalyzer._redact,
-        COMMON_SECRETS + GEMINI_ONLY_SECRETS,
-    )
-    failures += _run_passthrough_cases(
-        "GeminiQAAnalyzer._redact", GeminiQAAnalyzer._redact
-    )
-
-    failures += _run_secret_cases(
-        "SecretRedactor.redact", SecretRedactor.redact, COMMON_SECRETS
-    )
-    failures += _run_passthrough_cases("SecretRedactor.redact", SecretRedactor.redact)
-
-    if not test_nested_structures():
-        failures += 1
-
-    print("\n" + "=" * 80)
-    print("FINAL RESULTS")
-    print("=" * 80)
-
-    if failures == 0:
-        print("✓ All redaction tests PASSED!")
-        return 0
-
-    print(f"✗ {failures} redaction check(s) FAILED")
-    return 1
-
+                self.assertNotIn("abc123def456", flat, f"Secret removed from nested list item in {label}")
+                self.assertIn("?monkey=1", flat, f"Benign nested URL preserved in {label}")
+                self.assertEqual(result["candidate"]["occurrences"], 3, f"Non-string values preserved in {label}")
+                self.assertIsNone(result["candidate"]["status"], f"None preserved in {label}")
+                self.assertIn("abc123def456", repr(payload), f"Input not mutated in {label}")
 
 if __name__ == "__main__":
-    sys.exit(main())
+    unittest.main()

@@ -45,6 +45,7 @@ class TestGeminiQAAnalyzer(unittest.TestCase):
         return json.dumps({
             "classification": classification, "severity": severity, "confidence": confidence,
             "title": "QA assessment", "summary": "Evidence-based assessment",
+            "expected_result": "Expected behavior.", "actual_result": "Actual behavior.",
             "reasoning": "Only supplied evidence was considered.",
             "user_impact": "User impact cannot be determined from the available crawl evidence.",
             "recommended_action": "Verify behavior with an authenticated session.",

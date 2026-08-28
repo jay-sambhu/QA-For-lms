@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Loader2, ArrowRight, ShieldCheck, Bug, FileText, LogOut, AlertTriangle } from 'lucide-react';
+import { Search, Loader2, ArrowRight, ShieldCheck, Bug, FileText, LogOut, AlertTriangle, Download, FileSpreadsheet } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { createClient, type Session } from '@supabase/supabase-js';
 import styles from './page.module.css';
+import { downloadPDF, downloadExcel } from '../utils/export';
 
 /*
  * These are read at build time by Next.js. If they are missing the Supabase
@@ -35,14 +36,27 @@ interface Finding {
   url: string;
   description: string;
   recommendation: string;
+  expected_result?: string;
+  actual_result?: string;
   manual_verification: string;
   affected_pages_count: number;
   occurrence_count?: number;
+  priority?: string;
+  root_cause?: { category?: string; summary?: string };
+  user_impact?: string;
+  regression_status?: string;
   screenshots: string[];
   evidence?: {
     http_errors?: unknown[];
     console_errors?: unknown[];
     network_failures?: unknown[];
+    screenshot?: string;
+  };
+  reproduction?: {
+    url?: string;
+    device?: string;
+    viewport?: { width: number; height: number };
+    steps?: string[];
   };
 }
 
@@ -56,6 +70,23 @@ interface QAReport {
     // analysis must not be presented as a clean result.
     ai_analysis_failures?: number;
     ai_analysis_degraded?: boolean;
+    interactive_metrics?: {
+      elements_discovered: number;
+      interactions_attempted: number;
+      passed: number;
+      failed: number;
+      manual_review: number;
+    };
+    cross_device_metrics?: {
+      devices_tested: number;
+      pages_tested: number;
+      responsive_findings: number;
+      device_breakdown: {
+        desktop: number;
+        iphone: number;
+        ipad: number;
+      };
+    };
   };
   summary: {
     total_candidates: number;
@@ -66,8 +97,42 @@ interface QAReport {
     ignored: number;
     analysis_failures?: number;
   };
+  triage_metrics?: {
+    confirmed_bug: number;
+    high_confidence_candidate: number;
+    needs_manual_review: number;
+    expected_behavior: number;
+    informational: number;
+    duplicate: number;
+    priority: { P0: number; P1: number; P2: number; P3: number; P4: number };
+    regression_summary: { new: number; fixed: number; unchanged: number; worsened: number; improved: number };
+  };
   severity: Record<Severity, number>;
   findings: Finding[];
+  // Present when the AI Test Case Generator ran and produced results.
+  test_cases?: Array<{
+    id: string;
+    title?: string;
+    description?: string;
+    category?: string;
+    priority?: string;
+    source_page?: string;
+    steps?: string[];
+    execution_policy?: string;
+    status?: string;
+    expected_result?: string;
+    actual_result?: string;
+    evidence?: unknown;
+    duration_ms?: number;
+  }>;
+  test_case_metrics?: {
+    total: number;
+    executed: number;
+    passed: number;
+    failed: number;
+    blocked: number;
+    manual_review: number;
+  };
 }
 
 type ScanStatus = '' | 'pending' | 'running' | 'completed' | 'failed' | 'error';
@@ -94,6 +159,11 @@ export default function Home() {
   const [scanError, setScanError] = useState('');
   const [results, setResults] = useState<QAReport | null>(null);
   const [progress, setProgress] = useState<{percent: number, message: string} | null>(null);
+  
+  // Triage Filters
+  const [filterClass, setFilterClass] = useState<string>('ALL');
+  const [filterPriority, setFilterPriority] = useState<string>('ALL');
+  const [filterRegression, setFilterRegression] = useState<string>('ALL');
 
   useEffect(() => {
     if (!supabase) return;
@@ -377,6 +447,14 @@ export default function Home() {
   const severity = results?.severity;
   const summary = results?.summary;
   const findings = results?.findings ?? [];
+  
+  const filteredFindings = findings.filter(f => {
+    if (filterClass !== 'ALL' && f.classification !== filterClass) return false;
+    if (filterPriority !== 'ALL' && (f.priority || 'P3') !== filterPriority) return false;
+    if (filterRegression !== 'ALL' && (f.regression_status || 'NEW') !== filterRegression) return false;
+    return true;
+  });
+  
   const showForm = !scanId || status === 'completed' || status === 'failed' || status === 'error';
 
   return (
@@ -518,6 +596,22 @@ export default function Home() {
                 <FileText size={24} /> QA Scan Report for{' '}
                 {results.report_metadata?.target ?? 'Unknown target'}
               </h2>
+              <div className={styles.exportActions}>
+                <button
+                  className={`btn ${styles.exportBtn}`}
+                  onClick={() => downloadPDF(results)}
+                  title="Download PDF"
+                >
+                  <Download size={18} /> PDF
+                </button>
+                <button
+                  className={`btn ${styles.exportBtn}`}
+                  onClick={() => downloadExcel(results)}
+                  title="Download Excel"
+                >
+                  <FileSpreadsheet size={18} /> Excel
+                </button>
+              </div>
             </div>
 
             {/* The markdown report warns about failed AI analysis; the UI has to
@@ -560,8 +654,114 @@ export default function Home() {
               </div>
             </div>
 
+            {results.report_metadata?.interactive_metrics && (
+              <div style={{ marginTop: '20px' }}>
+                <h3 style={{ marginBottom: '10px' }}>Interactive Testing</h3>
+                <div className={styles.statsGrid}>
+                  <div className={styles.statCard}>
+                    <h3>Elements Discovered</h3>
+                    <div className={styles.statValue}>{results.report_metadata.interactive_metrics.elements_discovered}</div>
+                  </div>
+                  <div className={styles.statCard}>
+                    <h3>Interactions Attempted</h3>
+                    <div className={styles.statValue}>{results.report_metadata.interactive_metrics.interactions_attempted}</div>
+                  </div>
+                  <div className={styles.statCard}>
+                    <h3>Passed / Failed</h3>
+                    <div className={styles.statValue}>
+                      {results.report_metadata.interactive_metrics.passed} / {results.report_metadata.interactive_metrics.failed}
+                    </div>
+                  </div>
+                  <div className={styles.statCard}>
+                    <h3>Destructive Skipped</h3>
+                    <div className={styles.statValue}>{results.report_metadata.interactive_metrics.manual_review}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {results.report_metadata?.cross_device_metrics && (
+              <div style={{ marginTop: '20px' }}>
+                <h3 style={{ marginBottom: '10px' }}>Cross-Device & Responsive QA</h3>
+                <div className={styles.statsGrid}>
+                  <div className={styles.statCard}>
+                    <h3>Devices Tested</h3>
+                    <div className={styles.statValue}>Desktop | iPhone | iPad</div>
+                  </div>
+                  <div className={styles.statCard}>
+                    <h3>Responsive Findings</h3>
+                    <div className={styles.statValue}>{results.report_metadata.cross_device_metrics.responsive_findings}</div>
+                  </div>
+                  <div className={styles.statCard}>
+                    <h3>Device Breakdown</h3>
+                    <div className={styles.statValue}>
+                      Desktop: {results.report_metadata.cross_device_metrics.device_breakdown.desktop} | iPhone: {results.report_metadata.cross_device_metrics.device_breakdown.iphone} | iPad: {results.report_metadata.cross_device_metrics.device_breakdown.ipad}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {results.triage_metrics && (
+              <div style={{ marginTop: '20px' }}>
+                <h3 style={{ marginBottom: '10px' }}>AI Bug Triage Metrics</h3>
+                <div className={styles.statsGrid}>
+                  <div className={styles.statCard}>
+                    <h3>Classification</h3>
+                    <div className={styles.statValue} style={{ fontSize: '1rem', lineHeight: '1.4' }}>
+                      Bugs: {results.triage_metrics.confirmed_bug} | Candidates: {results.triage_metrics.high_confidence_candidate}<br/>
+                      Review: {results.triage_metrics.needs_manual_review} | Duplicates: {results.triage_metrics.duplicate}
+                    </div>
+                  </div>
+                  <div className={styles.statCard}>
+                    <h3>Priority (P0-P4)</h3>
+                    <div className={styles.statValue} style={{ fontSize: '1rem', lineHeight: '1.4' }}>
+                      P0: {results.triage_metrics.priority.P0} | P1: {results.triage_metrics.priority.P1} | P2: {results.triage_metrics.priority.P2}<br/>
+                      P3: {results.triage_metrics.priority.P3} | P4: {results.triage_metrics.priority.P4}
+                    </div>
+                  </div>
+                  <div className={styles.statCard}>
+                    <h3>Regression</h3>
+                    <div className={styles.statValue} style={{ fontSize: '1rem', lineHeight: '1.4' }}>
+                      New: {results.triage_metrics.regression_summary.new} | Fixed: {results.triage_metrics.regression_summary.fixed}<br/>
+                      Unchanged: {results.triage_metrics.regression_summary.unchanged} | Worsened: {results.triage_metrics.regression_summary.worsened}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginTop: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ marginBottom: '10px' }}>AI Bug Triage Findings</h3>
+              
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                <select className="input-field" style={{ padding: '4px 8px', width: '130px', fontSize: '0.9rem' }} value={filterClass} onChange={e => setFilterClass(e.target.value)}>
+                  <option value="ALL">All Class</option>
+                  <option value="confirmed_bug">Confirmed Bug</option>
+                  <option value="high_confidence_candidate">Candidate</option>
+                  <option value="needs_manual_review">Review</option>
+                  <option value="informational">Info</option>
+                </select>
+                <select className="input-field" style={{ padding: '4px 8px', width: '110px', fontSize: '0.9rem' }} value={filterPriority} onChange={e => setFilterPriority(e.target.value)}>
+                  <option value="ALL">All Priority</option>
+                  <option value="P0">P0</option>
+                  <option value="P1">P1</option>
+                  <option value="P2">P2</option>
+                  <option value="P3">P3</option>
+                  <option value="P4">P4</option>
+                </select>
+                <select className="input-field" style={{ padding: '4px 8px', width: '130px', fontSize: '0.9rem' }} value={filterRegression} onChange={e => setFilterRegression(e.target.value)}>
+                  <option value="ALL">All Regression</option>
+                  <option value="NEW">New</option>
+                  <option value="UNCHANGED">Unchanged</option>
+                  <option value="WORSENED">Worsened</option>
+                  <option value="IMPROVED">Improved</option>
+                </select>
+              </div>
+            </div>
+
             <div className={styles.findingsList}>
-              {findings.map((finding, idx) => (
+              {filteredFindings.map((finding, idx) => (
                 <div key={finding.id || idx} className={styles.findingItem}>
                   <div className={styles.findingHeader}>
                     <span className={styles.findingId}>{finding.id}</span>
@@ -583,14 +783,114 @@ export default function Home() {
                       : ''}
                     {finding.page ? ` · ${finding.page}` : ''}
                   </div>
+                  
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '10px' }}>
+                    {finding.priority && <span className={styles.badge}><AlertTriangle size={12} style={{marginRight: '4px'}}/> Priority: {finding.priority}</span>}
+                    {finding.regression_status && <span className={styles.badge}><ShieldCheck size={12} style={{marginRight: '4px'}}/> Regression: {finding.regression_status}</span>}
+                    {finding.user_impact && <span className={styles.badge}>Impact: {finding.user_impact.toUpperCase()}</span>}
+                    {finding.root_cause?.category && <span className={styles.badge}>Root Cause: {finding.root_cause.category.replace('_', ' ')}</span>}
+                  </div>
+                  
+                  <details style={{marginTop: '15px', background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px', cursor: 'pointer'}}>
+                    <summary style={{fontWeight: 'bold', outline: 'none'}}>Evidence & Reproduction</summary>
+                    <div style={{marginTop: '10px', fontSize: '0.9rem', lineHeight: '1.5'}}>
+                      {finding.root_cause?.summary && <p><strong>Root Cause:</strong> {finding.root_cause.summary}</p>}
+                      <p><strong>Expected Result:</strong> {finding.expected_result || 'Not specified.'}</p>
+                      <p><strong>Actual Result:</strong> {finding.actual_result || 'Not specified.'}</p>
+                      <p><strong>Recommendation:</strong> {finding.recommendation || 'Not specified.'}</p>
+                      
+                      {finding.reproduction && finding.reproduction.steps && finding.reproduction.steps.length > 0 && (
+                        <div style={{marginTop: '10px'}}>
+                          <strong>Reproduction Steps:</strong>
+                          <ol style={{paddingLeft: '20px', marginTop: '5px'}}>
+                            {finding.reproduction.steps.map((step, sIdx) => (
+                              <li key={sIdx}>{step}</li>
+                            ))}
+                          </ol>
+                        </div>
+                      )}
+                      
+                      {finding.reproduction?.device && (
+                         <p style={{marginTop: '10px'}}><strong>Device:</strong> {finding.reproduction.device}</p>
+                      )}
+                      {finding.reproduction?.viewport && (
+                         <p><strong>Viewport:</strong> {finding.reproduction.viewport.width}x{finding.reproduction.viewport.height}</p>
+                      )}
+                    </div>
+                  </details>
                 </div>
               ))}
-              {findings.length === 0 && (
+              {filteredFindings.length === 0 && (
                 <div className={styles.noFindings}>
-                  No deterministic bugs or AI candidates found! Your site looks healthy.
+                  No deterministic bugs or AI candidates found matching the filters!
                 </div>
               )}
             </div>
+            
+            {results.test_cases && results.test_cases.length > 0 && (
+              <div style={{ marginTop: '40px' }}>
+                <h3 style={{ marginBottom: '10px' }}>Test Cases Executed</h3>
+                
+                {results.test_case_metrics && (
+                  <div className={styles.statsGrid} style={{ marginBottom: '20px' }}>
+                    <div className={styles.statCard}>
+                      <h3>Total Tests</h3>
+                      <div className={styles.statValue}>{results.test_case_metrics.total}</div>
+                    </div>
+                    <div className={styles.statCard}>
+                      <h3>Passed / Failed</h3>
+                      <div className={styles.statValue}>{results.test_case_metrics.passed} / {results.test_case_metrics.failed}</div>
+                    </div>
+                    <div className={styles.statCard}>
+                      <h3>Manual Review</h3>
+                      <div className={styles.statValue}>{results.test_case_metrics.manual_review}</div>
+                    </div>
+                  </div>
+                )}
+                
+                <div className={styles.findingsList}>
+                  {results.test_cases.map((tc, idx: number) => {
+                    const status = (tc.status || tc.execution_policy || 'manual_review');
+                    const isFailed = status === 'failed';
+                    const isPassed = status === 'passed';
+                    
+                    return (
+                      <div key={tc.id || idx} className={styles.findingItem} style={{ borderLeftColor: isFailed ? 'var(--danger)' : isPassed ? 'var(--success)' : 'var(--warning)' }}>
+                        <div className={styles.findingHeader}>
+                          <span className={styles.findingId}>{tc.id}</span>
+                          <span className={styles.severityBadge} style={{ background: isFailed ? 'var(--danger)' : isPassed ? 'var(--success)' : 'var(--warning)', color: '#fff' }}>
+                            {status.toUpperCase()}
+                          </span>
+                        </div>
+                        <h3>{tc.title}</h3>
+                        <div className={styles.findingFooter}>
+                          <FileText size={16} /> {tc.category} ({tc.priority} priority) &middot; {tc.source_page}
+                        </div>
+                        
+                        <details style={{marginTop: '15px', background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px', cursor: 'pointer'}}>
+                          <summary style={{fontWeight: 'bold', outline: 'none'}}>Execution Details</summary>
+                          <div style={{marginTop: '10px', fontSize: '0.9rem', lineHeight: '1.5'}}>
+                            <p><strong>Expected Result:</strong> {tc.expected_result || 'Not specified.'}</p>
+                            <p><strong>Actual Result:</strong> {tc.actual_result || 'Not specified.'}</p>
+                            
+                            {tc.steps && tc.steps.length > 0 && (
+                              <div style={{marginTop: '10px'}}>
+                                <strong>Execution Steps:</strong>
+                                <ol style={{paddingLeft: '20px', marginTop: '5px'}}>
+                                  {tc.steps.map((step: string, sIdx: number) => (
+                                    <li key={sIdx}>{step}</li>
+                                  ))}
+                                </ol>
+                              </div>
+                            )}
+                          </div>
+                        </details>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </motion.div>
         )}
 

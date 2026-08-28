@@ -8,6 +8,7 @@ from urllib.parse import urljoin, urlparse
 from playwright.async_api import async_playwright
 
 from .network import NetworkMonitor
+from .devices import DeviceConfigManager
 
 # Schemes we are willing to fetch. Everything else (mailto:, tel:,
 # javascript:, data: ...) is left untouched and treated as external.
@@ -168,17 +169,7 @@ class WebsiteCrawler:
                 headless=True
             )
 
-            kwargs_desktop = {
-                "viewport": {
-                    "width": 1366,
-                    "height": 768
-                }
-            }
-            devices_config = {
-                "Desktop Chrome": kwargs_desktop,
-                "iPhone 13": p.devices["iPhone 13"],
-                "iPad (gen 7)": p.devices["iPad (gen 7)"]
-            }
+            devices_config = DeviceConfigManager.get_devices_config(p)
 
             contexts = {}
             pages = {}
@@ -260,6 +251,62 @@ class WebsiteCrawler:
                             status = response.status if response else None
                             title = await page.title()
                             
+                            # Execute deterministic responsive checks in page JS
+                            responsive_checks = {"horizontal_overflow": False, "overflow_pixels": 0, "elements_outside_viewport": 0, "forms_outside_viewport": 0, "clipped_buttons": 0, "navigation_visible": True, "viewport_width": 1366, "viewport_height": 768}
+                            try:
+                                responsive_checks = await page.evaluate("""() => {
+                                    const docWidth = document.documentElement ? document.documentElement.scrollWidth : 0;
+                                    const winWidth = window.innerWidth || 1000;
+                                    const winHeight = window.innerHeight || 800;
+                                    const overflowPixels = Math.max(0, docWidth - winWidth);
+                                    const hasHorizontalOverflow = docWidth > (winWidth + 5);
+
+                                    let elementsOutside = 0;
+                                    let formsOutside = 0;
+                                    let clippedButtons = 0;
+
+                                    const elements = Array.from(document.querySelectorAll('button, a, input, select, form, [role="button"], img, h1, h2, h3, header, nav'));
+                                    for (const el of elements) {
+                                        try {
+                                            const rect = el.getBoundingClientRect();
+                                            if (!rect || (rect.width === 0 && rect.height === 0)) continue;
+                                            
+                                            if (rect.right > (winWidth + 10) || rect.left < -10) {
+                                                elementsOutside++;
+                                                const tag = (el.tagName || '').toUpperCase();
+                                                if (tag === 'FORM' || tag === 'INPUT' || tag === 'SELECT') {
+                                                    formsOutside++;
+                                                }
+                                                if (tag === 'BUTTON' || tag === 'A' || el.getAttribute('role') === 'button') {
+                                                    clippedButtons++;
+                                                }
+                                            }
+                                        } catch (e) {}
+                                    }
+
+                                    const nav = document.querySelector('nav, header, [role="navigation"]');
+                                    let navVisible = false;
+                                    if (nav) {
+                                        try {
+                                            const rect = nav.getBoundingClientRect();
+                                            navVisible = rect && rect.width > 0 && rect.height > 0 && rect.top < winHeight && rect.bottom > 0;
+                                        } catch (e) {}
+                                    }
+
+                                    return {
+                                        horizontal_overflow: hasHorizontalOverflow,
+                                        overflow_pixels: overflowPixels,
+                                        elements_outside_viewport: elementsOutside,
+                                        forms_outside_viewport: formsOutside,
+                                        clipped_buttons: clippedButtons,
+                                        navigation_visible: navVisible,
+                                        viewport_width: winWidth,
+                                        viewport_height: winHeight
+                                    };
+                                }""")
+                            except Exception as ev_err:
+                                print(f"Responsive check warning on {dev_name}: {ev_err}")
+
                             internal_links = []
                             
                             # Only extract links on Desktop Chrome to avoid duplication
@@ -304,6 +351,7 @@ class WebsiteCrawler:
                                 "status": status,
                                 "links": len(internal_links),
                                 "screenshot": rel_screenshot,
+                                "responsive_checks": responsive_checks,
                                 "timestamp": datetime.now().isoformat(),
                             }
 

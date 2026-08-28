@@ -111,6 +111,30 @@ class QAReportGenerator:
                     break
                 except (OSError, json.JSONDecodeError):
                     continue
+                    
+        # Extract interactive metrics
+        interactive_metrics = None
+        interactive_path = safe_data.get("source", {}).get("interactive_result")
+        if not interactive_path:
+            # Fallback to looking in results_dir by timestamp matching or finding the newest
+            interactions = sorted(self.results_dir.glob("interactive_qa_*.json"), key=os.path.getmtime, reverse=True)
+            if interactions:
+                interactive_path = interactions[0]
+                
+        if interactive_path:
+            candidates = [Path(interactive_path)]
+            if not candidates[0].is_absolute():
+                candidates.insert(0, self.base_dir / interactive_path)
+            for path in candidates:
+                if not path.exists():
+                    continue
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        int_data = json.load(f)
+                        interactive_metrics = int_data.get("summary")
+                    break
+                except (OSError, json.JSONDecodeError):
+                    continue
         
         timestamp = datetime.now().isoformat()
 
@@ -121,6 +145,36 @@ class QAReportGenerator:
         source_summary = safe_data.get("summary", {}) or {}
         analysis_failures = source_summary.get("analysis_failures", 0) or 0
 
+        # Calculate cross-device metrics
+        cross_device_metrics = {
+            "devices_tested": 3,
+            "pages_tested": pages_crawled,
+            "responsive_findings": 0,
+            "device_breakdown": {
+                "desktop": 0,
+                "iphone": 0,
+                "ipad": 0
+            }
+        }
+
+        for finding in safe_data.get("findings", []):
+            cand = finding.get("candidate") or {}
+            f_type = finding.get("type") or cand.get("type", "")
+            title = (finding.get("title") or cand.get("title", "")).lower()
+            if f_type == "responsive_issue" or "responsive" in title or "overflow" in title:
+                cross_device_metrics["responsive_findings"] += 1
+                devs = finding.get("affected_devices") or cand.get("affected_devices") or []
+                if not devs and (finding.get("device") or cand.get("device")):
+                    devs = [finding.get("device") or cand.get("device")]
+                for dev in devs:
+                    d_lower = str(dev).lower()
+                    if "desktop" in d_lower:
+                        cross_device_metrics["device_breakdown"]["desktop"] += 1
+                    elif "iphone" in d_lower:
+                        cross_device_metrics["device_breakdown"]["iphone"] += 1
+                    elif "ipad" in d_lower:
+                        cross_device_metrics["device_breakdown"]["ipad"] += 1
+
         report = {
             "report_metadata": {
                 "generated_at": timestamp,
@@ -129,6 +183,8 @@ class QAReportGenerator:
                 "pages_crawled": pages_crawled,
                 "ai_analysis_failures": analysis_failures,
                 "ai_analysis_degraded": bool(analysis_failures),
+                "interactive_metrics": interactive_metrics,
+                "cross_device_metrics": cross_device_metrics,
             },
             "summary": {
                 "total_candidates": 0,
@@ -137,7 +193,10 @@ class QAReportGenerator:
                 "manual_review": 0,
                 "informational": 0,
                 "ignored": 0,
-                "analysis_failures": analysis_failures
+                "analysis_failures": analysis_failures,
+                "regression_summary": safe_data.get("summary", {}).get("triage_metrics", {}).get("regression_summary", {
+                    "new": 0, "fixed": 0, "unchanged": 0, "worsened": 0, "improved": 0
+                })
             },
             "severity": {
                 "critical": 0,
@@ -151,6 +210,8 @@ class QAReportGenerator:
 
         for finding in safe_data.get("findings", []):
             classification = finding.get("classification", "")
+            candidate = finding.get("candidate", {})
+            triage = candidate.get("triage", {})
             
             # Update classification summary
             report["summary"]["total_candidates"] += 1
@@ -178,15 +239,25 @@ class QAReportGenerator:
             final_finding = {
                 "id": finding.get("id", "UNKNOWN"),
                 "classification": classification,
-                "severity": severity,
+                "severity": finding.get("severity", "info").lower(),
                 "confidence": finding.get("confidence", "low"),
+                "priority": triage.get("priority", "P3"),
+                "user_impact": finding.get("user_impact", triage.get("user_impact", "unknown")),
+                "root_cause": triage.get("root_cause", {}),
+                "regression_status": candidate.get("regression_status", "NEW"),
+                "fingerprint": candidate.get("fingerprint", ""),
                 "title": finding.get("title", candidate.get("title", "Untitled")),
                 "page": candidate.get("affected_pages", [""])[0] if candidate.get("affected_pages") else "",
                 "url": candidate.get("url", ""),
                 "description": finding.get("summary", candidate.get("description", "")),
-                "evidence": candidate.get("evidence", {}),
+                "expected_result": finding.get("expected_result", "Not specified."),
+                "actual_result": finding.get("actual_result", "Not specified."),
+                "evidence": finding.get("evidence", candidate.get("evidence", {})),
+                "evidence_structured": candidate.get("evidence_structured", {}),
+                "reproduction": finding.get("reproduction", candidate.get("reproduction", {})),
                 "recommendation": finding.get("recommended_action", ""),
                 "manual_verification": finding.get("reasoning", "Needs manual verification."),
+                "occurrences": candidate.get("occurrences", 1),
                 # Page count, not event count. Stage 2 redefined `occurrences`
                 # to mean raw events (one page can fail an endpoint 30 times)
                 # and moved the page count to `affected_page_count`, so reading
@@ -202,6 +273,41 @@ class QAReportGenerator:
             }
             
             report["findings"].append(final_finding)
+            
+        report["triage_metrics"] = safe_data.get("triage_metrics", {})
+            
+        if hasattr(self, "test_cases_file") and self.test_cases_file and os.path.exists(self.test_cases_file):
+            try:
+                with open(self.test_cases_file, "r") as f:
+                    tc_data = json.load(f)
+                    report["test_cases"] = tc_data.get("test_cases", [])
+            except Exception:
+                pass
+                
+        if hasattr(self, "test_results_file") and self.test_results_file and os.path.exists(self.test_results_file):
+            try:
+                with open(self.test_results_file, "r") as f:
+                    tr_data = json.load(f)
+                    results = tr_data.get("results", [])
+                    for tc in report.get("test_cases", []):
+                        for res in results:
+                            if tc["id"] == res["test_id"]:
+                                tc["status"] = res["status"]
+                                tc["actual_result"] = res["actual_result"]
+                                tc["evidence"] = res["evidence"]
+                                tc["duration_ms"] = res.get("duration_ms", 0)
+            except Exception:
+                pass
+                
+        if "test_cases" in report:
+            tcm = {"total": len(report["test_cases"]), "executed": 0, "passed": 0, "failed": 0, "blocked": 0, "manual_review": 0}
+            for tc in report["test_cases"]:
+                status = tc.get("status", tc.get("execution_policy", "manual_review"))
+                if status in tcm:
+                    tcm[status] += 1
+                if status in ["passed", "failed"]:
+                    tcm["executed"] += 1
+            report["test_case_metrics"] = tcm
             
         return report
 
@@ -241,6 +347,20 @@ class QAReportGenerator:
             f"- **Number of pages crawled:** {meta['pages_crawled']}"
         ]
         
+        if meta.get("interactive_metrics"):
+            im = meta["interactive_metrics"]
+            md.extend([
+                "## 3. Interactive Testing\n",
+                f"- **Elements discovered:** {im.get('elements_discovered', 0)}",
+                f"- **Interactions attempted:** {im.get('interactions_attempted', 0)}",
+                f"- **Passed:** {im.get('passed', 0)}",
+                f"- **Failed:** {im.get('failed', 0)}",
+                f"- **Skipped (Manual Review required):** {im.get('manual_review', 0)}\n"
+            ])
+            md.append("## 4. Test Coverage\n")
+        else:
+            md.append("## 3. Test Coverage\n")
+        
         # Calculate other coverage stats from findings
         http_errors = 0
         console_errors = 0
@@ -264,7 +384,39 @@ class QAReportGenerator:
             f"- **Gemini-analyzed candidates:** {summary['total_candidates']}\n"
         ])
         
-        md.append("## 3. Findings Summary\n")
+        triage_metrics = json_report.get("triage_metrics", {})
+        if triage_metrics:
+            md.extend([
+                "## 3. AI Bug Triage\n",
+                "### Summary\n",
+                f"- **Confirmed Bugs:** {triage_metrics.get('confirmed_bug', 0)}",
+                f"- **High Confidence Candidates:** {triage_metrics.get('high_confidence_candidate', 0)}",
+                f"- **Needs Manual Review:** {triage_metrics.get('needs_manual_review', 0)}",
+                f"- **Expected Behavior:** {triage_metrics.get('expected_behavior', 0)}",
+                f"- **Informational:** {triage_metrics.get('informational', 0)}",
+                f"- **Duplicates:** {triage_metrics.get('duplicate', 0)}\n",
+                "### Priority Breakdown\n"
+            ])
+            
+            pri = triage_metrics.get("priority", {})
+            for p in ["P0", "P1", "P2", "P3", "P4"]:
+                md.append(f"- **{p}:** {pri.get(p, 0)}")
+            md.append("")
+                
+            reg = triage_metrics.get("regression_summary", {})
+            md.extend([
+                "### Regression Analysis\n",
+                f"- **New:** {reg.get('new', 0)}",
+                f"- **Fixed:** {reg.get('fixed', 0)}",
+                f"- **Unchanged:** {reg.get('unchanged', 0)}",
+                f"- **Worsened:** {reg.get('worsened', 0)}",
+                f"- **Improved:** {reg.get('improved', 0)}\n",
+            ])
+            
+            md.append("## 4. Findings Summary\n")
+        else:
+            md.append("## 3. Findings Summary\n")
+            
         md.append("| ID | Severity | Classification | Confidence | Page | URL |")
         md.append("|----|----------|----------------|------------|------|-----|")
 
@@ -276,7 +428,10 @@ class QAReportGenerator:
                 f"| {f['confidence']} | {page} | {url} |"
             )
 
-        md.append("\n## 4. Detailed Findings\n")
+        if triage_metrics:
+            md.append("\n## 5. Detailed Findings\n")
+        else:
+            md.append("\n## 4. Detailed Findings\n")
 
         for f in json_report["findings"]:
             md.append(f"### {f['id']} — {f['title']}\n")
@@ -287,6 +442,14 @@ class QAReportGenerator:
             md.append(f"- **Severity:** {f['severity'].upper()}")
             md.append(f"- **Confidence:** {f['confidence'].title()}")
             md.append(f"- **Classification:** {f['classification']}")
+            md.append(f"- **Priority:** {f.get('priority', 'P3')}")
+            md.append(f"- **Regression Status:** {f.get('regression_status', 'NEW')}")
+            md.append(f"- **User Impact:** {f.get('user_impact', 'unknown').title()}")
+            
+            rc = f.get('root_cause', {})
+            if rc:
+                md.append(f"- **Root Cause Category:** {rc.get('category', 'unknown').replace('_', ' ').title()}")
+                
             md.append(f"- **Page:** {f.get('page') or 'N/A'}")
 
             if f.get('affected_pages_count', 1) > 1:
@@ -300,9 +463,61 @@ class QAReportGenerator:
 
             md.append(f"- **URL:** {f.get('url') or 'N/A'}")
             md.append("")
+            
+            if rc and rc.get('summary'):
+                md.append(f"**Root Cause Summary:**\n\n{rc.get('summary')}\n")
 
             md.append(f"**Description:**\n\n{f['description']}\n")
+            md.append(f"**Expected Result:**\n\n{f.get('expected_result', 'Not specified.')}\n")
+            md.append(f"**Actual Result:**\n\n{f.get('actual_result', 'Not specified.')}\n")
+            
+            # Reproduction
+            repro = f.get("reproduction", {})
+            if repro and repro.get("steps"):
+                md.append("**Reproduction Steps:**\n")
+                for i, step in enumerate(repro.get("steps", [])):
+                    md.append(f"{i+1}. {step}")
+                md.append("")
 
+            # Evidence
+            md.append("**Evidence:**\n")
+            ev = f.get("evidence", {}) or {}
+            has_evidence = False
+            
+            if ev.get("http_error"):
+                req = ev["http_error"].get("request", {})
+                md.append(f"- Status: {req.get('status')}")
+                md.append(f"- URL: {req.get('url')}")
+                has_evidence = True
+            elif ev.get("http_errors"):  # Fallback to old format
+                md.append("- HTTP Errors:")
+                for e in ev["http_errors"][:3]:
+                    md.append(f"  - {e.get('status')} {e.get('method')} {e.get('url')}")
+                has_evidence = True
+                
+            if ev.get("console_errors"):
+                md.append("- Console Errors:")
+                for e in ev["console_errors"][:3]:
+                    md.append(f"  - {e.get('text') or e.get('message')}")
+                has_evidence = True
+                
+            if ev.get("network_failures"):
+                md.append("- Network Failures:")
+                for e in ev["network_failures"][:3]:
+                    md.append(f"  - {e.get('failure')} for {e.get('url')}")
+                has_evidence = True
+                
+            if ev.get("responsive"):
+                r = ev["responsive"]
+                md.append(f"- Device: {r.get('device')}")
+                if r.get("viewport"):
+                    md.append(f"- Viewport: {r['viewport'].get('width')}x{r['viewport'].get('height')}")
+                has_evidence = True
+
+            if not has_evidence:
+                md.append("No specific event evidence recorded.")
+            md.append("")
+            
             # Screenshots
             screenshots = f.get("screenshots") or []
             if screenshots:
@@ -312,37 +527,40 @@ class QAReportGenerator:
                         md.append(f"- [{s}](../{s})")
                     else:
                         md.append(f"- Screenshot: Not available ({s})")
+            elif ev.get("screenshot"):
+                s = ev.get("screenshot")
+                md.append("**Screenshot:**\n")
+                if self._screenshot_exists(s):
+                    md.append(f"- [{s}](../{s})")
+                else:
+                    md.append(f"- Screenshot: Not available ({s})")
             else:
                 md.append("**Screenshot:** Not available")
-            md.append("")
-
-            # Evidence
-            md.append("**Evidence:**\n")
-            ev = f.get("evidence", {}) or {}
-            has_evidence = False
-            if ev.get("http_errors"):
-                md.append("- HTTP Errors:")
-                for e in ev["http_errors"][:3]:
-                    md.append(f"  - {e.get('status')} {e.get('method')} {e.get('url')}")
-                has_evidence = True
-            if ev.get("console_errors"):
-                md.append("- Console Errors:")
-                for e in ev["console_errors"][:3]:
-                    md.append(f"  - {e.get('text')}")
-                has_evidence = True
-            if ev.get("network_failures"):
-                md.append("- Network Failures:")
-                for e in ev["network_failures"][:3]:
-                    md.append(f"  - {e.get('failure')} for {e.get('url')}")
-                has_evidence = True
-
-            if not has_evidence:
-                md.append("No specific event evidence recorded.")
             md.append("")
 
             md.append(f"**Recommendation:**\n\n{f['recommendation']}\n")
             md.append(f"**Manual Verification:**\n\n{f['manual_verification']}\n")
             md.append("---\n")
+
+        if "test_case_metrics" in json_report:
+            tcm = json_report["test_case_metrics"]
+            md.extend([
+                "## 5. Test Case Summary\n",
+                f"- **Total:** {tcm['total']}",
+                f"- **Executed:** {tcm['executed']}",
+                f"- **Passed:** {tcm['passed']}",
+                f"- **Failed:** {tcm['failed']}",
+                f"- **Manual Review:** {tcm['manual_review']}",
+                f"- **Blocked:** {tcm['blocked']}\n",
+                "### Test Cases\n"
+            ])
+            for tc in json_report.get("test_cases", []):
+                md.append(f"**{tc['id']}** - {tc['title']} ({tc.get('status', 'manual_review').upper()})")
+                md.append(f"- **Page:** {tc.get('source_page', 'Unknown')}")
+                md.append(f"- **Expected:** {tc.get('expected_result', '')}")
+                if tc.get('actual_result'):
+                    md.append(f"- **Actual:** {tc['actual_result']}")
+                md.append("")
 
         return "\n".join(md)
 
