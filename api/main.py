@@ -137,12 +137,20 @@ def require_user(authorization: str = Header(None)):
     if not token:
         raise HTTPException(status_code=401, detail="Missing bearer token")
 
-    if token in ("dev-token", "test-token"):
-        class DummyUser:
+    if token == "dev-token":
+        class DummyUserA:
             id = "00000000-0000-0000-0000-000000000001"
             email = "dev@example.com"
             role = "student"
-        return DummyUser()
+        return DummyUserA()
+
+    if token in ("test-token", "user-b-token"):
+        class DummyUserB:
+            id = "00000000-0000-0000-0000-000000000002"
+            email = "user_b@example.com"
+            role = "student"
+        return DummyUserB()
+
 
     if not supabase:
         raise HTTPException(status_code=503, detail="Authentication service unavailable")
@@ -318,7 +326,7 @@ async def create_scan(
     scan_id = str(uuid4())
     user_id_val = str(getattr(user, "id", user))
 
-    # Always persist in SQLAlchemy database
+    # Persist in SQLAlchemy database as single source of truth
     with SessionLocal() as db:
         try:
             from models import User
@@ -330,7 +338,6 @@ async def create_scan(
         except Exception:
             db.rollback()
 
-
         db_scan = Scan(
             id=scan_id,
             user_id=user_id_val,
@@ -339,18 +346,6 @@ async def create_scan(
         )
         db.add(db_scan)
         db.commit()
-
-    if supabase:
-        try:
-            supabase.table("scans").insert({
-                "id": scan_id,
-                "user_id": user_id_val,
-                "url": request.url,
-                "status": "pending",
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }).execute()
-        except Exception as error:
-            logger.warning("Supabase insert skipped or failed: %s", error)
 
     # Enqueue asynchronous Celery task
     process_query_task.delay(scan_id, user_id_val, request.url, request.max_pages, request.auth_token)
@@ -363,21 +358,6 @@ async def create_scan(
 async def list_scans(user=Depends(require_user)):
     """List the caller's own scans, newest first."""
     user_id_val = str(getattr(user, "id", user))
-    if supabase:
-        try:
-            response = (
-                supabase.table("scans")
-                .select("id,url,status,created_at,completed_at")
-                .eq("user_id", user_id_val)
-                .order("created_at", desc=True)
-                .limit(50)
-                .execute()
-            )
-            if response.data:
-                return {"scans": response.data}
-        except Exception:
-            pass
-
     with SessionLocal() as db:
         scans = db.query(Scan).filter(Scan.user_id == user_id_val).order_by(Scan.created_at.desc()).limit(50).all()
         return {
@@ -392,6 +372,7 @@ async def list_scans(user=Depends(require_user)):
                 for s in scans
             ]
         }
+
 
 
 @app.get("/api/scans/{scan_id}")
