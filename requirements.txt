@@ -7,7 +7,7 @@
 #   .venv/bin/pip install -r requirements.txt
 #   .venv/bin/playwright install chromium
 #
-# Requires Python 3.12 (the existing .venv is built for cpython-3.12; the
+# Requires Python 3.11 (the CI workflow uses this version).
 # playwright and pydantic wheels are ABI-specific).
 
 # --- Stage 1: crawling ---

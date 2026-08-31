@@ -7,6 +7,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from browser_use import Agent, ChatGoogle
+from config import settings
 
 
 MODULE_DIR = Path(__file__).resolve().parent
@@ -23,11 +24,11 @@ RESULTS_DIR = MODULE_DIR / "results"
 
 async def explore(url):
 
-    api_key = os.getenv("GOOGLE_API_KEY")
+    api_key = settings.gemini_key
 
     if not api_key:
         raise RuntimeError(
-            "GOOGLE_API_KEY is missing. Check your .env file."
+            "GEMINI_API_KEY (or GOOGLE_API_KEY fallback) is missing. Check your .env file."
         )
 
     llm = ChatGoogle(

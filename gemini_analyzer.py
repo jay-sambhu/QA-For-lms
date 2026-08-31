@@ -64,7 +64,9 @@ class GeminiQAAnalyzer:
         # the current working directory, so the key is found no matter where
         # the pipeline is invoked from.
         load_dotenv(dotenv_path=MODULE_DIR / ".env")
-        self.api_key = api_key if api_key is not None else os.getenv("GOOGLE_API_KEY")
+        from config import settings
+        # Use the unified gemini_key property which prefers GEMINI_API_KEY over GOOGLE_API_KEY.
+        self.api_key = api_key if api_key is not None else settings.gemini_key
         self.model_client = model_client
         self.model_name = model_name
 
