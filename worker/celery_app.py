@@ -3,15 +3,25 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Resolve project root (two levels up from this file)
-ROOT_DIR = Path(__file__).resolve().parents[2]
+# Resolve project root (one level up from this file's parent directory)
+ROOT_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(dotenv_path=ROOT_DIR / ".env")
 
-# Redis broker/backend URL (default to localhost if not set)
-BROKER_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-BACKEND_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+try:
+    from config import settings
+    _redis_url = settings.REDIS_URL or os.getenv("REDIS_URL", "redis://localhost:6379/0")
+except Exception:
+    _redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-celery_app = Celery("qa_worker", broker=BROKER_URL, backend=BACKEND_URL)
+BROKER_URL = _redis_url
+BACKEND_URL = _redis_url
+
+celery_app = Celery(
+    "qa_worker",
+    broker=BROKER_URL,
+    backend=BACKEND_URL,
+    include=["worker.tasks"],
+)
 
 # Simple routing – all QA jobs go to the "qa_queue"
 celery_app.conf.task_routes = {"worker.tasks.process_query": {"queue": "qa_queue"}}
@@ -24,3 +34,4 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,      # avoid task hoarding
     task_acks_late=True,               # ensure tasks are re‑queued on failure
 )
+

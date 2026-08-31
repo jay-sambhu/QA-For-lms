@@ -2,7 +2,11 @@ import os
 import time
 from fastapi import HTTPException, Request, Depends
 import redis
-from ..config import Settings
+try:
+    from config import settings
+except ImportError:
+    from ..config import settings
+
 
 # Initialize Redis client (singleton)
 redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")

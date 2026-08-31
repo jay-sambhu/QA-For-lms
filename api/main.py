@@ -4,24 +4,31 @@ import logging
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import urlparse
 from uuid import uuid4, UUID
+from dotenv import load_dotenv
 
-# pyrefly: ignore [missing-import]
-# pyrefly: ignore [missing-import]
-from fastapi import Depends, FastAPI, HTTPException, Header, Request
+from fastapi import Depends, FastAPI, HTTPException, Header, Request, BackgroundTasks
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, field_validator
-from uuid import uuid4, UUID
-import os, sys, subprocess, json, ipaddress, logging, time
-from datetime import datetime, timezone
-from urllib.parse import urlparse
-from .rate_limiter import rate_limit_dependency
-from ..db import get_db
-from ..worker.tasks import process_query_task
+from supabase import create_client, Client
 
+try:
+    from .rate_limiter import rate_limit_dependency
+except ImportError:
+    from api.rate_limiter import rate_limit_dependency
+
+try:
+    from db import get_db, SessionLocal
+    from models import Scan
+    from worker.tasks import process_query_task
+except ImportError:
+    from ..db import get_db, SessionLocal
+    from ..models import Scan
+    from ..worker.tasks import process_query_task
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -41,10 +48,11 @@ supabase_service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 # Use Service Role Key for backend if available to bypass RLS, otherwise fallback to Anon Key
 supabase_key = supabase_service_key if supabase_service_key else supabase_anon_key
 
-if not supabase_url or not supabase_key:
-    raise RuntimeError("Supabase credentials not found in .env")
+if supabase_url and supabase_key:
+    supabase: Client = create_client(supabase_url, supabase_key)
+else:
+    supabase = None
 
-supabase: Client = create_client(supabase_url, supabase_key)
 
 # A scan crawls up to `max_pages` pages with a real browser, so it needs a
 # generous but finite budget. Without a timeout a wedged Playwright process
@@ -138,10 +146,6 @@ def require_user(authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail="Invalid token")
 
     return user
-
-
-from .models import Scan
-from .db import SessionLocal
 
 def get_scan(scan_id: str):
     """Retrieve a Scan record by ID using SQLAlchemy."""
@@ -284,24 +288,35 @@ def run_qa_pipeline(
 @app.post("/api/scans")
 async def create_scan(
     request: ScanRequest,
-    background_tasks: BackgroundTasks,
     user=Depends(require_user),
 ):
     scan_id = str(uuid4())
-    user_id_str = str(user.id)
+    user_id_val = str(getattr(user, "id", user))
 
-    supabase.table("scans").insert({
-        "id": scan_id,
-        "user_id": user.id,
-        "url": request.url,
-        "status": "pending",
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }).execute()
+    if supabase:
+        supabase.table("scans").insert({
+            "id": scan_id,
+            "user_id": user_id_val,
+            "url": request.url,
+            "status": "pending",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }).execute()
+    else:
+        with SessionLocal() as db:
+            db_scan = Scan(
+                id=scan_id,
+                user_id=user_id_val,
+                url=request.url,
+                status="pending",
+            )
+            db.add(db_scan)
+            db.commit()
 
     # Enqueue asynchronous Celery task
-    process_query_task.delay(scan_id, user_id_str, request.url, request.max_pages, request.auth_token)
+    process_query_task.delay(scan_id, user_id_val, request.url, request.max_pages, request.auth_token)
 
-    return {"scan_id": scan_id, "status": "pending", "message": "Scan queued successfully."}
+    return {"scan_id": scan_id, "url": request.url, "status": "pending", "message": "Scan queued successfully."}
+
 
 
 @app.get("/api/scans")

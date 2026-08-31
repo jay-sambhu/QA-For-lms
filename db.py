@@ -1,13 +1,20 @@
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
-from .config import settings
 
-# PostgreSQL engine (SQLAlchemy) – respects DATABASE_URL env var
+try:
+    from config import settings
+except ImportError:
+    from .config import settings
+
+# PostgreSQL engine (SQLAlchemy) – respects DATABASE_URL env var, falls back to SQLite in-memory
+db_url = settings.DATABASE_URL if (settings and settings.DATABASE_URL) else "sqlite:///:memory:"
+connect_args = {"check_same_thread": False} if db_url.startswith("sqlite") else {}
+
+
 engine = create_engine(
-    settings.DATABASE_URL,
+    db_url,
+    connect_args=connect_args,
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
     echo=False,
 )
 
@@ -23,3 +30,4 @@ def get_db():
         yield db
     finally:
         db.close()
+
