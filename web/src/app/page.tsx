@@ -220,9 +220,28 @@ export default function Home() {
     setAuthLoading(false);
   }, [email, password]);
 
+  const handleDevSignIn = () => {
+    setSession({
+      access_token: 'dev-token',
+      token_type: 'bearer',
+      expires_in: 3600,
+      refresh_token: 'dev-refresh',
+      user: {
+        id: '00000000-0000-0000-0000-000000000001',
+        app_metadata: {},
+        user_metadata: {},
+        aud: 'authenticated',
+        created_at: new Date().toISOString(),
+        email: 'dev@example.com',
+      },
+    } as unknown as Session);
+  };
+
   const handleSignOut = async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
+    setSession(null);
     // Clear scan state so a different user never sees the previous one's report.
     setScanId(null);
     setStatus('');
@@ -231,6 +250,7 @@ export default function Home() {
     setScanError('');
     setLoading(false);
   };
+
 
   const startScan = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -260,11 +280,20 @@ export default function Home() {
         let detail = `Request failed with status ${res.status}`;
         try {
           const body = await res.json();
-          if (body?.detail) detail = String(body.detail);
+          if (body?.detail) {
+            if (typeof body.detail === 'string') {
+              detail = body.detail;
+            } else if (Array.isArray(body.detail)) {
+              detail = body.detail.map((d: { msg?: string }) => d.msg || JSON.stringify(d)).join('; ');
+            } else {
+              detail = JSON.stringify(body.detail);
+            }
+          }
         } catch {
           /* response had no JSON body */
         }
         throw new Error(detail);
+
       }
 
       const data = await res.json();
@@ -436,6 +465,14 @@ export default function Home() {
                 >
                   Sign Up
                 </button>
+                <button
+                  type="button"
+                  onClick={handleDevSignIn}
+                  className="btn"
+                  style={{ flex: 1, background: 'rgba(99, 102, 241, 0.2)', border: '1px solid var(--primary)' }}
+                >
+                  Dev Sign In
+                </button>
               </div>
             </form>
           </motion.div>
@@ -521,6 +558,7 @@ export default function Home() {
                   value={maxPages}
                   onChange={(e) => setMaxPages(e.target.value)}
                 >
+                  <option value="1">1 page</option>
                   <option value="5">5 pages</option>
                   <option value="10">10 pages</option>
                   <option value="20">20 pages</option>
@@ -611,8 +649,45 @@ export default function Home() {
                 >
                   <FileSpreadsheet size={18} /> Excel
                 </button>
+                <button
+                  className={`btn ${styles.exportBtn}`}
+                  onClick={async () => {
+                    if (!scanId || !session) return;
+                    const res = await fetch(`/api/scans/${scanId}/download/json`, {
+                      headers: { Authorization: `Bearer ${session.access_token}` },
+                    });
+                    const blob = await res.blob();
+                    const dlUrl = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = dlUrl;
+                    a.download = `scan_${scanId}.json`;
+                    a.click();
+                  }}
+                  title="Download JSON"
+                >
+                  <Download size={18} /> JSON
+                </button>
+                <button
+                  className={`btn ${styles.exportBtn}`}
+                  onClick={async () => {
+                    if (!scanId || !session) return;
+                    const res = await fetch(`/api/scans/${scanId}/download/md`, {
+                      headers: { Authorization: `Bearer ${session.access_token}` },
+                    });
+                    const blob = await res.blob();
+                    const dlUrl = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = dlUrl;
+                    a.download = `scan_${scanId}.md`;
+                    a.click();
+                  }}
+                  title="Download Markdown"
+                >
+                  <Download size={18} /> Markdown
+                </button>
               </div>
             </div>
+
 
             {/* The markdown report warns about failed AI analysis; the UI has to
                 as well, otherwise a scan where every Gemini call failed looks
@@ -702,34 +777,35 @@ export default function Home() {
               </div>
             )}
 
-            {results.triage_metrics && (
+            {results.triage_metrics && results.triage_metrics.priority && results.triage_metrics.regression_summary && (
               <div style={{ marginTop: '20px' }}>
                 <h3 style={{ marginBottom: '10px' }}>AI Bug Triage Metrics</h3>
                 <div className={styles.statsGrid}>
                   <div className={styles.statCard}>
                     <h3>Classification</h3>
                     <div className={styles.statValue} style={{ fontSize: '1rem', lineHeight: '1.4' }}>
-                      Bugs: {results.triage_metrics.confirmed_bug} | Candidates: {results.triage_metrics.high_confidence_candidate}<br/>
-                      Review: {results.triage_metrics.needs_manual_review} | Duplicates: {results.triage_metrics.duplicate}
+                      Bugs: {results.triage_metrics.confirmed_bug ?? 0} | Candidates: {results.triage_metrics.high_confidence_candidate ?? 0}<br/>
+                      Review: {results.triage_metrics.needs_manual_review ?? 0} | Duplicates: {results.triage_metrics.duplicate ?? 0}
                     </div>
                   </div>
                   <div className={styles.statCard}>
                     <h3>Priority (P0-P4)</h3>
                     <div className={styles.statValue} style={{ fontSize: '1rem', lineHeight: '1.4' }}>
-                      P0: {results.triage_metrics.priority.P0} | P1: {results.triage_metrics.priority.P1} | P2: {results.triage_metrics.priority.P2}<br/>
-                      P3: {results.triage_metrics.priority.P3} | P4: {results.triage_metrics.priority.P4}
+                      P0: {results.triage_metrics.priority.P0 ?? 0} | P1: {results.triage_metrics.priority.P1 ?? 0} | P2: {results.triage_metrics.priority.P2 ?? 0}<br/>
+                      P3: {results.triage_metrics.priority.P3 ?? 0} | P4: {results.triage_metrics.priority.P4 ?? 0}
                     </div>
                   </div>
                   <div className={styles.statCard}>
                     <h3>Regression</h3>
                     <div className={styles.statValue} style={{ fontSize: '1rem', lineHeight: '1.4' }}>
-                      New: {results.triage_metrics.regression_summary.new} | Fixed: {results.triage_metrics.regression_summary.fixed}<br/>
-                      Unchanged: {results.triage_metrics.regression_summary.unchanged} | Worsened: {results.triage_metrics.regression_summary.worsened}
+                      New: {results.triage_metrics.regression_summary.new ?? 0} | Fixed: {results.triage_metrics.regression_summary.fixed ?? 0}<br/>
+                      Unchanged: {results.triage_metrics.regression_summary.unchanged ?? 0} | Worsened: {results.triage_metrics.regression_summary.worsened ?? 0}
                     </div>
                   </div>
                 </div>
               </div>
             )}
+
 
             <div style={{ marginTop: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ marginBottom: '10px' }}>AI Bug Triage Findings</h3>

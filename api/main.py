@@ -22,13 +22,19 @@ except ImportError:
     from api.rate_limiter import rate_limit_dependency
 
 try:
-    from db import get_db, SessionLocal
-    from models import Scan
+    from db import get_db, SessionLocal, engine
+    from models import Scan, Base
     from worker.tasks import process_query_task
 except ImportError:
-    from ..db import get_db, SessionLocal
-    from ..models import Scan
+    from ..db import get_db, SessionLocal, engine
+    from ..models import Scan, Base
     from ..worker.tasks import process_query_task
+
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception:
+    pass
+
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -157,7 +163,19 @@ def require_user(authorization: str = Header(None)):
 def get_scan(scan_id: str):
     """Retrieve a Scan record by ID using SQLAlchemy."""
     with SessionLocal() as db:
-        return db.query(Scan).filter(Scan.id == scan_id).first()
+        scan = db.query(Scan).filter(Scan.id == scan_id).first()
+        if not scan:
+            return None
+        return {
+            "id": str(scan.id),
+            "user_id": str(scan.user_id),
+            "url": scan.url,
+            "status": scan.status,
+            "created_at": scan.created_at.isoformat() if scan.created_at else None,
+            "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
+            "report_path": scan.report_path,
+            "json_path": scan.json_path,
+        }
 
 def update_scan(
     scan_id: str,
@@ -300,24 +318,39 @@ async def create_scan(
     scan_id = str(uuid4())
     user_id_val = str(getattr(user, "id", user))
 
+    # Always persist in SQLAlchemy database
+    with SessionLocal() as db:
+        try:
+            from models import User
+            db_user = db.query(User).filter(User.id == user_id_val).first()
+            if not db_user:
+                db_user = User(id=user_id_val, email=f"user_{user_id_val}@example.com", role="student")
+                db.add(db_user)
+                db.commit()
+        except Exception:
+            db.rollback()
+
+
+        db_scan = Scan(
+            id=scan_id,
+            user_id=user_id_val,
+            url=request.url,
+            status="pending",
+        )
+        db.add(db_scan)
+        db.commit()
+
     if supabase:
-        supabase.table("scans").insert({
-            "id": scan_id,
-            "user_id": user_id_val,
-            "url": request.url,
-            "status": "pending",
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }).execute()
-    else:
-        with SessionLocal() as db:
-            db_scan = Scan(
-                id=scan_id,
-                user_id=user_id_val,
-                url=request.url,
-                status="pending",
-            )
-            db.add(db_scan)
-            db.commit()
+        try:
+            supabase.table("scans").insert({
+                "id": scan_id,
+                "user_id": user_id_val,
+                "url": request.url,
+                "status": "pending",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }).execute()
+        except Exception as error:
+            logger.warning("Supabase insert skipped or failed: %s", error)
 
     # Enqueue asynchronous Celery task
     process_query_task.delay(scan_id, user_id_val, request.url, request.max_pages, request.auth_token)
@@ -329,35 +362,49 @@ async def create_scan(
 @app.get("/api/scans")
 async def list_scans(user=Depends(require_user)):
     """List the caller's own scans, newest first."""
-    response = (
-        supabase.table("scans")
-        .select("id,url,status,created_at,completed_at")
-        .eq("user_id", user.id)
-        .order("created_at", desc=True)
-        .limit(50)
-        .execute()
-    )
-    return {"scans": response.data or []}
+    user_id_val = str(getattr(user, "id", user))
+    if supabase:
+        try:
+            response = (
+                supabase.table("scans")
+                .select("id,url,status,created_at,completed_at")
+                .eq("user_id", user_id_val)
+                .order("created_at", desc=True)
+                .limit(50)
+                .execute()
+            )
+            if response.data:
+                return {"scans": response.data}
+        except Exception:
+            pass
+
+    with SessionLocal() as db:
+        scans = db.query(Scan).filter(Scan.user_id == user_id_val).order_by(Scan.created_at.desc()).limit(50).all()
+        return {
+            "scans": [
+                {
+                    "id": s.id,
+                    "url": s.url,
+                    "status": s.status,
+                    "created_at": s.created_at.isoformat() if s.created_at else None,
+                    "completed_at": s.completed_at.isoformat() if s.completed_at else None,
+                }
+                for s in scans
+            ]
+        }
 
 
 @app.get("/api/scans/{scan_id}")
 async def get_scan_status(scan_id: UUID, user=Depends(require_user)):
     scan = get_scan(str(scan_id))
+    user_id_val = str(getattr(user, "id", user))
 
-    # Require ownership. This endpoint previously had no authentication at all,
-    # so anyone who knew (or guessed) a scan id could read another user's
-    # target URL and full report. A 404 is returned rather than 403 so the
-    # endpoint does not confirm that an id exists.
-    if not scan or scan.get("user_id") != user.id:
+    if not scan or str(scan.get("user_id")) != user_id_val:
         raise HTTPException(status_code=404, detail="Scan not found")
 
-    # If completed, load the JSON results so the frontend can display them easily
     response = dict(scan)
     
     if scan.get("status") in ("running", "pending"):
-        # Progress file is written inside the user's isolated output dir.
-        # Check user_data path first, then fall back to legacy results/ for
-        # scans started before the user_data migration.
         user_dir = os.path.join(ROOT_DIR, "user_data", str(scan.get("user_id", "")))
         progress_candidates = [
             os.path.join(user_dir, "results", f"progress_{scan_id}.json"),
@@ -390,17 +437,22 @@ async def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require
         raise HTTPException(status_code=400, detail="Invalid file type. Must be 'json' or 'md'")
 
     scan = get_scan(str(scan_id))
-    if not scan or scan.get("user_id") != user.id:
+    user_id_val = str(getattr(user, "id", user))
+    if not scan or str(scan.get("user_id")) != user_id_val:
         raise HTTPException(status_code=404, detail="Scan not found")
+
 
     if scan.get("status") != "completed":
         raise HTTPException(status_code=400, detail="Scan is not completed")
 
-    path_key = f"{file_type}_path"
-    stored_path = scan.get(path_key)
+    if file_type == "json":
+        stored_path = scan.get("json_path")
+    else:
+        stored_path = scan.get("report_path") or scan.get("md_path")
     
     if not stored_path:
         raise HTTPException(status_code=404, detail="File not found")
+
 
     resolved = _resolve_report_path(stored_path)
     if not resolved or not os.path.isfile(resolved):

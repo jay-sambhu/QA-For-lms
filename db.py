@@ -6,9 +6,10 @@ try:
 except ImportError:
     from .config import settings
 
-# PostgreSQL engine (SQLAlchemy) – respects DATABASE_URL env var, falls back to SQLite in-memory
-db_url = settings.DATABASE_URL if (settings and settings.DATABASE_URL) else "sqlite:///:memory:"
+# PostgreSQL engine (SQLAlchemy) – respects DATABASE_URL env var, falls back to SQLite file
+db_url = settings.DATABASE_URL if (settings and settings.DATABASE_URL) else "sqlite:///./qa_agent.db"
 connect_args = {"check_same_thread": False} if db_url.startswith("sqlite") else {}
+
 
 
 engine = create_engine(
@@ -20,6 +21,16 @@ engine = create_engine(
 
 # Scoped session factory for thread‑local sessions (compatible with FastAPI)
 SessionLocal = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
+
+try:
+    try:
+        from models import Base
+    except ImportError:
+        from .models import Base
+    Base.metadata.create_all(bind=engine)
+except Exception:
+    pass
+
 
 def get_db():
     """FastAPI dependency that yields a SQLAlchemy session.

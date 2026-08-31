@@ -161,22 +161,23 @@ class TestDatabaseStatusLifecycle(unittest.TestCase):
         # Check pending
         s = get_scan(scan_id)
         self.assertIsNotNone(s)
-        self.assertEqual(s.status, "pending")
+        self.assertEqual(s["status"], "pending")
 
         # Transition to running
         update_scan(scan_id, "running")
         s = get_scan(scan_id)
-        self.assertEqual(s.status, "running")
+        self.assertEqual(s["status"], "running")
 
         # Transition to completed with report paths
         update_scan(scan_id, "completed", report_path="reports/scan.md", json_path="results/scan.json")
         s = get_scan(scan_id)
-        self.assertEqual(s.status, "completed")
-        self.assertEqual(s.report_path, "reports/scan.md")
-        self.assertEqual(s.json_path, "results/scan.json")
-        self.assertIsNotNone(s.completed_at)
+        self.assertEqual(s["status"], "completed")
+        self.assertEqual(s["report_path"], "reports/scan.md")
+        self.assertEqual(s["json_path"], "results/scan.json")
+        self.assertIsNotNone(s["completed_at"])
 
         # Transition to failed
         update_scan(scan_id, "failed")
         s = get_scan(scan_id)
-        self.assertEqual(s.status, "failed")
+        self.assertEqual(s["status"], "failed")
+
