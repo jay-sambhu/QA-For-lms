@@ -11,14 +11,17 @@ from uuid import uuid4, UUID
 
 # pyrefly: ignore [missing-import]
 # pyrefly: ignore [missing-import]
-from fastapi import Depends, FastAPI, BackgroundTasks, HTTPException, Header
+from fastapi import Depends, FastAPI, HTTPException, Header, Request
 from fastapi.responses import FileResponse
-# pyrefly: ignore [missing-import]
 from pydantic import BaseModel, field_validator
-# pyrefly: ignore [missing-import]
-from dotenv import load_dotenv
-# pyrefly: ignore [missing-import]
-from supabase import create_client, Client
+from uuid import uuid4, UUID
+import os, sys, subprocess, json, ipaddress, logging, time
+from datetime import datetime, timezone
+from urllib.parse import urlparse
+from .rate_limiter import rate_limit_dependency
+from ..db import get_db
+from ..worker.tasks import process_query_task
+
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -137,12 +140,13 @@ def require_user(authorization: str = Header(None)):
     return user
 
 
-def get_scan(scan_id: str):
-    response = supabase.table("scans").select("*").eq("id", scan_id).execute()
-    if response.data:
-        return response.data[0]
-    return None
+from .models import Scan
+from .db import SessionLocal
 
+def get_scan(scan_id: str):
+    """Retrieve a Scan record by ID using SQLAlchemy."""
+    with SessionLocal() as db:
+        return db.query(Scan).filter(Scan.id == scan_id).first()
 
 def update_scan(
     scan_id: str,
@@ -150,13 +154,18 @@ def update_scan(
     report_path: Optional[str] = None,
     json_path: Optional[str] = None,
 ):
-    data = {"status": status}
-    if status == "completed":
-        data["completed_at"] = datetime.now(timezone.utc).isoformat()
-        data["report_path"] = report_path
-        data["json_path"] = json_path
+    """Update a Scan's status and optional paths via SQLAlchemy."""
+    with SessionLocal() as db:
+        db_scan = db.query(Scan).filter(Scan.id == scan_id).first()
+        if not db_scan:
+            return
+        db_scan.status = status
+        if status == "completed":
+            db_scan.completed_at = datetime.now(timezone.utc)
+            db_scan.report_path = report_path
+            db_scan.json_path = json_path
+        db.commit()
 
-    supabase.table("scans").update(data).eq("id", scan_id).execute()
 
 
 def _relative_to_root(path: str) -> str:
@@ -289,9 +298,8 @@ async def create_scan(
         "created_at": datetime.now(timezone.utc).isoformat()
     }).execute()
 
-    background_tasks.add_task(
-        run_qa_pipeline, scan_id, user_id_str, request.url, request.max_pages, request.auth_token
-    )
+    # Enqueue asynchronous Celery task
+    process_query_task.delay(scan_id, user_id_str, request.url, request.max_pages, request.auth_token)
 
     return {"scan_id": scan_id, "status": "pending", "message": "Scan queued successfully."}
 

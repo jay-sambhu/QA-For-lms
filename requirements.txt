@@ -29,3 +29,11 @@ supabase==2.31.0
 # --- Optional: AI-driven exploration (explorer.py) ---
 # Only needed to run explorer.py; the four-stage pipeline does not import it.
 browser-use==0.13.8
+redis==5.0.8
+celery[redis]==5.4.0
+sqlalchemy==2.0.35
+asyncpg==0.29.0
+alembic==1.13.2
+psycopg2-binary==2.9.9
+tenacity==8.5.0
+
