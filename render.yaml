@@ -58,6 +58,11 @@ services:
     buildCommand: npm install && npm run build
     startCommand: npm run start
     envVars:
+      - key: API_URL
+        fromService:
+          type: web
+          name: ai-qa-api
+          property: url
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
