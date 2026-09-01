@@ -26,5 +26,5 @@ RUN playwright install --with-deps chromium
 # Copy application source code
 COPY . .
 
-# Default command
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Default command (uses $PORT provided by Render/Cloud or defaults to 8000)
+CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
