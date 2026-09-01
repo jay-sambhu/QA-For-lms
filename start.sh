@@ -23,7 +23,8 @@ C_RESET='\033[0m'
 
 echo -e "${C_CYAN}${C_BOLD}"
 echo "╔═══════════════════════════════════════════════════════════════════════╗"
-echo "║                     NEXUSQA ENTERPRISE SUITE                          ║"
+echo "║                      JASUSS ENTERPRISE SUITE                          ║"
+echo "║                    ( Powered by Nexus Engine )                        ║"
 echo "║          Interactive Local Development & Debugging Terminal           ║"
 echo "╚═══════════════════════════════════════════════════════════════════════╝"
 echo -e "${C_RESET}"
@@ -34,7 +35,7 @@ pkill -f "next dev" 2>/dev/null || true
 
 # Cleanup child processes on exit (Ctrl+C)
 cleanup() {
-    echo -e "\n${C_YELLOW}[!] Shutting down all NexusQA services cleanly...${C_RESET}"
+    echo -e "\n${C_YELLOW}[!] Shutting down all JASUSS services cleanly...${C_RESET}"
     kill $(jobs -p) 2>/dev/null || true
     echo -e "${C_GREEN}[✓] All processes stopped.${C_RESET}"
     exit 0
