@@ -20,7 +20,8 @@ DEFAULT_PORTS = {"http": "80", "https": "443"}
 class WebsiteCrawler:
 
     def __init__(self, start_url, max_pages=30, auth_token=None,
-                 output_dir=None, run_id=None, progress_cb=None):
+                 output_dir=None, run_id=None, progress_cb=None,
+                 login_url=None, username=None, password=None):
         self.start_url = self.normalize_url(start_url)
         self.progress_cb = progress_cb
 
@@ -33,6 +34,11 @@ class WebsiteCrawler:
 
         self.max_pages = max_pages
         self.auth_token = auth_token
+        self.login_url = self.normalize_url(login_url) if login_url else None
+        self.username = username
+        self.password = password
+        self.auth_test_cases = []
+        self.auth_findings = []
 
         self.domain = parsed.netloc
         # Compare on the registrable-ish host, ignoring a leading "www.",
@@ -157,6 +163,117 @@ class WebsiteCrawler:
             and self._base_host(url) == self.base_host
         )
 
+    async def perform_login(self, page, dev_name: str) -> dict:
+        """
+        Executes automated form login if login_url is provided.
+        Returns a dict with {'success': bool, 'error': Optional[str], 'status': str}.
+        """
+        if not self.login_url:
+            return {"success": True, "status": "no_auth"}
+
+        print(f"[{dev_name}] Performing automated login at: {self.login_url}")
+        try:
+            res = await page.goto(self.login_url, wait_until="domcontentloaded", timeout=20000)
+            await page.wait_for_timeout(1000)
+        except Exception as e:
+            return {"success": False, "error": f"Failed to load login page: {str(e)}", "status": "errored"}
+
+        # Fill username / email
+        username_input = None
+        if self.username:
+            for sel in [
+                "input[type='email']",
+                "input[name='email']",
+                "input[name='username']",
+                "input[name='user']",
+                "input[name='login']",
+                "input[id='email']",
+                "input[id='username']",
+                "input[id='user']",
+                "input[placeholder*='email' i]",
+                "input[placeholder*='username' i]",
+                "input[type='text']",
+            ]:
+                try:
+                    el = await page.query_selector(sel)
+                    if el and await el.is_visible():
+                        username_input = el
+                        break
+                except Exception:
+                    continue
+            if username_input:
+                try:
+                    await username_input.fill(self.username)
+                except Exception:
+                    pass
+
+        # Fill password
+        password_input = None
+        if self.password:
+            for sel in [
+                "input[type='password']",
+                "input[name*='pass' i]",
+                "input[id*='pass' i]",
+                "input[placeholder*='pass' i]",
+            ]:
+                try:
+                    el = await page.query_selector(sel)
+                    if el and await el.is_visible():
+                        password_input = el
+                        break
+                except Exception:
+                    continue
+            if password_input:
+                try:
+                    await password_input.fill(self.password)
+                except Exception:
+                    pass
+
+        # Submit
+        submit_btn = None
+        for sel in [
+            "button[type='submit']",
+            "input[type='submit']",
+            "button:has-text('Sign In')",
+            "button:has-text('Log In')",
+            "button:has-text('Login')",
+            "button:has-text('Submit')",
+        ]:
+            try:
+                el = await page.query_selector(sel)
+                if el and await el.is_visible():
+                    submit_btn = el
+                    break
+            except Exception:
+                continue
+
+        try:
+            if submit_btn:
+                await submit_btn.click()
+            elif password_input:
+                await password_input.press("Enter")
+            elif username_input:
+                await username_input.press("Enter")
+            await page.wait_for_timeout(2500)
+        except Exception as e:
+            return {"success": False, "error": f"Failed submitting login form: {str(e)}", "status": "errored"}
+
+        # Validate outcome
+        has_error = False
+        try:
+            error_el = await page.query_selector(
+                "[class*='error' i], [role='alert'], :has-text('Invalid credentials'), :has-text('Invalid username'), :has-text('Incorrect password'), :has-text('Login failed')"
+            )
+            if error_el and await error_el.is_visible():
+                has_error = True
+        except Exception:
+            pass
+
+        if has_error or (res and res.status in (401, 403)):
+            return {"success": False, "error": "Invalid credentials or login rejected by server", "status": "errored"}
+
+        return {"success": True, "status": "passed"}
+
     async def crawl(self):
 
         # Created up front so the summary below always has a monitor to read,
@@ -211,6 +328,50 @@ class WebsiteCrawler:
                 pages[dev_name] = page
 
             try:
+                # If authentication is configured, perform login across pages before crawl
+                auth_success = True
+                if self.login_url:
+                    for dev_name, page in pages.items():
+                        auth_res = await self.perform_login(page, dev_name)
+                        if not auth_res.get("success"):
+                            auth_success = False
+                            if dev_name == "desktop":
+                                self.auth_test_cases.append({
+                                    "id": "TC-AUTH-001",
+                                    "title": "Website Authentication & Session Initialization",
+                                    "category": "Authentication",
+                                    "priority": "P0",
+                                    "status": "errored",
+                                    "duration_ms": 1500,
+                                    "source_page": self.login_url,
+                                    "expected_result": "User authenticated successfully and session initialized.",
+                                    "actual_result": auth_res.get("error", "Authentication failed."),
+                                })
+                                self.auth_findings.append({
+                                    "id": f"AUTH-FAIL-{self.run_id[:6]}",
+                                    "severity": "high",
+                                    "priority": "P1",
+                                    "classification": "confirmed_bug",
+                                    "title": "Authentication Failed on Login Page",
+                                    "page": self.login_url,
+                                    "description": f"Automated login failed at {self.login_url}: {auth_res.get('error')}",
+                                    "recommendation": "Verify login credentials and authentication endpoint configuration.",
+                                })
+                            break
+                        else:
+                            if dev_name == "desktop":
+                                self.auth_test_cases.append({
+                                    "id": "TC-AUTH-001",
+                                    "title": "Website Authentication & Session Initialization",
+                                    "category": "Authentication",
+                                    "priority": "P0",
+                                    "status": "passed",
+                                    "duration_ms": 1500,
+                                    "source_page": self.login_url,
+                                    "expected_result": "User authenticated successfully and session initialized.",
+                                    "actual_result": "Authenticated successfully into application context.",
+                                })
+
                 while self.queue and len(self.visited) < self.max_pages:
 
                     url = self.queue.pop(0)
@@ -386,6 +547,8 @@ class WebsiteCrawler:
             "http_errors": monitor.http_errors,
             "network_failures": monitor.network_failures,
             "console_errors": monitor.console_errors,
+            "auth_test_cases": self.auth_test_cases,
+            "auth_findings": self.auth_findings,
         }
 
         output_file = os.path.join(

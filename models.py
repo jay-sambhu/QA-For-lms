@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Index, func
+from sqlalchemy import Column, String, Text, DateTime, Boolean, ForeignKey, Index, func
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -17,6 +17,7 @@ class Scan(Base):
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     url = Column(Text, nullable=False)
     status = Column(String, nullable=False, server_default="pending", index=True)
+    is_authenticated = Column(Boolean, nullable=True, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     report_path = Column(Text, nullable=True)

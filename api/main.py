@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 from fastapi import Depends, FastAPI, HTTPException, Header, Request, BackgroundTasks
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, SecretStr, field_validator
 from supabase import create_client, Client
 
 try:
@@ -67,10 +67,52 @@ PIPELINE_TIMEOUT_SECONDS = int(os.environ.get("QA_PIPELINE_TIMEOUT", "1800"))
 MAX_PAGES_LIMIT = int(os.environ.get("QA_MAX_PAGES_LIMIT", "100"))
 
 
+class ScanAuthPayload(BaseModel):
+    login_url: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[SecretStr] = None
+
+    @field_validator("login_url")
+    @classmethod
+    def validate_login_url(cls, value: Optional[str]) -> Optional[str]:
+        if not value:
+            return None
+        value = value.strip()
+        if not value.lower().startswith(("http://", "https://")):
+            raise ValueError("login_url must be an absolute http(s) URL")
+
+        parsed = urlparse(value)
+        host = (parsed.hostname or "").lower().strip(".").rstrip(".")
+        if not host:
+            raise ValueError("login_url must include a valid hostname")
+
+        BLOCKED_HOSTS = {
+            "169.254.169.254",
+            "metadata.google.internal",
+            "metadata.google",
+        }
+        if host in BLOCKED_HOSTS:
+            raise ValueError("login_url targets a reserved address")
+
+        try:
+            addr = ipaddress.ip_address(host)
+            if addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved:
+                raise ValueError("login_url targets a private or reserved address")
+        except ValueError as ip_err:
+            if "targets a" in str(ip_err):
+                raise
+            BLOCKED_PREFIXES = ("localhost", "local", "internal", "intranet")
+            if any(host == p or host.endswith("." + p) for p in BLOCKED_PREFIXES):
+                raise ValueError("login_url targets a reserved hostname")
+
+        return value
+
+
 class ScanRequest(BaseModel):
     url: str
     max_pages: int = 10
     auth_token: Optional[str] = None
+    auth: Optional[ScanAuthPayload] = None
 
     @field_validator("url")
     @classmethod
@@ -236,7 +278,14 @@ def _resolve_report_path(stored_path: str) -> Optional[str]:
 
 
 def run_qa_pipeline(
-    scan_id: str, user_id: str, url: str, max_pages: int, auth_token: Optional[str]
+    scan_id: str,
+    user_id: str,
+    url: str,
+    max_pages: int,
+    auth_token: Optional[str] = None,
+    login_url: Optional[str] = None,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
 ):
     """Run the QA pipeline as a background subprocess."""
     try:
@@ -268,6 +317,17 @@ def run_qa_pipeline(
         if safe_token:
             cmd.extend(["--auth-token", safe_token])
 
+    if login_url:
+        cmd.extend(["--login-url", login_url])
+
+    if username:
+        cmd.extend(["--username", username])
+
+    # Pass password via isolated transient environment variable to avoid process-table leakage
+    sub_env = dict(os.environ)
+    if password:
+        sub_env["QA_AUTH_PASSWORD"] = password
+
     try:
         result = subprocess.run(
             cmd,
@@ -275,6 +335,7 @@ def run_qa_pipeline(
             text=True,
             cwd=ROOT_DIR,
             timeout=PIPELINE_TIMEOUT_SECONDS,
+            env=sub_env,
         )
     except subprocess.TimeoutExpired:
         update_scan(scan_id, "failed")
@@ -318,6 +379,7 @@ def run_qa_pipeline(
         )
 
 
+@app.post("/api/v1/scans")
 @app.post("/api/scans")
 async def create_scan(
     request: ScanRequest,
@@ -325,6 +387,9 @@ async def create_scan(
 ):
     scan_id = str(uuid4())
     user_id_val = str(getattr(user, "id", user))
+    is_authenticated = bool(
+        request.auth_token or (request.auth and (request.auth.login_url or request.auth.username or request.auth.password))
+    )
 
     # Persist in SQLAlchemy database as single source of truth
     with SessionLocal() as db:
@@ -343,14 +408,44 @@ async def create_scan(
             user_id=user_id_val,
             url=request.url,
             status="pending",
+            is_authenticated=is_authenticated,
         )
         db.add(db_scan)
         db.commit()
 
-    # Enqueue asynchronous Celery task
-    process_query_task.delay(scan_id, user_id_val, request.url, request.max_pages, request.auth_token)
+    # Extract auth details securely without storing or logging passwords
+    login_url = request.auth.login_url if request.auth else None
+    username = request.auth.username if request.auth else None
+    password_raw = request.auth.password.get_secret_value() if request.auth and request.auth.password else None
 
-    return {"scan_id": scan_id, "url": request.url, "status": "pending", "message": "Scan queued successfully."}
+    # Enqueue asynchronous Celery task
+    if login_url or username or password_raw:
+        process_query_task.delay(
+            scan_id,
+            user_id_val,
+            request.url,
+            request.max_pages,
+            request.auth_token,
+            login_url,
+            username,
+            password_raw,
+        )
+    else:
+        process_query_task.delay(
+            scan_id,
+            user_id_val,
+            request.url,
+            request.max_pages,
+            request.auth_token,
+        )
+
+    return {
+        "scan_id": scan_id,
+        "url": request.url,
+        "status": "pending",
+        "is_authenticated": is_authenticated,
+        "message": "Scan queued successfully."
+    }
 
 
 
@@ -412,39 +507,65 @@ async def get_scan_status(scan_id: UUID, user=Depends(require_user)):
 
     return response
 
+def _get_download_media_type(format_ext: str) -> str:
+    """Return canonical media type for download formats."""
+    media_types = {
+        "json": "application/json",
+        "md": "text/markdown; charset=utf-8",
+        "markdown": "text/markdown; charset=utf-8",
+        "pdf": "application/pdf",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }
+    return media_types.get(format_ext, "application/octet-stream")
+
+
+@app.get("/api/v1/scans/{scan_id}/download/{file_type}")
 @app.get("/api/scans/{scan_id}/download/{file_type}")
 async def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require_user)):
-    file_type_norm = file_type.lower()
+    """
+    Download a completed scan's report artifact in the requested format (json, md/markdown).
+    Sets explicit Content-Disposition and media_type headers with canonical filenames.
+    """
+    file_type_norm = file_type.lower().strip(".")
     if file_type_norm not in ("json", "md", "markdown"):
-        raise HTTPException(status_code=400, detail="Invalid file type. Must be 'json', 'md', or 'markdown'")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file type. Supported formats: 'json', 'md', 'markdown'"
+        )
 
     scan = get_scan(str(scan_id))
     user_id_val = str(getattr(user, "id", user))
     if not scan or str(scan.get("user_id")) != user_id_val:
         raise HTTPException(status_code=404, detail="Scan not found")
 
-
     if scan.get("status") != "completed":
         raise HTTPException(status_code=400, detail="Scan is not completed")
 
-    if file_type == "json":
+    if file_type_norm == "json":
         stored_path = scan.get("json_path")
+        canonical_ext = "json"
     else:
         stored_path = scan.get("report_path") or scan.get("md_path")
-    
-    if not stored_path:
-        raise HTTPException(status_code=404, detail="File not found")
+        canonical_ext = "md"
 
+    if not stored_path:
+        raise HTTPException(status_code=404, detail="Report file path not found")
 
     resolved = _resolve_report_path(stored_path)
     if not resolved or not os.path.isfile(resolved):
-        raise HTTPException(status_code=404, detail="File not found on disk")
+        raise HTTPException(status_code=404, detail="Report file not found on disk")
 
-    filename = os.path.basename(resolved)
+    canonical_filename = f"qa-report-{scan_id}.{canonical_ext}"
+    media_type = _get_download_media_type(canonical_ext)
+
     return FileResponse(
         path=resolved,
-        filename=filename,
-        media_type="application/json" if file_type == "json" else "text/markdown"
+        filename=canonical_filename,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{canonical_filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
     )
 
 

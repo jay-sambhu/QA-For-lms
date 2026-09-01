@@ -1,11 +1,27 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Loader2, ArrowRight, ShieldCheck, Bug, FileText, LogOut, AlertTriangle, Download, FileSpreadsheet } from 'lucide-react';
+import {
+  Search,
+  Loader2,
+  ArrowRight,
+  ShieldCheck,
+  Bug,
+  FileText,
+  LogOut,
+  AlertTriangle,
+  Download,
+  FileSpreadsheet,
+  Lock,
+  Eye,
+  EyeOff,
+  KeyRound,
+  User,
+} from 'lucide-react';
 import { motion } from 'framer-motion';
 import { createClient, type Session } from '@supabase/supabase-js';
 import styles from './page.module.css';
-import { downloadPDF, downloadExcel } from '../utils/export';
+import { handleDownloadReport } from '../utils/export';
 
 /*
  * These are read at build time by Next.js. If they are missing the Supabase
@@ -159,6 +175,13 @@ export default function Home() {
   const [scanError, setScanError] = useState('');
   const [results, setResults] = useState<QAReport | null>(null);
   const [progress, setProgress] = useState<{percent: number, message: string} | null>(null);
+
+  // Authenticated Crawl Form State
+  const [requiresAuth, setRequiresAuth] = useState(false);
+  const [loginUrl, setLoginUrl] = useState('');
+  const [authUsername, setAuthUsername] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   
   // Triage Filters
   const [filterClass, setFilterClass] = useState<string>('ALL');
@@ -248,6 +271,11 @@ export default function Home() {
     setResults(null);
     setProgress(null);
     setScanError('');
+    setRequiresAuth(false);
+    setLoginUrl('');
+    setAuthUsername('');
+    setAuthPassword('');
+    setShowPassword(false);
     setLoading(false);
   };
 
@@ -263,16 +291,34 @@ export default function Home() {
     try {
       const parsedMaxPages = parseInt(maxPages, 10);
 
-      const res = await fetch('/api/scans', {
+      const payload: {
+        url: string;
+        max_pages: number;
+        auth?: {
+          login_url?: string;
+          username?: string;
+          password?: string;
+        };
+      } = {
+        url,
+        max_pages: Number.isFinite(parsedMaxPages) ? parsedMaxPages : 10,
+      };
+
+      if (requiresAuth) {
+        payload.auth = {
+          login_url: loginUrl.trim() || undefined,
+          username: authUsername.trim() || undefined,
+          password: authPassword || undefined,
+        };
+      }
+
+      const res = await fetch('/api/v1/scans', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({
-          url,
-          max_pages: Number.isFinite(parsedMaxPages) ? parsedMaxPages : 10,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -576,6 +622,80 @@ export default function Home() {
                   )}
                 </button>
               </div>
+
+              <div className={styles.authToggleRow}>
+                <label className={styles.authToggleLabel}>
+                  <input
+                    type="checkbox"
+                    checked={requiresAuth}
+                    onChange={(e) => setRequiresAuth(e.target.checked)}
+                    className={styles.authCheckbox}
+                  />
+                  <span className={styles.authToggleText}>
+                    <Lock size={16} /> Requires Website Login?
+                  </span>
+                </label>
+              </div>
+
+              {requiresAuth && (
+                <motion.div
+                  className={styles.authFieldsContainer}
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                >
+                  <div className={styles.authFieldGroup}>
+                    <label className={styles.authFieldLabel}>
+                      <KeyRound size={14} /> Login URL
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://example.com/login"
+                      value={loginUrl}
+                      onChange={(e) => setLoginUrl(e.target.value)}
+                      className={styles.authInput}
+                    />
+                  </div>
+
+                  <div className={styles.authFieldGroup}>
+                    <label className={styles.authFieldLabel}>
+                      <User size={14} /> Username / Email
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="user@example.com"
+                      value={authUsername}
+                      onChange={(e) => setAuthUsername(e.target.value)}
+                      className={styles.authInput}
+                      autoComplete="username"
+                    />
+                  </div>
+
+                  <div className={styles.authFieldGroup}>
+                    <label className={styles.authFieldLabel}>
+                      <Lock size={14} /> Password
+                    </label>
+                    <div className={styles.passwordInputWrapper}>
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="••••••••••••"
+                        value={authPassword}
+                        onChange={(e) => setAuthPassword(e.target.value)}
+                        className={styles.authInput}
+                        autoComplete="current-password"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className={styles.passwordToggleBtn}
+                        title={showPassword ? 'Hide Password' : 'Show Password'}
+                      >
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
               {scanError && (
                 <div
                   style={{
@@ -637,50 +757,56 @@ export default function Home() {
               <div className={styles.exportActions}>
                 <button
                   className={`btn ${styles.exportBtn}`}
-                  onClick={() => downloadPDF(results, scanId)}
+                  onClick={() =>
+                    handleDownloadReport({
+                      results,
+                      scanId,
+                      format: 'pdf',
+                      sessionToken: session?.access_token,
+                    })
+                  }
                   title="Download PDF"
                 >
                   <Download size={18} /> PDF
                 </button>
                 <button
                   className={`btn ${styles.exportBtn}`}
-                  onClick={() => downloadExcel(results, scanId)}
+                  onClick={() =>
+                    handleDownloadReport({
+                      results,
+                      scanId,
+                      format: 'excel',
+                      sessionToken: session?.access_token,
+                    })
+                  }
                   title="Download Excel"
                 >
                   <FileSpreadsheet size={18} /> Excel
                 </button>
                 <button
                   className={`btn ${styles.exportBtn}`}
-                  onClick={async () => {
-                    if (!scanId || !session) return;
-                    const res = await fetch(`/api/scans/${scanId}/download/json`, {
-                      headers: { Authorization: `Bearer ${session.access_token}` },
-                    });
-                    const blob = await res.blob();
-                    const dlUrl = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = dlUrl;
-                    a.download = `scan_${scanId}.json`;
-                    a.click();
-                  }}
+                  onClick={() =>
+                    handleDownloadReport({
+                      results,
+                      scanId,
+                      format: 'json',
+                      sessionToken: session?.access_token,
+                    })
+                  }
                   title="Download JSON"
                 >
                   <Download size={18} /> JSON
                 </button>
                 <button
                   className={`btn ${styles.exportBtn}`}
-                  onClick={async () => {
-                    if (!scanId || !session) return;
-                    const res = await fetch(`/api/scans/${scanId}/download/md`, {
-                      headers: { Authorization: `Bearer ${session.access_token}` },
-                    });
-                    const blob = await res.blob();
-                    const dlUrl = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = dlUrl;
-                    a.download = `scan_${scanId}.md`;
-                    a.click();
-                  }}
+                  onClick={() =>
+                    handleDownloadReport({
+                      results,
+                      scanId,
+                      format: 'md',
+                      sessionToken: session?.access_token,
+                    })
+                  }
                   title="Download Markdown"
                 >
                   <Download size={18} /> Markdown

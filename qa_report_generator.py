@@ -130,6 +130,24 @@ class QAReportGenerator:
             except Exception:
                 pass
 
+        # Integrate authentication test cases and findings from crawl data if present
+        if crawl_data:
+            auth_tc = crawl_data.get("auth_test_cases", [])
+            if auth_tc:
+                test_cases = list(auth_tc) + test_cases
+            auth_findings = crawl_data.get("auth_findings", [])
+            if auth_findings:
+                existing_findings = safe_data.get("findings", [])
+                safe_data["findings"] = list(auth_findings) + existing_findings
+
+            # If authentication errored, downstream unexecuted test cases must be BLOCKED
+            auth_failed = any(tc.get("status") == "errored" for tc in auth_tc)
+            if auth_failed:
+                for tc in test_cases:
+                    if tc.get("id") != "TC-AUTH-001" and tc.get("status") not in ("passed", "failed", "errored"):
+                        tc["status"] = "blocked"
+                        tc["actual_result"] = "Blocked due to authentication failure."
+
         # Run Authoritative Calculation Engine
         start_t = safe_data.get("metadata", {}).get("start_time") or safe_data.get("start_time")
         end_t = safe_data.get("metadata", {}).get("end_time") or safe_data.get("end_time")

@@ -22,7 +22,8 @@ from qa_report_generator import QAReportGenerator
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
-async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_dir=None, **kwargs):
+async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_dir=None,
+                       login_url=None, username=None, password=None, **kwargs):
     """Run all four stages, returning the final report dict or None."""
     run_id = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
     base_dir = os.path.abspath(output_dir) if output_dir else ROOT_DIR
@@ -49,7 +50,10 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
         auth_token=auth_token,
         output_dir=base_dir,
         run_id=run_id,
-        progress_cb=lambda pct, msg: report_progress("crawling", pct, msg)
+        progress_cb=lambda pct, msg: report_progress("crawling", pct, msg),
+        login_url=login_url,
+        username=username,
+        password=password,
     )
     crawl_result = await crawler.crawl()
     crawl_file = crawl_result.get("output_file")
@@ -193,6 +197,9 @@ async def main():
     parser.add_argument("url", help="Target URL to crawl and analyze")
     parser.add_argument("--max-pages", type=int, default=30, help="Maximum pages to crawl")
     parser.add_argument("--auth-token", help="Optional Bearer token for authentication")
+    parser.add_argument("--login-url", help="Optional Login URL for form authentication")
+    parser.add_argument("--username", help="Optional Username/Email for form authentication")
+    parser.add_argument("--password", help="Optional Password for form authentication")
     parser.add_argument(
         "--run-id",
         help="Identifier used to name this run's output files (default: timestamp)",
@@ -213,6 +220,8 @@ async def main():
     if args.max_pages < 1:
         parser.error("--max-pages must be at least 1")
 
+    password = args.password or os.environ.get("QA_AUTH_PASSWORD")
+
     try:
         result = await run_pipeline(
             args.url,
@@ -220,6 +229,9 @@ async def main():
             auth_token=args.auth_token,
             run_id=args.run_id,
             output_dir=args.output_dir,
+            login_url=args.login_url,
+            username=args.username,
+            password=password,
             ci_mode=args.ci,
             baseline_file=args.baseline,
         )

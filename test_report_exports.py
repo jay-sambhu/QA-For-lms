@@ -203,6 +203,91 @@ class TestReportExports(unittest.TestCase):
         self.assertNotIn("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", report_str)
         self.assertNotIn("supersecretpass", report_str)
 
+    def test_download_endpoints_naming_and_headers(self):
+        """Verify that download endpoints return canonical Content-Disposition and media_types."""
+        import tempfile
+        from fastapi.testclient import TestClient
+        from api.main import app, ROOT_DIR
+        from db import SessionLocal
+        from models import Scan
+
+        client = TestClient(app)
+        scan_id = "11111111-2222-3333-4444-555555555555"
+        user_id = "00000000-0000-0000-0000-000000000001"
+
+        # Create temporary dummy report files
+        user_dir = Path(ROOT_DIR) / "user_data" / user_id
+        user_dir.mkdir(parents=True, exist_ok=True)
+        json_file = user_dir / f"final_qa_report_{scan_id}.json"
+        md_file = user_dir / f"final_qa_report_{scan_id}.md"
+
+        json_file.write_text(json.dumps({"test": "data"}), encoding="utf-8")
+        md_file.write_text("# Test Report", encoding="utf-8")
+
+        # Save scan in DB
+        with SessionLocal() as session:
+            existing = session.query(Scan).filter(Scan.id == scan_id).first()
+            if existing:
+                session.delete(existing)
+                session.commit()
+            scan = Scan(
+                id=scan_id,
+                user_id=user_id,
+                url="https://download-test.example.com",
+                status="completed",
+                json_path=str(json_file.relative_to(ROOT_DIR)),
+                report_path=str(md_file.relative_to(ROOT_DIR)),
+            )
+            session.add(scan)
+            session.commit()
+
+        try:
+            # 1. Test /api/v1/scans/{scan_id}/download/json
+            res_v1_json = client.get(
+                f"/api/v1/scans/{scan_id}/download/json",
+                headers={"Authorization": "Bearer dev-token"},
+            )
+            self.assertEqual(res_v1_json.status_code, 200)
+            self.assertIn("application/json", res_v1_json.headers.get("content-type", ""))
+            self.assertEqual(
+                res_v1_json.headers.get("content-disposition"),
+                f'attachment; filename="qa-report-{scan_id}.json"',
+            )
+
+            # 2. Test /api/v1/scans/{scan_id}/download/md
+            res_v1_md = client.get(
+                f"/api/v1/scans/{scan_id}/download/md",
+                headers={"Authorization": "Bearer dev-token"},
+            )
+            self.assertEqual(res_v1_md.status_code, 200)
+            self.assertIn("text/markdown", res_v1_md.headers.get("content-type", ""))
+            self.assertEqual(
+                res_v1_md.headers.get("content-disposition"),
+                f'attachment; filename="qa-report-{scan_id}.md"',
+            )
+
+            # 3. Test /api/scans/{scan_id}/download/markdown (legacy alias)
+            res_legacy_md = client.get(
+                f"/api/scans/{scan_id}/download/markdown",
+                headers={"Authorization": "Bearer dev-token"},
+            )
+            self.assertEqual(res_legacy_md.status_code, 200)
+            self.assertEqual(
+                res_legacy_md.headers.get("content-disposition"),
+                f'attachment; filename="qa-report-{scan_id}.md"',
+            )
+        finally:
+            if json_file.exists():
+                json_file.unlink()
+            if md_file.exists():
+                md_file.unlink()
+            with SessionLocal() as session:
+                s = session.query(Scan).filter(Scan.id == scan_id).first()
+                if s:
+                    session.delete(s)
+                    session.commit()
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -464,8 +464,9 @@ export const downloadPDF = (results: any, scanId: string | null = '') => {
     doc.text(`Page ${i} of ${totalPages}`, 196, 292, { align: 'right' });
   }
 
-  const safeFilename = `QA_Report_${data.target.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
-  doc.save(`${safeFilename}.pdf`);
+  const safeScanId = scanId && scanId !== 'N/A' ? scanId : data.target.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  const safeFilename = `qa-report-${safeScanId}.pdf`;
+  doc.save(safeFilename);
 };
 
 /**
@@ -693,6 +694,105 @@ export const downloadExcel = (results: any, scanId: string | null = '') => {
     XLSX.utils.book_append_sheet(wb, cdWs, 'Device Responsiveness');
   }
 
-  const safeFilename = `QA_Report_${data.target.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
-  XLSX.writeFile(wb, `${safeFilename}.xlsx`);
+  const safeScanId = scanId && scanId !== 'N/A' ? scanId : data.target.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  const safeFilename = `qa-report-${safeScanId}.xlsx`;
+  XLSX.writeFile(wb, safeFilename);
+};
+
+export type ExportFormat = 'pdf' | 'excel' | 'xlsx' | 'json' | 'md' | 'markdown';
+
+export interface DownloadReportOptions {
+  results: any;
+  scanId?: string | null;
+  format: ExportFormat;
+  sessionToken?: string | null;
+}
+
+/**
+ * Parses filename from Content-Disposition header with fallback.
+ */
+export const extractFilenameFromDisposition = (disposition: string | null, fallbackFilename: string): string => {
+  if (!disposition) return fallbackFilename;
+
+  // Check for RFC 5987 / RFC 6266 utf-8 filename
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match && utf8Match[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+
+  // Check for standard filename="name" or filename=name
+  const standardMatch = disposition.match(/filename="?([^";]+)"?/i);
+  if (standardMatch && standardMatch[1]) {
+    return standardMatch[1].trim();
+  }
+
+  return fallbackFilename;
+};
+
+/**
+ * Unified download handler for all report formats (PDF, Excel, JSON, Markdown).
+ * Automatically resolves Content-Disposition headers, MIME types, and fallback filenames.
+ */
+export const handleDownloadReport = async ({
+  results,
+  scanId,
+  format,
+  sessionToken,
+}: DownloadReportOptions): Promise<void> => {
+  const normFormat = format.toLowerCase() as ExportFormat;
+  const safeScanId = scanId || results?.report_metadata?.scan_id || 'unknown';
+
+  if (normFormat === 'pdf') {
+    downloadPDF(results, safeScanId);
+    return;
+  }
+
+  if (normFormat === 'excel' || normFormat === 'xlsx') {
+    downloadExcel(results, safeScanId);
+    return;
+  }
+
+  if (normFormat === 'json' || normFormat === 'md' || normFormat === 'markdown') {
+    const apiFormat = normFormat === 'markdown' ? 'md' : normFormat;
+    const fallbackExt = apiFormat === 'json' ? 'json' : 'md';
+    const fallbackFilename = `qa-report-${safeScanId}.${fallbackExt}`;
+    const mediaType = apiFormat === 'json' ? 'application/json' : 'text/markdown; charset=utf-8';
+
+    const headers: Record<string, string> = {};
+    if (sessionToken) {
+      headers['Authorization'] = `Bearer ${sessionToken}`;
+    }
+
+    let response = await fetch(`/api/v1/scans/${safeScanId}/download/${apiFormat}`, { headers });
+    if (!response.ok) {
+      // Fallback for non-v1 endpoint
+      response = await fetch(`/api/scans/${safeScanId}/download/${apiFormat}`, { headers });
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to download report (${response.status}: ${response.statusText})`);
+    }
+
+    const disposition = response.headers.get('content-disposition');
+    const filename = extractFilenameFromDisposition(disposition, fallbackFilename);
+
+    const blob = await response.blob();
+    const typedBlob = new Blob([blob], { type: mediaType });
+    const downloadUrl = window.URL.createObjectURL(typedBlob);
+
+    const anchor = document.createElement('a');
+    anchor.href = downloadUrl;
+    anchor.download = filename.endsWith(`.${fallbackExt}`) ? filename : `${filename}.${fallbackExt}`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+
+    setTimeout(() => {
+      window.URL.revokeObjectURL(downloadUrl);
+    }, 1000);
+  }
 };
