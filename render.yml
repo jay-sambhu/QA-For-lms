@@ -62,7 +62,7 @@ services:
         fromService:
           type: web
           name: ai-qa-api
-          property: url
+          property: hostport
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -80,4 +80,4 @@ databases:
   - name: ai-qa-postgres
     plan: starter
     databaseName: ai_qa_db
-    user: postgres
+    user: ai_qa_user
