@@ -44,6 +44,8 @@ export const downloadPDF = (results: any) => {
   const summary = results.summary || {};
   const severity = results.severity || {};
   const tcm = results.test_case_metrics;
+  const qs = results.qa_metrics?.quality_score || results.report_metadata?.quality_score;
+  const durationSec = results.qa_metrics?.duration_seconds ?? results.report_metadata?.duration_seconds;
   
   const summaryBody = [
     ['Total Findings', summary.total_candidates?.toString() || '0'],
@@ -51,9 +53,16 @@ export const downloadPDF = (results: any) => {
     ['Critical / High Severity', `${severity.critical || 0} / ${severity.high || 0}`],
     ['Medium / Low / Info', `${severity.medium || 0} / ${severity.low || 0} / ${severity.info || 0}`],
   ];
+  if (qs) {
+    summaryBody.push(['Site Health Score', `${qs.score} / 100 (Grade ${qs.grade} - ${qs.summary})`]);
+  }
+  if (durationSec !== undefined && durationSec > 0) {
+    summaryBody.push(['Scan Duration', `${durationSec}s`]);
+  }
   if (tcm) {
+    const passRateStr = tcm.pass_rate !== undefined ? ` (${tcm.pass_rate}%)` : '';
     summaryBody.push(['Test Cases Executed / Total', `${tcm.executed} / ${tcm.total}`]);
-    summaryBody.push(['Test Cases Passed / Failed', `${tcm.passed} / ${tcm.failed}`]);
+    summaryBody.push(['Test Cases Passed / Failed', `${tcm.passed}${passRateStr} / ${tcm.failed}`]);
   }
   
   autoTable(doc, {
@@ -159,6 +168,9 @@ export const downloadExcel = (results: any) => {
   const target = results.report_metadata?.target || 'Unknown Target';
   const findings = results.findings || [];
   
+  const qs = results.qa_metrics?.quality_score || results.report_metadata?.quality_score;
+  const durationSec = results.qa_metrics?.duration_seconds ?? results.report_metadata?.duration_seconds;
+
   const summaryData = [
     { Metric: 'Target', Value: target },
     { Metric: 'Generated At', Value: results.report_metadata?.generated_at || new Date().toISOString() },
@@ -171,6 +183,14 @@ export const downloadExcel = (results: any) => {
     { Metric: 'Low Severity', Value: results.severity?.low || 0 },
     { Metric: 'Info Severity', Value: results.severity?.info || 0 },
   ];
+
+  if (qs) {
+    summaryData.push({ Metric: 'Health Score', Value: `${qs.score} / 100` });
+    summaryData.push({ Metric: 'Health Grade', Value: `Grade ${qs.grade} (${qs.summary})` });
+  }
+  if (durationSec !== undefined && durationSec > 0) {
+    summaryData.push({ Metric: 'Duration Seconds', Value: durationSec });
+  }
   
   if (results.triage_metrics) {
     const tm = results.triage_metrics;

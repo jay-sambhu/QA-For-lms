@@ -32,16 +32,16 @@ def evaluate_quality_gate(report_path):
     regression_summary = report.get("summary", {}).get("regression_summary", {})
     
     # Calculate counts (in case they differ slightly from summary)
-    new_findings = [f for f in findings if f.get("regression_status") == "NEW"]
-    persisting_findings = [f for f in findings if f.get("regression_status") == "UNCHANGED"]
-    changed_findings = [f for f in findings if f.get("regression_status") in ("WORSENED", "IMPROVED")]
+    new_findings = [f for f in findings if (f.get("regression_status") or "").upper() == "NEW"]
+    persisting_findings = [f for f in findings if (f.get("regression_status") or "").upper() == "UNCHANGED"]
+    changed_findings = [f for f in findings if (f.get("regression_status") or "").upper() in ("WORSENED", "IMPROVED")]
     
     fixed_count = regression_summary.get("fixed", 0)
 
     blocking_findings = []
     
     for f in new_findings:
-        sev = f.get("severity", "info").lower()
+        sev = (f.get("severity") or "info").lower()
         if sev == "critical" and fail_on_critical:
             blocking_findings.append(f)
         elif sev == "high" and fail_on_high:

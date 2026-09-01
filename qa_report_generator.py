@@ -9,11 +9,15 @@ QA report in JSON and Markdown formats for human QA testers.
 import json
 import os
 import re
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
 
 from security.redactor import SecretRedactor  # noqa: F401 — re-exported for backward compat
+
+
+from calculation_engine import CalculationEngine
 
 
 class QAReportGenerator:
@@ -24,6 +28,8 @@ class QAReportGenerator:
         # Screenshot paths recorded by the crawler are relative to the repo
         # root, so existence checks are resolved against that, not the CWD.
         self.base_dir = Path(base_dir) if base_dir else Path.cwd()
+        self.test_cases_file = None
+        self.test_results_file = None
 
     def _screenshot_exists(self, screenshot):
         """Check whether a recorded screenshot path resolves to a real file."""
@@ -53,15 +59,12 @@ class QAReportGenerator:
         return reports[0] if reports else None
 
     def generate_json_report(self, source_path, raw_data):
-        """Generate the final JSON report structure."""
+        """Generate the final JSON report structure using CalculationEngine."""
         # Clean the raw data of any secrets
         safe_data = SecretRedactor.redact(raw_data)
         
-        # We need to know how many pages were crawled. 
-        # The gemini report doesn't directly store pages_crawled, 
-        # so we will look for crawl_result if possible, or leave it as unknown if we can't easily find it.
-        # But wait, we can try to read it from crawl_result if it exists.
-        pages_crawled = 0
+        # Crawl results lookup
+        crawl_data = None
         crawl_result_path = safe_data.get("source", {}).get("crawl_result")
         if crawl_result_path:
             candidates = [Path(crawl_result_path)]
@@ -73,13 +76,12 @@ class QAReportGenerator:
                 try:
                     with open(path, "r", encoding="utf-8") as f:
                         crawl_data = json.load(f)
-                        pages_crawled = crawl_data.get("pages_crawled", 0)
                     break
                 except (OSError, json.JSONDecodeError):
                     continue
                     
         # Extract interactive metrics
-        interactive_metrics = None
+        interactive_data = None
         interactive_path = safe_data.get("source", {}).get("interactive_result")
         if not interactive_path:
             # Fallback to looking in results_dir by timestamp matching or finding the newest
@@ -96,118 +98,68 @@ class QAReportGenerator:
                     continue
                 try:
                     with open(path, "r", encoding="utf-8") as f:
-                        int_data = json.load(f)
-                        interactive_metrics = int_data.get("summary")
+                        interactive_data = json.load(f)
                     break
                 except (OSError, json.JSONDecodeError):
                     continue
-        
-        timestamp = datetime.now().isoformat()
 
-        # Stage 3 records how many candidates the model failed to analyse. That
-        # number has to reach the reader: without it a scan where every Gemini
-        # call failed looks identical to a scan where the model genuinely
-        # returned "needs manual review" for everything.
+        # Load test cases if provided
+        test_cases = []
+        if hasattr(self, "test_cases_file") and self.test_cases_file and os.path.exists(self.test_cases_file):
+            try:
+                with open(self.test_cases_file, "r") as f:
+                    tc_data = json.load(f)
+                    test_cases = tc_data.get("test_cases", [])
+            except Exception:
+                pass
+
+        # Load test results if provided
+        test_results = []
+        if hasattr(self, "test_results_file") and self.test_results_file and os.path.exists(self.test_results_file):
+            try:
+                with open(self.test_results_file, "r") as f:
+                    tr_data = json.load(f)
+                    test_results = tr_data.get("results", [])
+                    for tc in test_cases:
+                        for res in test_results:
+                            if tc.get("id") == res.get("test_id"):
+                                tc["status"] = res.get("status")
+                                tc["actual_result"] = res.get("actual_result")
+                                tc["evidence"] = res.get("evidence")
+                                tc["duration_ms"] = res.get("duration_ms", 0)
+            except Exception:
+                pass
+
+        # Run Authoritative Calculation Engine
+        start_t = safe_data.get("metadata", {}).get("start_time") or safe_data.get("start_time")
+        end_t = safe_data.get("metadata", {}).get("end_time") or safe_data.get("end_time")
+        canonical = CalculationEngine.calculate_canonical_metrics(
+            raw_data=safe_data,
+            crawl_data=crawl_data,
+            interactive_data=interactive_data,
+            test_cases=test_cases if test_cases else None,
+            test_results=test_results if test_results else None,
+            start_time=start_t,
+            end_time=end_t,
+        )
+
+        timestamp = datetime.now().isoformat()
         source_summary = safe_data.get("summary", {}) or {}
         analysis_failures = source_summary.get("analysis_failures", 0) or 0
 
-        # Calculate cross-device metrics
-        cross_device_metrics = {
-            "devices_tested": 3,
-            "pages_tested": pages_crawled,
-            "responsive_findings": 0,
-            "device_breakdown": {
-                "desktop": 0,
-                "iphone": 0,
-                "ipad": 0
-            }
-        }
-
-        for finding in safe_data.get("findings", []):
-            cand = finding.get("candidate") or {}
-            f_type = finding.get("type") or cand.get("type", "")
-            title = (finding.get("title") or cand.get("title", "")).lower()
-            if f_type == "responsive_issue" or "responsive" in title or "overflow" in title:
-                cross_device_metrics["responsive_findings"] += 1
-                devs = finding.get("affected_devices") or cand.get("affected_devices") or []
-                if not devs and (finding.get("device") or cand.get("device")):
-                    devs = [finding.get("device") or cand.get("device")]
-                for dev in devs:
-                    d_lower = str(dev).lower()
-                    if "desktop" in d_lower:
-                        cross_device_metrics["device_breakdown"]["desktop"] += 1
-                    elif "iphone" in d_lower:
-                        cross_device_metrics["device_breakdown"]["iphone"] += 1
-                    elif "ipad" in d_lower:
-                        cross_device_metrics["device_breakdown"]["ipad"] += 1
-
-        report = {
-            "report_metadata": {
-                "generated_at": timestamp,
-                "source_report": str(source_path),
-                "target": safe_data.get("target", "Unknown"),
-                "pages_crawled": pages_crawled,
-                "ai_analysis_failures": analysis_failures,
-                "ai_analysis_degraded": bool(analysis_failures),
-                "interactive_metrics": interactive_metrics,
-                "cross_device_metrics": cross_device_metrics,
-            },
-            "summary": {
-                "total_candidates": 0,
-                "confirmed_bugs": 0,
-                "potential_issues": 0,
-                "manual_review": 0,
-                "informational": 0,
-                "ignored": 0,
-                "analysis_failures": analysis_failures,
-                "regression_summary": safe_data.get("summary", {}).get("triage_metrics", {}).get("regression_summary", {
-                    "new": 0, "fixed": 0, "unchanged": 0, "worsened": 0, "improved": 0
-                })
-            },
-            "severity": {
-                "critical": 0,
-                "high": 0,
-                "medium": 0,
-                "low": 0,
-                "info": 0
-            },
-            "findings": []
-        }
-
+        # Construct findings list
+        findings_list = []
         for finding in safe_data.get("findings", []):
             classification = finding.get("classification", "")
             candidate = finding.get("candidate", {})
             triage = candidate.get("triage", {})
             
-            # Update classification summary
-            report["summary"]["total_candidates"] += 1
-            if classification == "confirmed_bug":
-                report["summary"]["confirmed_bugs"] += 1
-            elif classification == "high_confidence_candidate" or classification == "likely_bug":
-                report["summary"]["potential_issues"] += 1
-            elif classification == "needs_manual_review":
-                report["summary"]["manual_review"] += 1
-            elif classification in ["expected_behavior", "informational"]:
-                report["summary"]["informational"] += 1
-            else:
-                report["summary"]["ignored"] += 1
-                
-            # Update severity summary
-            severity = finding.get("severity", "info").lower()
-            if severity in report["severity"]:
-                report["severity"][severity] += 1
-            else:
-                report["severity"]["info"] += 1
-                
-            candidate = finding.get("candidate", {})
-            
-            # Construct final finding
             final_finding = {
                 "id": finding.get("id", "UNKNOWN"),
                 "classification": classification,
-                "severity": finding.get("severity", "info").lower(),
+                "severity": CalculationEngine.normalize_severity(finding.get("severity")),
                 "confidence": finding.get("confidence", "low"),
-                "priority": triage.get("priority", "P3"),
+                "priority": triage.get("priority") or finding.get("priority") or "P3",
                 "user_impact": finding.get("user_impact", triage.get("user_impact", "unknown")),
                 "root_cause": triage.get("root_cause", {}),
                 "regression_status": candidate.get("regression_status", "NEW"),
@@ -224,11 +176,6 @@ class QAReportGenerator:
                 "recommendation": finding.get("recommended_action", ""),
                 "manual_verification": finding.get("reasoning", "Needs manual verification."),
                 "occurrences": candidate.get("occurrences", 1),
-                # Page count, not event count. Stage 2 redefined `occurrences`
-                # to mean raw events (one page can fail an endpoint 30 times)
-                # and moved the page count to `affected_page_count`, so reading
-                # `occurrences` here reported "affects 30 pages" for a single
-                # page. Both numbers are now carried explicitly.
                 "affected_pages_count": candidate.get(
                     "affected_page_count", len(candidate.get("affected_pages", []))
                 ),
@@ -237,44 +184,78 @@ class QAReportGenerator:
                 ),
                 "screenshots": candidate.get("screenshots", [])
             }
-            
-            report["findings"].append(final_finding)
-            
-        report["triage_metrics"] = safe_data.get("triage_metrics", {})
-            
-        if hasattr(self, "test_cases_file") and self.test_cases_file and os.path.exists(self.test_cases_file):
-            try:
-                with open(self.test_cases_file, "r") as f:
-                    tc_data = json.load(f)
-                    report["test_cases"] = tc_data.get("test_cases", [])
-            except Exception:
-                pass
-                
-        if hasattr(self, "test_results_file") and self.test_results_file and os.path.exists(self.test_results_file):
-            try:
-                with open(self.test_results_file, "r") as f:
-                    tr_data = json.load(f)
-                    results = tr_data.get("results", [])
-                    for tc in report.get("test_cases", []):
-                        for res in results:
-                            if tc["id"] == res["test_id"]:
-                                tc["status"] = res["status"]
-                                tc["actual_result"] = res["actual_result"]
-                                tc["evidence"] = res["evidence"]
-                                tc["duration_ms"] = res.get("duration_ms", 0)
-            except Exception:
-                pass
-                
-        if "test_cases" in report:
-            tcm = {"total": len(report["test_cases"]), "executed": 0, "passed": 0, "failed": 0, "blocked": 0, "manual_review": 0}
-            for tc in report["test_cases"]:
-                status = tc.get("status", tc.get("execution_policy", "manual_review"))
-                if status in tcm:
-                    tcm[status] += 1
-                if status in ["passed", "failed"]:
-                    tcm["executed"] += 1
-            report["test_case_metrics"] = tcm
-            
+            findings_list.append(final_finding)
+
+        # Build comprehensive report maintaining backward-compatibility
+        f_metrics = canonical.findings
+        tc_metrics = canonical.test_cases
+        c_metrics = canonical.crawl
+        int_metrics = canonical.interactive
+
+        # Construct legacy summary mapping
+        potential_issues = (
+            f_metrics.by_classification.get("high_confidence_candidate", 0)
+            + f_metrics.by_classification.get("likely_bug", 0)
+        )
+        report = {
+            "report_metadata": {
+                "generated_at": timestamp,
+                "source_report": str(source_path),
+                "target": canonical.target,
+                "pages_crawled": c_metrics.pages_crawled,
+                "ai_analysis_failures": analysis_failures,
+                "ai_analysis_degraded": bool(analysis_failures),
+                "interactive_metrics": asdict(int_metrics) if interactive_data else None,
+                "cross_device_metrics": asdict(c_metrics),
+                "quality_score": asdict(canonical.quality_score),
+            },
+            "summary": {
+                "total_candidates": f_metrics.total,
+                "confirmed_bugs": f_metrics.by_classification.get("confirmed_bug", 0),
+                "potential_issues": potential_issues,
+                "manual_review": f_metrics.by_classification.get("needs_manual_review", 0),
+                "informational": (
+                    f_metrics.by_classification.get("informational", 0)
+                    + f_metrics.by_classification.get("expected_behavior", 0)
+                ),
+                "ignored": f_metrics.by_classification.get("ignored", 0),
+                "analysis_failures": analysis_failures,
+                "regression_summary": f_metrics.by_regression,
+            },
+            "severity": f_metrics.by_severity,
+            "findings": findings_list,
+            "triage_metrics": {
+                "confirmed_bug": f_metrics.by_classification.get("confirmed_bug", 0),
+                "high_confidence_candidate": f_metrics.by_classification.get("high_confidence_candidate", 0),
+                "needs_manual_review": f_metrics.by_classification.get("needs_manual_review", 0),
+                "expected_behavior": f_metrics.by_classification.get("expected_behavior", 0),
+                "informational": f_metrics.by_classification.get("informational", 0),
+                "duplicate": f_metrics.by_classification.get("duplicate", 0),
+                "priority": f_metrics.by_priority,
+                "regression_summary": f_metrics.by_regression,
+            },
+            "qa_metrics": canonical.to_dict(),
+        }
+
+        if test_cases:
+            report["test_cases"] = test_cases
+            report["test_case_metrics"] = {
+                "total": tc_metrics.total,
+                "executed": tc_metrics.executed,
+                "passed": tc_metrics.passed,
+                "failed": tc_metrics.failed,
+                "blocked": tc_metrics.blocked,
+                "manual_review": tc_metrics.skipped,
+                "skipped": tc_metrics.skipped,
+                "errored": tc_metrics.errored,
+                "pass_rate": tc_metrics.pass_rate,
+                "fail_rate": tc_metrics.fail_rate,
+                "skip_rate": tc_metrics.skip_rate,
+                "block_rate": tc_metrics.block_rate,
+                "errored_rate": tc_metrics.errored_rate,
+                "duration_ms": tc_metrics.duration_ms,
+            }
+
         return report
 
     def generate_markdown_report(self, json_report):
@@ -510,11 +491,12 @@ class QAReportGenerator:
 
         if "test_case_metrics" in json_report:
             tcm = json_report["test_case_metrics"]
+            pass_rate_str = f" ({tcm.get('pass_rate', 0)}%)" if tcm.get('pass_rate') is not None else ""
             md.extend([
                 "## 5. Test Case Summary\n",
                 f"- **Total:** {tcm['total']}",
                 f"- **Executed:** {tcm['executed']}",
-                f"- **Passed:** {tcm['passed']}",
+                f"- **Passed:** {tcm['passed']}{pass_rate_str}",
                 f"- **Failed:** {tcm['failed']}",
                 f"- **Manual Review:** {tcm['manual_review']}",
                 f"- **Blocked:** {tcm['blocked']}\n",
