@@ -1,15 +1,11 @@
-#!/usr/bin/env python3
-import time
+import sys
 import fakeredis
 
 def main():
-    print("Starting local Redis TCP server on 127.0.0.1:6379...")
-    server = fakeredis.TcpFakeServer(("127.0.0.1", 6379))
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("Stopping Redis server...")
-        server.shutdown()
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 6379
+    print(f"Starting local Redis TCP server on port {port}...")
+    server = fakeredis.TcpFakeServer(("127.0.0.1", port))
+    server.serve_forever()
 
 if __name__ == "__main__":
     main()
