@@ -51,10 +51,26 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index('ix_scans_user_created', table_name='scans')
-    op.drop_index('ix_scans_created_at', table_name='scans')
-    op.drop_index('ix_scans_status', table_name='scans')
-    op.drop_index('ix_scans_user_id', table_name='scans')
-    op.drop_table('scans')
-    op.drop_index('ix_users_email', table_name='users')
-    op.drop_table('users')
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    existing_tables = insp.get_table_names()
+
+    if 'payment_transactions' in existing_tables:
+        op.drop_table('payment_transactions')
+    if 'subscriptions' in existing_tables:
+        op.drop_table('subscriptions')
+    if 'scans' in existing_tables:
+        try:
+            op.drop_index('ix_scans_user_created', table_name='scans')
+            op.drop_index('ix_scans_created_at', table_name='scans')
+            op.drop_index('ix_scans_status', table_name='scans')
+            op.drop_index('ix_scans_user_id', table_name='scans')
+        except Exception:
+            pass
+        op.drop_table('scans')
+    if 'users' in existing_tables:
+        try:
+            op.drop_index('ix_users_email', table_name='users')
+        except Exception:
+            pass
+        op.drop_table('users')

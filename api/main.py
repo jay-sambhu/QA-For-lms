@@ -45,7 +45,18 @@ load_dotenv(dotenv_path=os.path.join(ROOT_DIR, ".env"))
 # token" apart from "Supabase is down".
 logger = logging.getLogger("ai_qa_agent.api")
 
-app = FastAPI(title="AI QA Agent SaaS API")
+app = FastAPI(
+    title="JASUSS API",
+    description="Automated Web Quality Assurance & Regression Platform (Powered by Nexus)",
+    version="2.0.0",
+)
+
+# Register Domain Routers
+from api.billing import billing_router
+from api.admin import admin_router
+
+app.include_router(billing_router)
+app.include_router(admin_router)
 
 supabase_url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
 supabase_anon_key = os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")

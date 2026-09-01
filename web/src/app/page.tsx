@@ -43,6 +43,14 @@ import {
   Compass,
   Cpu,
   GitCompare,
+  CreditCard,
+  ShoppingBag,
+  DollarSign,
+  TrendingUp,
+  Server,
+  Users,
+  LayoutDashboard,
+  Shield,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient, type Session } from '@supabase/supabase-js';
@@ -215,6 +223,9 @@ export default function Home() {
   const [session, setSession] = useState<Session | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(!supabase);
 
+  // Main Page View Navigation
+  const [viewMode, setViewMode] = useState<'scanner' | 'admin'>('scanner');
+
   // Production Auth Modal States
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
@@ -224,6 +235,19 @@ export default function Home() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authSuccess, setAuthSuccess] = useState('');
+
+  // Pricing & Multi-Payment Gateway Modal States
+  const [showPricingModal, setShowPricingModal] = useState(false);
+  const [selectedGateway, setSelectedGateway] = useState<'stripe' | 'lemonsqueezy' | 'razorpay' | 'paypal'>('stripe');
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingMessage, setBillingMessage] = useState('');
+
+  // Admin Telemetry States
+  const [adminMetrics, setAdminMetrics] = useState<any>(null);
+  const [adminUsers, setAdminUsers] = useState<any[]>([]);
+  const [adminScans, setAdminScans] = useState<any[]>([]);
+  const [adminSystem, setAdminSystem] = useState<any>(null);
+  const [adminLoading, setAdminLoading] = useState(false);
 
   // Scan input states
   const [url, setUrl] = useState('');
@@ -306,6 +330,39 @@ export default function Home() {
     }
   }, [progress?.message]);
 
+  // Fetch Admin Data when switching to Admin view
+  const fetchAdminData = useCallback(async () => {
+    setAdminLoading(true);
+    try {
+      const [mRes, uRes, sRes, sysRes] = await Promise.all([
+        fetch('/api/v1/admin/metrics'),
+        fetch('/api/v1/admin/users'),
+        fetch('/api/v1/admin/scans'),
+        fetch('/api/v1/admin/system'),
+      ]);
+      if (mRes.ok) setAdminMetrics(await mRes.json());
+      if (uRes.ok) {
+        const data = await uRes.json();
+        setAdminUsers(data.users || []);
+      }
+      if (sRes.ok) {
+        const data = await sRes.json();
+        setAdminScans(data.scans || []);
+      }
+      if (sysRes.ok) setAdminSystem(await sysRes.json());
+    } catch (err) {
+      console.error('Failed to load admin metrics:', err);
+    } finally {
+      setAdminLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (viewMode === 'admin') {
+      fetchAdminData();
+    }
+  }, [viewMode, fetchAdminData]);
+
   // Production Sign In Handler
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -372,6 +429,41 @@ export default function Home() {
       setAuthError(err instanceof Error ? err.message : 'Registration failed.');
     } finally {
       setAuthLoading(false);
+    }
+  };
+
+  // Multi-Payment Gateway Checkout Handler
+  const handleCheckout = async (planId: string) => {
+    setBillingLoading(true);
+    setBillingMessage('');
+    try {
+      const res = await fetch('/api/v1/billing/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: session?.access_token ? `Bearer ${session.access_token}` : '',
+        },
+        body: JSON.stringify({
+          plan_id: planId,
+          gateway: selectedGateway,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Checkout initiation failed');
+
+      if (data.checkout_url) {
+        setBillingMessage(`Redirecting to secure ${selectedGateway.toUpperCase()} checkout...`);
+        setTimeout(() => {
+          window.location.href = data.checkout_url;
+        }, 1000);
+      } else {
+        setBillingMessage(data.message || 'Plan upgraded successfully!');
+        setTimeout(() => setShowPricingModal(false), 1500);
+      }
+    } catch (err) {
+      setBillingMessage(err instanceof Error ? err.message : 'Checkout failed.');
+    } finally {
+      setBillingLoading(false);
     }
   };
 
@@ -625,17 +717,35 @@ export default function Home() {
       <div className={styles.container}>
         {/* Top Header */}
         <header className={styles.header}>
-          <div className={styles.logo}>
+          <div className={styles.logo} onClick={() => setViewMode('scanner')} style={{ cursor: 'pointer' }}>
             <div className={styles.logoIconWrapper}>
               <ShieldCheck size={22} color="#ffffff" />
             </div>
             <div>
-              <span>Nexus</span>
-              <span className={styles.logoSub}>QA Suite</span>
+              <span>JASUSS</span>
+              <span className={styles.logoSub}>Powered by Nexus</span>
             </div>
           </div>
 
           <div className={styles.headerRight}>
+            <button
+              type="button"
+              onClick={() => setShowPricingModal(true)}
+              className={styles.navLink}
+            >
+              <CreditCard size={15} />
+              <span>Pricing & Plans</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setViewMode(viewMode === 'admin' ? 'scanner' : 'admin')}
+              className={`${styles.navLink} ${viewMode === 'admin' ? styles.navLinkActive : ''}`}
+            >
+              <LayoutDashboard size={15} />
+              <span>Admin Console</span>
+            </button>
+
             <div className={styles.engineStatusPill}>
               <div className={styles.engineStatusDot} />
               <span>Engine Online</span>
@@ -685,977 +795,1360 @@ export default function Home() {
           </div>
         </header>
 
-        {/* Hero Banner */}
-        {showForm && (
-          <motion.section
-            className={styles.hero}
+        {/* ==============================================================
+         * ADMIN CONSOLE VIEW
+         * ============================================================== */}
+        {viewMode === 'admin' ? (
+          <motion.div
+            className={styles.adminView}
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
+            transition={{ duration: 0.35 }}
           >
-            <div className={styles.badge}>
-              <Sparkles size={14} /> Continuous Web Quality & Regression Suite
-            </div>
-            <h1 className={styles.title}>
-              Enterprise Automated{' '}
-              <span className={styles.gradientText}>Web Quality Assurance</span>
-            </h1>
-            <p className={styles.subtitle}>
-              Full-stack website verification: multi-viewport crawling, synthetic interaction testing,
-              automated defect triage, and executive compliance reports.
-            </p>
-          </motion.section>
-        )}
-
-        {/* Launch Card / Scanning Screen Container */}
-        <motion.div
-          className={styles.actionPanel}
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
-        >
-          {showForm ? (
-            /* ==============================================================
-             * FORM STATE
-             * ============================================================== */
-            <form onSubmit={startScan} className={styles.form}>
-              <div className={styles.inputRow}>
-                <div className={styles.inputGroup}>
-                  <Search className={styles.inputIcon} size={20} />
-                  <input
-                    type="url"
-                    placeholder="https://example.com or your web application URL"
-                    className={styles.urlInput}
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <select
-                  id="max-pages"
-                  className={styles.pagesSelect}
-                  value={maxPages}
-                  onChange={(e) => setMaxPages(e.target.value)}
-                  title="Maximum Pages to Crawl"
-                >
-                  <option value="1">1 page</option>
-                  <option value="5">5 pages</option>
-                  <option value="10">10 pages (Standard)</option>
-                  <option value="20">20 pages (Deep)</option>
-                  <option value="50">50 pages (Full)</option>
-                </select>
-
-                <button type="submit" className={styles.launchBtn} disabled={loading}>
-                  <span>Run QA Scan</span>
-                  <ArrowRight size={18} />
-                </button>
+            <div className={styles.adminTopBar}>
+              <div className={styles.adminTitleBlock}>
+                <h2>JASUSS Admin & Cluster Telemetry</h2>
+                <p>Global platform oversight, revenue metrics, active tenants, and worker nodes.</p>
               </div>
 
-              {/* Quick Sample URLs */}
-              <div className={styles.quickPillsRow}>
-                <span>Try Instant Demo:</span>
+              <div className={styles.adminActions}>
                 <button
-                  type="button"
-                  onClick={() => setUrl('https://example.com')}
-                  className={styles.quickPill}
-                >
-                  example.com
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUrl('https://news.ycombinator.com')}
-                  className={styles.quickPill}
-                >
-                  Hacker News
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUrl('https://httpbin.org/status/200')}
-                  className={styles.quickPill}
-                >
-                  HTTPBin Demo
-                </button>
-              </div>
-
-              {/* Authenticated Website Toggle */}
-              <div className={styles.authToggleRow}>
-                <label className={styles.authToggleLabel}>
-                  <input
-                    type="checkbox"
-                    checked={requiresAuth}
-                    onChange={(e) => setRequiresAuth(e.target.checked)}
-                    className={styles.authCheckbox}
-                  />
-                  <span className={styles.authToggleText}>
-                    <Lock size={16} /> Requires Website Login?
-                  </span>
-                </label>
-              </div>
-
-              {/* Collapsible Auth Inputs */}
-              <AnimatePresence>
-                {requiresAuth && (
-                  <motion.div
-                    className={styles.authFieldsContainer}
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.25 }}
-                  >
-                    <div className={styles.authFieldGroup}>
-                      <label className={styles.authFieldLabel}>
-                        <KeyRound size={13} /> Login URL
-                      </label>
-                      <input
-                        type="url"
-                        placeholder="https://example.com/login"
-                        value={loginUrl}
-                        onChange={(e) => setLoginUrl(e.target.value)}
-                        className={styles.authInput}
-                      />
-                    </div>
-
-                    <div className={styles.authFieldGroup}>
-                      <label className={styles.authFieldLabel}>
-                        <User size={13} /> Username / Email
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="user@example.com"
-                        value={authUsername}
-                        onChange={(e) => setAuthUsername(e.target.value)}
-                        className={styles.authInput}
-                        autoComplete="username"
-                      />
-                    </div>
-
-                    <div className={styles.authFieldGroup}>
-                      <label className={styles.authFieldLabel}>
-                        <Lock size={13} /> Password
-                      </label>
-                      <div className={styles.passwordInputWrapper}>
-                        <input
-                          type={showPassword ? 'text' : 'password'}
-                          placeholder="••••••••••••"
-                          value={authPassword}
-                          onChange={(e) => setAuthPassword(e.target.value)}
-                          className={styles.authInput}
-                          autoComplete="current-password"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className={styles.passwordToggleBtn}
-                          title={showPassword ? 'Hide Password' : 'Show Password'}
-                        >
-                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {scanError && (
-                <div style={{ color: 'var(--danger)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <AlertTriangle size={16} /> {scanError}
-                </div>
-              )}
-            </form>
-          ) : (
-            /* ==============================================================
-             * PROMINENT SCANNING / LOADING STATE (With Stop Button & Multi-Device Deck)
-             * ============================================================== */
-            <div className={styles.loadingScreen}>
-              {/* Header Badge & Target with Stop Scan Action */}
-              <div className={styles.loadingHeader}>
-                <div className={styles.loadingControlBar}>
-                  <div className={styles.targetUrlBadge}>
-                    <Globe size={15} />
-                    <span>Inspecting Target: {url}</span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleStopScan}
-                    className={styles.stopScanBtn}
-                    title="Stop and cancel the active scan"
-                  >
-                    <Square size={14} fill="#ef4444" />
-                    <span>Stop Scan</span>
-                  </button>
-                </div>
-
-                <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#f8fafc', marginTop: '6px' }}>
-                  Automated Test Execution Running
-                </h2>
-                <p style={{ color: '#94a3b8', fontSize: '0.92rem' }}>
-                  Executing multi-viewport crawler, synthetic user journeys, and defect analysis.
-                </p>
-              </div>
-
-              {/* Matched Progress Bar Card */}
-              <div className={styles.progressBarWrapper}>
-                <div className={styles.progressInfoRow}>
-                  <span className={styles.progressStageBadge}>
-                    {progress?.stage
-                      ? progress.stage.replace('_', ' ')
-                      : currentStageIndex === 0
-                      ? 'Stage 1: Multi-Device Crawling'
-                      : currentStageIndex === 1
-                      ? 'Stage 2: Interactive Testing'
-                      : currentStageIndex === 2
-                      ? 'Stage 3: Defect Detection'
-                      : 'Stage 4: Quality Synthesis'}
-                  </span>
-                  <span className={styles.progressNumbers}>
-                    {progress?.page_current
-                      ? `Page ${progress.page_current} of ${progress.page_total || maxPages} (${progress.percent}%)`
-                      : `${progress?.percent || 5}% Complete`}
-                  </span>
-                </div>
-                <div className={styles.progressBarTrack}>
-                  <div className={styles.progressBarFill} style={{ width: `${progress?.percent || 5}%` }} />
-                </div>
-              </div>
-
-              {/* Glowing Radar Pulse & Live Percentage Dial */}
-              <div className={styles.radarContainer}>
-                <div className={styles.radarOuterRing} />
-                <div className={styles.radarInnerRing} />
-                <div className={styles.radarSweep} />
-                <div className={styles.radarCenterContent}>
-                  <span className={styles.radarPercent}>{progress?.percent || 5}%</span>
-                  <span className={styles.radarElapsed}>
-                    <Clock size={10} style={{ display: 'inline', marginRight: '3px' }} />
-                    {formattedTime}
-                  </span>
-                </div>
-              </div>
-
-              {/* LIVE MULTI-DEVICE VIEWPORT DECK */}
-              <div className={styles.deviceDeckSection}>
-                <div className={styles.deviceDeckTitleRow}>
-                  <span>Live Multi-Device Emulation Viewports</span>
-                  <span style={{ color: '#34d399', fontSize: '0.75rem' }}>● 3 ISOLATED CONTEXTS ACTIVE</span>
-                </div>
-
-                <div className={styles.deviceDeckGrid}>
-                  {[
-                    {
-                      id: 'desktop',
-                      name: 'Desktop Chrome',
-                      resolution: '1920 × 1080',
-                      icon: <Monitor size={18} />,
-                    },
-                    {
-                      id: 'iphone',
-                      name: 'iPhone 13',
-                      resolution: '390 × 844 (Touch)',
-                      icon: <Smartphone size={18} />,
-                    },
-                    {
-                      id: 'ipad',
-                      name: 'iPad (gen 7)',
-                      resolution: '820 × 1180 (Tablet)',
-                      icon: <Tablet size={18} />,
-                    },
-                  ].map((dev) => {
-                    const isCrawlingThis =
-                      activeDeviceName.toLowerCase().includes(dev.id) ||
-                      activeDeviceName.toLowerCase().includes(dev.name.toLowerCase());
-
-                    return (
-                      <div
-                        key={dev.id}
-                        className={`${styles.deviceCard} ${isCrawlingThis ? styles.deviceCardActive : ''}`}
-                      >
-                        <div className={styles.deviceCardHeader}>
-                          <div className={styles.deviceIconName}>
-                            <span style={{ color: isCrawlingThis ? '#818cf8' : '#64748b' }}>{dev.icon}</span>
-                            <span>{dev.name}</span>
-                          </div>
-                          <span
-                            className={`${styles.deviceStatusPill} ${
-                              isCrawlingThis ? styles.devicePillActive : styles.devicePillIdle
-                            }`}
-                          >
-                            {isCrawlingThis ? 'Crawling Now' : 'Ready'}
-                          </span>
-                        </div>
-
-                        <div className={styles.deviceMockupFrame}>
-                          <div style={{ color: isCrawlingThis ? '#38bdf8' : '#94a3b8', fontSize: '0.78rem' }}>
-                            {isCrawlingThis
-                              ? progress?.active_url || url || 'Navigating DOM...'
-                              : 'Waiting for viewport pass...'}
-                          </div>
-                          <span className={styles.deviceResolution}>{dev.resolution}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* 4-Stage Stepper Grid */}
-              <div className={styles.stepperGrid}>
-                {[
-                  {
-                    step: 1,
-                    title: 'Multi-Device Crawl',
-                    desc: 'Desktop, iPhone 13, iPad viewports',
-                    icon: <Monitor size={16} />,
-                  },
-                  {
-                    step: 2,
-                    title: 'Interactive Testing',
-                    desc: 'Forms, clicks, state transitions',
-                    icon: <Zap size={16} />,
-                  },
-                  {
-                    step: 3,
-                    title: 'Defect Detection',
-                    desc: 'Network errors, console, layout',
-                    icon: <Bug size={16} />,
-                  },
-                  {
-                    step: 4,
-                    title: 'Quality Synthesis',
-                    desc: 'Compliance grading & executive report',
-                    icon: <Sparkles size={16} />,
-                  },
-                ].map((st, sIdx) => {
-                  const isActive = sIdx === currentStageIndex;
-                  const isDone = sIdx < currentStageIndex;
-
-                  return (
-                    <div
-                      key={st.step}
-                      className={`${styles.stepCard} ${
-                        isActive ? styles.stepActive : isDone ? styles.stepCompleted : ''
-                      }`}
-                    >
-                      <div className={styles.stepHeader}>
-                        <span className={styles.stepNumber}>Stage 0{st.step}</span>
-                        {isDone ? (
-                          <CheckCircle2 size={16} color="#34d399" />
-                        ) : isActive ? (
-                          <Loader2 size={16} className="pulse" color="#818cf8" />
-                        ) : (
-                          <span style={{ color: '#475569' }}>{st.icon}</span>
-                        )}
-                      </div>
-                      <div className={styles.stepTitle}>{st.title}</div>
-                      <div className={styles.stepDesc}>{st.desc}</div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Monospace Diagnostic Terminal Stream */}
-              <div className={styles.terminalCard}>
-                <div className={styles.terminalHeader}>
-                  <div className={styles.terminalDots}>
-                    <div className={styles.terminalDot} style={{ background: '#ef4444' }} />
-                    <div className={styles.terminalDot} style={{ background: '#f59e0b' }} />
-                    <div className={styles.terminalDot} style={{ background: '#10b981' }} />
-                  </div>
-                  <div className={styles.terminalTitle}>
-                    <Terminal size={14} /> LIVE DIAGNOSTIC STREAM
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: '#10b981' }}>STREAMING ●</div>
-                </div>
-
-                <div className={styles.terminalBody}>
-                  {logFeed.map((log, lIdx) => (
-                    <div key={lIdx} className={styles.terminalLine}>
-                      <span className={styles.terminalPrompt}>&gt;</span>
-                      <span>{log}</span>
-                    </div>
-                  ))}
-                  <div className={styles.terminalLine}>
-                    <span className={styles.terminalPrompt}>&gt;</span>
-                    <span className={styles.terminalCurrentMessage}>
-                      {progress?.message || 'Inspecting DOM tree and verifying response status...'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </motion.div>
-
-        {/* ==============================================================
-         * TESTING METHODS & CAPABILITIES SHOWCASE SECTION
-         * ============================================================== */}
-        {showForm && (
-          <section className={styles.methodsSection}>
-            <div className={styles.methodsHeader}>
-              <h2>Comprehensive QA Testing Methods</h2>
-              <p>
-                NexusQA executes automated verification pipelines across viewports, interactive elements,
-                and performance heuristics to ensure production reliability.
-              </p>
-            </div>
-
-            <div className={styles.methodsGrid}>
-              <div className={styles.methodCard}>
-                <div className={styles.methodIconWrapper}>
-                  <Monitor size={22} color="#818cf8" />
-                </div>
-                <div className={styles.methodTitle}>Multi-Viewport Crawling</div>
-                <p className={styles.methodDesc}>
-                  Parallel inspection across Desktop (1920x1080), iPhone 13 (390x844), and iPad (820x1180) to detect layout breakages and overflow.
-                </p>
-                <div className={styles.methodTagsList}>
-                  <span className={styles.methodTag}>Desktop</span>
-                  <span className={styles.methodTag}>Mobile Touch</span>
-                  <span className={styles.methodTag}>Tablet</span>
-                </div>
-              </div>
-
-              <div className={styles.methodCard}>
-                <div className={styles.methodIconWrapper}>
-                  <Zap size={22} color="#38bdf8" />
-                </div>
-                <div className={styles.methodTitle}>Synthetic Interactive Testing</div>
-                <p className={styles.methodDesc}>
-                  Automated discovery and execution of interactive buttons, links, inputs, and dialog dismissals to verify client-side responsiveness.
-                </p>
-                <div className={styles.methodTagsList}>
-                  <span className={styles.methodTag}>Forms</span>
-                  <span className={styles.methodTag}>Clicks</span>
-                  <span className={styles.methodTag}>Navigation</span>
-                </div>
-              </div>
-
-              <div className={styles.methodCard}>
-                <div className={styles.methodIconWrapper}>
-                  <Bug size={22} color="#ef4444" />
-                </div>
-                <div className={styles.methodTitle}>Deterministic Defect Triage</div>
-                <p className={styles.methodDesc}>
-                  Real-time trapping of HTTP 4xx/5xx responses, unhandled JavaScript runtime exceptions, and console error log telemetry.
-                </p>
-                <div className={styles.methodTagsList}>
-                  <span className={styles.methodTag}>HTTP 500</span>
-                  <span className={styles.methodTag}>Console Trace</span>
-                  <span className={styles.methodTag}>CORS</span>
-                </div>
-              </div>
-
-              <div className={styles.methodCard}>
-                <div className={styles.methodIconWrapper}>
-                  <Lock size={22} color="#10b981" />
-                </div>
-                <div className={styles.methodTitle}>Authenticated Session Testing</div>
-                <p className={styles.methodDesc}>
-                  Form-based authentication flow with transient in-memory credentials and strict zero-leakage security invariants.
-                </p>
-                <div className={styles.methodTagsList}>
-                  <span className={styles.methodTag}>Login Portals</span>
-                  <span className={styles.methodTag}>SecretStr</span>
-                  <span className={styles.methodTag}>Protected Routes</span>
-                </div>
-              </div>
-
-              <div className={styles.methodCard}>
-                <div className={styles.methodIconWrapper}>
-                  <Cpu size={22} color="#a855f7" />
-                </div>
-                <div className={styles.methodTitle}>AI-Assisted Quality Synthesis</div>
-                <p className={styles.methodDesc}>
-                  Root-cause categorization, severity impact scoring (P0-P4), step-by-step reproduction instructions, and canonical grading.
-                </p>
-                <div className={styles.methodTagsList}>
-                  <span className={styles.methodTag}>Root Cause</span>
-                  <span className={styles.methodTag}>Letter Grade</span>
-                  <span className={styles.methodTag}>Reproduction</span>
-                </div>
-              </div>
-
-              <div className={styles.methodCard}>
-                <div className={styles.methodIconWrapper}>
-                  <GitCompare size={22} color="#f59e0b" />
-                </div>
-                <div className={styles.methodTitle}>Regression & Executive Exports</div>
-                <p className={styles.methodDesc}>
-                  Historical baseline diffing to identify new vs resolved defects, with one-click export to PDF, Excel, JSON, and Markdown.
-                </p>
-                <div className={styles.methodTagsList}>
-                  <span className={styles.methodTag}>PDF Audit</span>
-                  <span className={styles.methodTag}>Excel Sheets</span>
-                  <span className={styles.methodTag}>Diffing</span>
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* ==============================================================
-         * EXECUTIVE RESULTS DASHBOARD
-         * ============================================================== */}
-        {results && status === 'completed' && (
-          <motion.div
-            className={styles.resultsPanel}
-            initial={{ opacity: 0, y: 25 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
-          >
-            {/* Header & Export Actions */}
-            <div className={styles.resultsHeader}>
-              <div>
-                <h2>
-                  <FileText size={24} color="#6366f1" /> QA Scan Report
-                </h2>
-                <div style={{ color: '#94a3b8', fontSize: '0.9rem', marginTop: '4px' }}>
-                  Target: <strong>{results.report_metadata?.target}</strong> · Generated at{' '}
-                  {new Date(results.report_metadata?.generated_at).toLocaleTimeString()}
-                </div>
-              </div>
-
-              <div className={styles.exportActions}>
-                <button
+                  onClick={fetchAdminData}
                   className={styles.exportBtn}
-                  onClick={() =>
-                    handleDownloadReport({
-                      results,
-                      scanId,
-                      format: 'pdf',
-                      sessionToken: session?.access_token,
-                    })
-                  }
-                  title="Download PDF Report"
+                  disabled={adminLoading}
                 >
-                  <Download size={16} /> PDF
+                  <RefreshCw size={14} className={adminLoading ? 'pulse' : ''} /> Refresh Telemetry
                 </button>
-
                 <button
-                  className={styles.exportBtn}
-                  onClick={() =>
-                    handleDownloadReport({
-                      results,
-                      scanId,
-                      format: 'excel',
-                      sessionToken: session?.access_token,
-                    })
-                  }
-                  title="Download Excel Spreadsheet"
-                >
-                  <FileSpreadsheet size={16} /> Excel
-                </button>
-
-                <button
-                  className={styles.exportBtn}
-                  onClick={() =>
-                    handleDownloadReport({
-                      results,
-                      scanId,
-                      format: 'json',
-                      sessionToken: session?.access_token,
-                    })
-                  }
-                  title="Download Raw JSON"
-                >
-                  <Download size={16} /> JSON
-                </button>
-
-                <button
-                  className={styles.exportBtn}
-                  onClick={() =>
-                    handleDownloadReport({
-                      results,
-                      scanId,
-                      format: 'md',
-                      sessionToken: session?.access_token,
-                    })
-                  }
-                  title="Download Markdown Report"
-                >
-                  <Download size={16} /> Markdown
-                </button>
-
-                <button
+                  onClick={() => setViewMode('scanner')}
                   className="btn btn-primary"
-                  onClick={() => {
-                    setScanId(null);
-                    setResults(null);
-                    setStatus('');
-                    setProgress(null);
-                    setLoading(false);
-                    setScanError('');
-                  }}
                   style={{ padding: '8px 16px', fontSize: '0.88rem' }}
                 >
-                  <RefreshCw size={15} /> New Scan
+                  Back to Scanner
                 </button>
               </div>
             </div>
 
-            {/* Degraded AI Banner if applicable */}
-            {results.report_metadata?.ai_analysis_degraded && (
-              <div className={styles.degradedBanner}>
-                <AlertTriangle size={20} style={{ flexShrink: 0 }} />
-                <div>
-                  <strong>AI Analysis Incomplete:</strong> {results.report_metadata.ai_analysis_failures} findings
-                  used deterministic fallbacks because the Gemini endpoint was unreachable.
-                </div>
-              </div>
-            )}
-
-            {/* Executive Quality Score Dial Card */}
-            <div className={styles.scoreCard}>
-              <div className={styles.scoreDialContainer}>
-                <div className={styles.scoreCircleWrapper}>
-                  <svg width="130" height="130" viewBox="0 0 130 130">
-                    <circle
-                      cx="65"
-                      cy="65"
-                      r="54"
-                      fill="none"
-                      stroke="rgba(255, 255, 255, 0.08)"
-                      strokeWidth="10"
-                    />
-                    <circle
-                      cx="65"
-                      cy="65"
-                      r="54"
-                      fill="none"
-                      stroke={safeScore >= 80 ? '#10b981' : safeScore >= 60 ? '#f59e0b' : '#ef4444'}
-                      strokeWidth="10"
-                      strokeDasharray="339.29"
-                      strokeDashoffset={339.29 - (339.29 * safeScore) / 100}
-                      strokeLinecap="round"
-                      transform="rotate(-90 65 65)"
-                      style={{ transition: 'stroke-dashoffset 1s ease-out' }}
-                    />
-                  </svg>
-                  <div className={styles.scoreCircleCenter}>
-                    <span className={styles.scoreNumber}>{safeScore}</span>
-                    <span className={styles.scoreGradePill}>{letterGrade}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className={styles.scoreDetails}>
-                <div
-                  className={styles.scoreVerdictBadge}
-                  style={{
-                    background: safeScore >= 80 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                    color: safeScore >= 80 ? '#34d399' : '#fbbf24',
-                    border: `1px solid ${safeScore >= 80 ? 'rgba(16, 185, 129, 0.35)' : 'rgba(245, 158, 11, 0.35)'}`,
-                  }}
-                >
-                  <Award size={14} /> {verdictText}
-                </div>
-                <div className={styles.scoreTitle}>
-                  {safeScore >= 80 ? 'High Software Quality & Stability' : 'Defects Identified Requiring Remediation'}
-                </div>
-                <div className={styles.scoreDescription}>
-                  {safeScore >= 80
-                    ? 'Target website passed automated assertions and user journeys with strong responsiveness and zero critical runtime exceptions.'
-                    : 'Discovered critical defects, network failures, or unhandled exceptions that require attention prior to release.'}
-                </div>
-              </div>
-            </div>
-
-            {/* 4 Executive KPI Cards */}
+            {/* 4 Admin KPI Cards */}
             <div className={styles.statsGrid}>
               <div className={styles.statCard}>
                 <div className={styles.statHeader}>
-                  <span>Total Test Cases</span>
-                  <Layers size={18} color="#818cf8" />
+                  <span>Monthly Recurring Revenue</span>
+                  <TrendingUp size={18} color="#10b981" />
                 </div>
                 <div className={styles.statValue}>
-                  {results.qa_metrics?.test_cases?.total ?? results.test_cases?.length ?? 0}
+                  ${adminMetrics?.financial_metrics?.mrr_usd ?? 0}
                 </div>
                 <div className={styles.statSub}>
-                  {results.qa_metrics?.test_cases?.passed ?? 0} Passed · {results.qa_metrics?.test_cases?.failed ?? 0} Failed
+                  {adminMetrics?.financial_metrics?.total_paid_subscriptions ?? 0} Paid Subscriptions Active
                 </div>
               </div>
 
               <div className={styles.statCard}>
                 <div className={styles.statHeader}>
-                  <span>Total Findings</span>
-                  <Bug size={18} color="#ef4444" />
+                  <span>Registered Users</span>
+                  <Users size={18} color="#818cf8" />
                 </div>
-                <div className={styles.statValue}>{results.findings?.length ?? 0}</div>
+                <div className={styles.statValue}>
+                  {adminMetrics?.platform_overview?.total_users ?? adminUsers.length}
+                </div>
+                <div className={styles.statSub}>Multi-tenant workspace accounts</div>
+              </div>
+
+              <div className={styles.statCard}>
+                <div className={styles.statHeader}>
+                  <span>Total Scans Executed</span>
+                  <Globe size={18} color="#38bdf8" />
+                </div>
+                <div className={styles.statValue}>
+                  {adminMetrics?.platform_overview?.total_scans ?? adminScans.length}
+                </div>
                 <div className={styles.statSub}>
-                  {results.qa_metrics?.findings?.confirmed_bugs ?? 0} Confirmed Bugs
+                  {adminMetrics?.platform_overview?.scan_success_rate ?? 100}% Overall Success Rate
                 </div>
               </div>
 
               <div className={styles.statCard}>
                 <div className={styles.statHeader}>
-                  <span>Pages & Devices</span>
-                  <Monitor size={18} color="#38bdf8" />
+                  <span>Cluster Worker Status</span>
+                  <Server size={18} color="#34d399" />
                 </div>
-                <div className={styles.statValue}>
-                  {results.report_metadata?.pages_crawled ?? 1}
-                </div>
-                <div className={styles.statSub}>Desktop · iPhone 13 · iPad</div>
-              </div>
-
-              <div className={styles.statCard}>
-                <div className={styles.statHeader}>
-                  <span>Execution Duration</span>
-                  <Clock size={18} color="#34d399" />
-                </div>
-                <div className={styles.statValue}>
-                  {results.qa_metrics?.duration?.formatted_duration ?? '00:15s'}
-                </div>
-                <div className={styles.statSub}>Automated isolated contexts</div>
+                <div className={styles.statValue}>Operational</div>
+                <div className={styles.statSub}>Redis Queue · Playwright Workers</div>
               </div>
             </div>
 
-            {/* Tab Navigation */}
-            <div className={styles.tabsBar}>
-              <button
-                className={`${styles.tabBtn} ${activeTab === 'findings' ? styles.tabActive : ''}`}
-                onClick={() => setActiveTab('findings')}
+            {/* Live Host Telemetry Card */}
+            {adminSystem && (
+              <div className={styles.telemetryGrid}>
+                <div className={styles.telemetryCard}>
+                  <div className={styles.telemetryTitle}>CPU Utilization</div>
+                  <div className={styles.telemetryValue}>
+                    {adminSystem.runtime?.cpu_utilization_percent ?? 0}%
+                  </div>
+                  <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Real-time host processor load</span>
+                </div>
+
+                <div className={styles.telemetryCard}>
+                  <div className={styles.telemetryTitle}>Memory Allocation</div>
+                  <div className={styles.telemetryValue}>
+                    {adminSystem.runtime?.memory_used_mb ?? 0} MB
+                  </div>
+                  <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+                    of {adminSystem.runtime?.memory_total_mb ?? 0} MB Total ({adminSystem.runtime?.memory_percent ?? 0}%)
+                  </span>
+                </div>
+
+                <div className={styles.telemetryCard}>
+                  <div className={styles.telemetryTitle}>Active Worker Pool</div>
+                  <div className={styles.telemetryValue}>
+                    {adminSystem.crawler_workers?.active_nodes ?? 2} Nodes
+                  </div>
+                  <span style={{ fontSize: '0.78rem', color: '#34d399' }}>
+                    {adminSystem.crawler_workers?.broker ?? 'Redis Queue'}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* User Management Table */}
+            <div className={styles.adminTableCard}>
+              <div className={styles.adminTableCardTitle}>
+                <span>Registered Platform Tenants & Subscribers</span>
+                <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 500 }}>
+                  Showing {adminUsers.length} users
+                </span>
+              </div>
+
+              <div className={styles.adminTableContainer}>
+                <table className={styles.adminTable}>
+                  <thead>
+                    <tr>
+                      <th>User ID</th>
+                      <th>Email Address</th>
+                      <th>Plan Tier</th>
+                      <th>Total Scans</th>
+                      <th>Role</th>
+                      <th>Joined</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adminUsers.map((u) => (
+                      <tr key={u.id}>
+                        <td style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: '#818cf8' }}>
+                          {u.id.substring(0, 8)}...
+                        </td>
+                        <td>{u.email}</td>
+                        <td>
+                          <span
+                            className={`${styles.tierPill} ${
+                              u.plan_tier === 'pro'
+                                ? styles.tierPro
+                                : u.plan_tier === 'enterprise'
+                                ? styles.tierEnterprise
+                                : styles.tierFree
+                            }`}
+                          >
+                            {u.plan_tier || 'FREE'}
+                          </span>
+                        </td>
+                        <td>{u.scans_count} scans</td>
+                        <td style={{ textTransform: 'capitalize' }}>{u.role}</td>
+                        <td>{u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}</td>
+                      </tr>
+                    ))}
+                    {adminUsers.length === 0 && (
+                      <tr>
+                        <td colSpan={6} style={{ textAlign: 'center', padding: '24px', color: '#94a3b8' }}>
+                          No users recorded yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Global Scan Inspector Table */}
+            <div className={styles.adminTableCard}>
+              <div className={styles.adminTableCardTitle}>
+                <span>Global Scan Pipeline Inspector</span>
+                <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 500 }}>
+                  Showing {adminScans.length} scans
+                </span>
+              </div>
+
+              <div className={styles.adminTableContainer}>
+                <table className={styles.adminTable}>
+                  <thead>
+                    <tr>
+                      <th>Scan ID</th>
+                      <th>Target Website</th>
+                      <th>Status</th>
+                      <th>Authenticated</th>
+                      <th>Timestamp</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adminScans.map((s) => (
+                      <tr key={s.id}>
+                        <td style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: '#94a3b8' }}>
+                          {s.id.substring(0, 8)}...
+                        </td>
+                        <td style={{ maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span style={{ color: '#f8fafc', fontWeight: 500 }}>{s.url}</span>
+                        </td>
+                        <td>
+                          <span
+                            className={styles.severityBadge}
+                            style={{
+                              background:
+                                s.status === 'completed'
+                                  ? 'rgba(16, 185, 129, 0.15)'
+                                  : s.status === 'failed'
+                                  ? 'rgba(239, 68, 68, 0.15)'
+                                  : 'rgba(99, 102, 241, 0.15)',
+                              color:
+                                s.status === 'completed'
+                                  ? '#34d399'
+                                  : s.status === 'failed'
+                                  ? '#f87171'
+                                  : '#818cf8',
+                            }}
+                          >
+                            {s.status.toUpperCase()}
+                          </span>
+                        </td>
+                        <td>{s.is_authenticated ? '🔒 Yes' : 'No'}</td>
+                        <td>{s.created_at ? new Date(s.created_at).toLocaleTimeString() : 'N/A'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </motion.div>
+        ) : (
+          /* ==============================================================
+           * STANDARD SCANNER DASHBOARD VIEW
+           * ============================================================== */
+          <>
+            {/* Hero Banner */}
+            {showForm && (
+              <motion.section
+                className={styles.hero}
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4 }}
               >
-                <Bug size={16} /> Defect Triage ({results.findings?.length ?? 0})
-              </button>
-
-              {results.test_cases && results.test_cases.length > 0 && (
-                <button
-                  className={`${styles.tabBtn} ${activeTab === 'tests' ? styles.tabActive : ''}`}
-                  onClick={() => setActiveTab('tests')}
-                >
-                  <Layers size={16} /> Automated Tests ({results.test_cases.length})
-                </button>
-              )}
-
-              {results.report_metadata?.cross_device_metrics && (
-                <button
-                  className={`${styles.tabBtn} ${activeTab === 'devices' ? styles.tabActive : ''}`}
-                  onClick={() => setActiveTab('devices')}
-                >
-                  <Smartphone size={16} /> Responsive QA Matrix
-                </button>
-              )}
-            </div>
-
-            {/* Tab 1: Findings & Triage */}
-            {activeTab === 'findings' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div className={styles.filterBar}>
-                  <div className={styles.searchInputWrapper}>
-                    <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
-                    <input
-                      type="text"
-                      placeholder="Search findings by ID, title, or keyword..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className={styles.searchInput}
-                    />
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <select
-                      className={styles.filterSelect}
-                      value={filterSeverity}
-                      onChange={(e) => setFilterSeverity(e.target.value)}
-                    >
-                      <option value="ALL">All Severities</option>
-                      <option value="critical">Critical</option>
-                      <option value="high">High</option>
-                      <option value="medium">Medium</option>
-                      <option value="low">Low</option>
-                    </select>
-
-                    <select
-                      className={styles.filterSelect}
-                      value={filterPriority}
-                      onChange={(e) => setFilterPriority(e.target.value)}
-                    >
-                      <option value="ALL">All Priorities</option>
-                      <option value="P0">P0 (Blocker)</option>
-                      <option value="P1">P1 (Critical)</option>
-                      <option value="P2">P2 (Major)</option>
-                      <option value="P3">P3 (Minor)</option>
-                    </select>
-
-                    <select
-                      className={styles.filterSelect}
-                      value={filterClass}
-                      onChange={(e) => setFilterClass(e.target.value)}
-                    >
-                      <option value="ALL">All Classifications</option>
-                      <option value="confirmed_bug">Confirmed Bug</option>
-                      <option value="high_confidence_candidate">Candidate</option>
-                      <option value="needs_manual_review">Needs Review</option>
-                      <option value="informational">Info</option>
-                    </select>
-                  </div>
+                <div className={styles.badge}>
+                  <Sparkles size={14} /> Continuous Web Quality & Regression Suite
                 </div>
+                <h1 className={styles.title}>
+                  Enterprise Automated{' '}
+                  <span className={styles.gradientText}>Web Quality Assurance</span>
+                </h1>
+                <p className={styles.subtitle}>
+                  Full-stack website verification: multi-viewport crawling, synthetic interaction testing,
+                  automated defect triage, and executive compliance reports.
+                </p>
+              </motion.section>
+            )}
 
-                <div className={styles.findingsList}>
-                  {filteredFindings.map((finding, idx) => (
-                    <div key={finding.id || idx} className={styles.findingItem}>
-                      <div className={styles.findingHeader}>
-                        <span className={styles.findingId}>{finding.id}</span>
-                        <span className={`${styles.severityBadge} ${styles[finding.severity] ?? ''}`}>
-                          {finding.severity}
-                        </span>
-                      </div>
-
-                      <h3 style={{ fontSize: '1.15rem', color: '#f8fafc' }}>{finding.title}</h3>
-                      <p className={styles.findingDesc}>{finding.description || finding.manual_verification}</p>
-
-                      <div className={styles.tagsRow}>
-                        {finding.priority && <span className={styles.chip}>Priority: {finding.priority}</span>}
-                        {finding.user_impact && <span className={styles.chip}>Impact: {finding.user_impact.toUpperCase()}</span>}
-                        {finding.root_cause?.category && (
-                          <span className={styles.chip}>Cause: {finding.root_cause.category.replace('_', ' ')}</span>
-                        )}
-                        {finding.page && <span className={styles.chip}>{finding.page}</span>}
-                      </div>
-
-                      <details className={styles.evidenceAccordion}>
-                        <summary className={styles.evidenceSummary}>View Evidence & Remediation Steps</summary>
-                        <div className={styles.evidenceBody}>
-                          {finding.root_cause?.summary && (
-                            <p style={{ marginBottom: '8px' }}>
-                              <strong>Root Cause Summary:</strong> {finding.root_cause.summary}
-                            </p>
-                          )}
-                          <p style={{ marginBottom: '8px' }}>
-                            <strong>Recommendation:</strong> {finding.recommendation || 'Review component lifecycle and error bounds.'}
-                          </p>
-
-                          {finding.reproduction?.steps && finding.reproduction.steps.length > 0 && (
-                            <div style={{ marginTop: '10px' }}>
-                              <strong>Reproduction Steps:</strong>
-                              <ol style={{ paddingLeft: '20px', marginTop: '4px' }}>
-                                {finding.reproduction.steps.map((step, sIdx) => (
-                                  <li key={sIdx}>{step}</li>
-                                ))}
-                              </ol>
-                            </div>
-                          )}
-                        </div>
-                      </details>
+            {/* Launch Card / Scanning Screen Container */}
+            <motion.div
+              className={styles.actionPanel}
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+            >
+              {showForm ? (
+                /* FORM STATE */
+                <form onSubmit={startScan} className={styles.form}>
+                  <div className={styles.inputRow}>
+                    <div className={styles.inputGroup}>
+                      <Search className={styles.inputIcon} size={20} />
+                      <input
+                        type="url"
+                        placeholder="https://example.com or your web application URL"
+                        className={styles.urlInput}
+                        value={url}
+                        onChange={(e) => setUrl(e.target.value)}
+                        required
+                      />
                     </div>
-                  ))}
 
-                  {filteredFindings.length === 0 && (
-                    <div className={styles.noFindings}>
-                      ✨ No bugs or anomalies match the selected filters.
+                    <select
+                      id="max-pages"
+                      className={styles.pagesSelect}
+                      value={maxPages}
+                      onChange={(e) => setMaxPages(e.target.value)}
+                      title="Maximum Pages to Crawl"
+                    >
+                      <option value="1">1 page</option>
+                      <option value="5">5 pages</option>
+                      <option value="10">10 pages (Standard)</option>
+                      <option value="20">20 pages (Deep)</option>
+                      <option value="50">50 pages (Full)</option>
+                    </select>
+
+                    <button type="submit" className={styles.launchBtn} disabled={loading}>
+                      <span>Run QA Scan</span>
+                      <ArrowRight size={18} />
+                    </button>
+                  </div>
+
+                  {/* Quick Sample URLs */}
+                  <div className={styles.quickPillsRow}>
+                    <span>Try Instant Demo:</span>
+                    <button
+                      type="button"
+                      onClick={() => setUrl('https://example.com')}
+                      className={styles.quickPill}
+                    >
+                      example.com
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUrl('https://news.ycombinator.com')}
+                      className={styles.quickPill}
+                    >
+                      Hacker News
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUrl('https://httpbin.org/status/200')}
+                      className={styles.quickPill}
+                    >
+                      HTTPBin Demo
+                    </button>
+                  </div>
+
+                  {/* Authenticated Website Toggle */}
+                  <div className={styles.authToggleRow}>
+                    <label className={styles.authToggleLabel}>
+                      <input
+                        type="checkbox"
+                        checked={requiresAuth}
+                        onChange={(e) => setRequiresAuth(e.target.checked)}
+                        className={styles.authCheckbox}
+                      />
+                      <span className={styles.authToggleText}>
+                        <Lock size={16} /> Requires Website Login?
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* Collapsible Auth Inputs */}
+                  <AnimatePresence>
+                    {requiresAuth && (
+                      <motion.div
+                        className={styles.authFieldsContainer}
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.25 }}
+                      >
+                        <div className={styles.authFieldGroup}>
+                          <label className={styles.authFieldLabel}>
+                            <KeyRound size={13} /> Login URL
+                          </label>
+                          <input
+                            type="url"
+                            placeholder="https://example.com/login"
+                            value={loginUrl}
+                            onChange={(e) => setLoginUrl(e.target.value)}
+                            className={styles.authInput}
+                          />
+                        </div>
+
+                        <div className={styles.authFieldGroup}>
+                          <label className={styles.authFieldLabel}>
+                            <User size={13} /> Username / Email
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="user@example.com"
+                            value={authUsername}
+                            onChange={(e) => setAuthUsername(e.target.value)}
+                            className={styles.authInput}
+                            autoComplete="username"
+                          />
+                        </div>
+
+                        <div className={styles.authFieldGroup}>
+                          <label className={styles.authFieldLabel}>
+                            <Lock size={13} /> Password
+                          </label>
+                          <div className={styles.passwordInputWrapper}>
+                            <input
+                              type={showPassword ? 'text' : 'password'}
+                              placeholder="••••••••••••"
+                              value={authPassword}
+                              onChange={(e) => setAuthPassword(e.target.value)}
+                              className={styles.authInput}
+                              autoComplete="current-password"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(!showPassword)}
+                              className={styles.passwordToggleBtn}
+                              title={showPassword ? 'Hide Password' : 'Show Password'}
+                            >
+                              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {scanError && (
+                    <div style={{ color: 'var(--danger)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <AlertTriangle size={16} /> {scanError}
                     </div>
                   )}
-                </div>
-              </div>
-            )}
+                </form>
+              ) : (
+                /* PROMINENT SCANNING / LOADING STATE */
+                <div className={styles.loadingScreen}>
+                  <div className={styles.loadingHeader}>
+                    <div className={styles.loadingControlBar}>
+                      <div className={styles.targetUrlBadge}>
+                        <Globe size={15} />
+                        <span>Inspecting Target: {url}</span>
+                      </div>
 
-            {/* Tab 2: Test Cases Matrix */}
-            {activeTab === 'tests' && results.test_cases && (
-              <div className={styles.findingsList}>
-                {results.test_cases.map((tc, idx) => {
-                  const status = tc.status || 'passed';
-                  const isPassed = status === 'passed';
-                  const isFailed = status === 'failed';
-                  const isErrored = status === 'errored';
-                  const isBlocked = status === 'blocked';
+                      <button
+                        type="button"
+                        onClick={handleStopScan}
+                        className={styles.stopScanBtn}
+                        title="Stop and cancel the active scan"
+                      >
+                        <Square size={14} fill="#ef4444" />
+                        <span>Stop Scan</span>
+                      </button>
+                    </div>
 
-                  return (
-                    <div
-                      key={tc.id || idx}
-                      className={styles.findingItem}
-                      style={{
-                        borderLeftColor: isPassed ? '#10b981' : isFailed ? '#ef4444' : isErrored ? '#f43f5e' : '#f59e0b',
-                      }}
-                    >
-                      <div className={styles.findingHeader}>
-                        <span className={styles.findingId}>{tc.id}</span>
-                        <span
-                          className={styles.severityBadge}
-                          style={{
-                            background: isPassed ? 'rgba(16, 185, 129, 0.2)' : isFailed ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                            color: isPassed ? '#34d399' : isFailed ? '#f87171' : '#fbbf24',
-                          }}
+                    <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#f8fafc', marginTop: '6px' }}>
+                      Automated Test Execution Running
+                    </h2>
+                    <p style={{ color: '#94a3b8', fontSize: '0.92rem' }}>
+                      Executing multi-viewport crawler, synthetic user journeys, and defect analysis.
+                    </p>
+                  </div>
+
+                  {/* Matched Progress Bar Card */}
+                  <div className={styles.progressBarWrapper}>
+                    <div className={styles.progressInfoRow}>
+                      <span className={styles.progressStageBadge}>
+                        {progress?.stage
+                          ? progress.stage.replace('_', ' ')
+                          : currentStageIndex === 0
+                          ? 'Stage 1: Multi-Device Crawling'
+                          : currentStageIndex === 1
+                          ? 'Stage 2: Interactive Testing'
+                          : currentStageIndex === 2
+                          ? 'Stage 3: Defect Detection'
+                          : 'Stage 4: Quality Synthesis'}
+                      </span>
+                      <span className={styles.progressNumbers}>
+                        {progress?.page_current
+                          ? `Page ${progress.page_current} of ${progress.page_total || maxPages} (${progress.percent}%)`
+                          : `${progress?.percent || 5}% Complete`}
+                      </span>
+                    </div>
+                    <div className={styles.progressBarTrack}>
+                      <div className={styles.progressBarFill} style={{ width: `${progress?.percent || 5}%` }} />
+                    </div>
+                  </div>
+
+                  {/* Glowing Radar Pulse */}
+                  <div className={styles.radarContainer}>
+                    <div className={styles.radarOuterRing} />
+                    <div className={styles.radarInnerRing} />
+                    <div className={styles.radarSweep} />
+                    <div className={styles.radarCenterContent}>
+                      <span className={styles.radarPercent}>{progress?.percent || 5}%</span>
+                      <span className={styles.radarElapsed}>
+                        <Clock size={10} style={{ display: 'inline', marginRight: '3px' }} />
+                        {formattedTime}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* LIVE MULTI-DEVICE VIEWPORT DECK */}
+                  <div className={styles.deviceDeckSection}>
+                    <div className={styles.deviceDeckTitleRow}>
+                      <span>Live Multi-Device Emulation Viewports</span>
+                      <span style={{ color: '#34d399', fontSize: '0.75rem' }}>● 3 ISOLATED CONTEXTS ACTIVE</span>
+                    </div>
+
+                    <div className={styles.deviceDeckGrid}>
+                      {[
+                        {
+                          id: 'desktop',
+                          name: 'Desktop Chrome',
+                          resolution: '1920 × 1080',
+                          icon: <Monitor size={18} />,
+                        },
+                        {
+                          id: 'iphone',
+                          name: 'iPhone 13',
+                          resolution: '390 × 844 (Touch)',
+                          icon: <Smartphone size={18} />,
+                        },
+                        {
+                          id: 'ipad',
+                          name: 'iPad (gen 7)',
+                          resolution: '820 × 1180 (Tablet)',
+                          icon: <Tablet size={18} />,
+                        },
+                      ].map((dev) => {
+                        const isCrawlingThis =
+                          activeDeviceName.toLowerCase().includes(dev.id) ||
+                          activeDeviceName.toLowerCase().includes(dev.name.toLowerCase());
+
+                        return (
+                          <div
+                            key={dev.id}
+                            className={`${styles.deviceCard} ${isCrawlingThis ? styles.deviceCardActive : ''}`}
+                          >
+                            <div className={styles.deviceCardHeader}>
+                              <div className={styles.deviceIconName}>
+                                <span style={{ color: isCrawlingThis ? '#818cf8' : '#64748b' }}>{dev.icon}</span>
+                                <span>{dev.name}</span>
+                              </div>
+                              <span
+                                className={`${styles.deviceStatusPill} ${
+                                  isCrawlingThis ? styles.devicePillActive : styles.devicePillIdle
+                                }`}
+                              >
+                                {isCrawlingThis ? 'Crawling Now' : 'Ready'}
+                              </span>
+                            </div>
+
+                            <div className={styles.deviceMockupFrame}>
+                              <div style={{ color: isCrawlingThis ? '#38bdf8' : '#94a3b8', fontSize: '0.78rem' }}>
+                                {isCrawlingThis
+                                  ? progress?.active_url || url || 'Navigating DOM...'
+                                  : 'Waiting for viewport pass...'}
+                              </div>
+                              <span className={styles.deviceResolution}>{dev.resolution}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 4-Stage Stepper Grid */}
+                  <div className={styles.stepperGrid}>
+                    {[
+                      {
+                        step: 1,
+                        title: 'Multi-Device Crawl',
+                        desc: 'Desktop, iPhone 13, iPad viewports',
+                        icon: <Monitor size={16} />,
+                      },
+                      {
+                        step: 2,
+                        title: 'Interactive Testing',
+                        desc: 'Forms, clicks, state transitions',
+                        icon: <Zap size={16} />,
+                      },
+                      {
+                        step: 3,
+                        title: 'Defect Detection',
+                        desc: 'Network errors, console, layout',
+                        icon: <Bug size={16} />,
+                      },
+                      {
+                        step: 4,
+                        title: 'Quality Synthesis',
+                        desc: 'Compliance grading & executive report',
+                        icon: <Sparkles size={16} />,
+                      },
+                    ].map((st, sIdx) => {
+                      const isActive = sIdx === currentStageIndex;
+                      const isDone = sIdx < currentStageIndex;
+
+                      return (
+                        <div
+                          key={st.step}
+                          className={`${styles.stepCard} ${
+                            isActive ? styles.stepActive : isDone ? styles.stepCompleted : ''
+                          }`}
                         >
-                          {status.toUpperCase()}
+                          <div className={styles.stepHeader}>
+                            <span className={styles.stepNumber}>Stage 0{st.step}</span>
+                            {isDone ? (
+                              <CheckCircle2 size={16} color="#34d399" />
+                            ) : isActive ? (
+                              <Loader2 size={16} className="pulse" color="#818cf8" />
+                            ) : (
+                              <span style={{ color: '#475569' }}>{st.icon}</span>
+                            )}
+                          </div>
+                          <div className={styles.stepTitle}>{st.title}</div>
+                          <div className={styles.stepDesc}>{st.desc}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Monospace Diagnostic Terminal */}
+                  <div className={styles.terminalCard}>
+                    <div className={styles.terminalHeader}>
+                      <div className={styles.terminalDots}>
+                        <div className={styles.terminalDot} style={{ background: '#ef4444' }} />
+                        <div className={styles.terminalDot} style={{ background: '#f59e0b' }} />
+                        <div className={styles.terminalDot} style={{ background: '#10b981' }} />
+                      </div>
+                      <div className={styles.terminalTitle}>
+                        <Terminal size={14} /> LIVE DIAGNOSTIC STREAM
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#10b981' }}>STREAMING ●</div>
+                    </div>
+
+                    <div className={styles.terminalBody}>
+                      {logFeed.map((log, lIdx) => (
+                        <div key={lIdx} className={styles.terminalLine}>
+                          <span className={styles.terminalPrompt}>&gt;</span>
+                          <span>{log}</span>
+                        </div>
+                      ))}
+                      <div className={styles.terminalLine}>
+                        <span className={styles.terminalPrompt}>&gt;</span>
+                        <span className={styles.terminalCurrentMessage}>
+                          {progress?.message || 'Inspecting DOM tree and verifying response status...'}
                         </span>
                       </div>
-
-                      <h3 style={{ fontSize: '1.1rem', color: '#f8fafc' }}>{tc.title}</h3>
-
-                      <div className={styles.tagsRow}>
-                        <span className={styles.chip}>{tc.category || 'General'}</span>
-                        {tc.priority && <span className={styles.chip}>Priority: {tc.priority}</span>}
-                        {tc.source_page && <span className={styles.chip}>{tc.source_page}</span>}
-                      </div>
-
-                      <div style={{ fontSize: '0.9rem', color: '#cbd5e1' }}>
-                        <div>
-                          <strong>Expected:</strong> {tc.expected_result || 'N/A'}
-                        </div>
-                        <div style={{ marginTop: '4px' }}>
-                          <strong>Actual:</strong> {tc.actual_result || 'Assertion passed successfully.'}
-                        </div>
-                      </div>
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+
+            {/* QA Testing Methods Showcase */}
+            {showForm && (
+              <section className={styles.methodsSection}>
+                <div className={styles.methodsHeader}>
+                  <h2>Comprehensive QA Testing Methods</h2>
+                  <p>
+                    JASUSS executes automated verification pipelines across viewports, interactive elements,
+                    and performance heuristics to ensure production reliability.
+                  </p>
+                </div>
+
+                <div className={styles.methodsGrid}>
+                  <div className={styles.methodCard}>
+                    <div className={styles.methodIconWrapper}>
+                      <Monitor size={22} color="#818cf8" />
+                    </div>
+                    <div className={styles.methodTitle}>Multi-Viewport Crawling</div>
+                    <p className={styles.methodDesc}>
+                      Parallel inspection across Desktop (1920x1080), iPhone 13 (390x844), and iPad (820x1180) to detect layout breakages and overflow.
+                    </p>
+                    <div className={styles.methodTagsList}>
+                      <span className={styles.methodTag}>Desktop</span>
+                      <span className={styles.methodTag}>Mobile Touch</span>
+                      <span className={styles.methodTag}>Tablet</span>
+                    </div>
+                  </div>
+
+                  <div className={styles.methodCard}>
+                    <div className={styles.methodIconWrapper}>
+                      <Zap size={22} color="#38bdf8" />
+                    </div>
+                    <div className={styles.methodTitle}>Synthetic Interactive Testing</div>
+                    <p className={styles.methodDesc}>
+                      Automated discovery and execution of interactive buttons, links, inputs, and dialog dismissals to verify client-side responsiveness.
+                    </p>
+                    <div className={styles.methodTagsList}>
+                      <span className={styles.methodTag}>Forms</span>
+                      <span className={styles.methodTag}>Clicks</span>
+                      <span className={styles.methodTag}>Navigation</span>
+                    </div>
+                  </div>
+
+                  <div className={styles.methodCard}>
+                    <div className={styles.methodIconWrapper}>
+                      <Bug size={22} color="#ef4444" />
+                    </div>
+                    <div className={styles.methodTitle}>Deterministic Defect Triage</div>
+                    <p className={styles.methodDesc}>
+                      Real-time trapping of HTTP 4xx/5xx responses, unhandled JavaScript runtime exceptions, and console error log telemetry.
+                    </p>
+                    <div className={styles.methodTagsList}>
+                      <span className={styles.methodTag}>HTTP 500</span>
+                      <span className={styles.methodTag}>Console Trace</span>
+                      <span className={styles.methodTag}>CORS</span>
+                    </div>
+                  </div>
+
+                  <div className={styles.methodCard}>
+                    <div className={styles.methodIconWrapper}>
+                      <Lock size={22} color="#10b981" />
+                    </div>
+                    <div className={styles.methodTitle}>Authenticated Session Testing</div>
+                    <p className={styles.methodDesc}>
+                      Form-based authentication flow with transient in-memory credentials and strict zero-leakage security invariants.
+                    </p>
+                    <div className={styles.methodTagsList}>
+                      <span className={styles.methodTag}>Login Portals</span>
+                      <span className={styles.methodTag}>SecretStr</span>
+                      <span className={styles.methodTag}>Protected Routes</span>
+                    </div>
+                  </div>
+
+                  <div className={styles.methodCard}>
+                    <div className={styles.methodIconWrapper}>
+                      <Cpu size={22} color="#a855f7" />
+                    </div>
+                    <div className={styles.methodTitle}>AI-Assisted Quality Synthesis</div>
+                    <p className={styles.methodDesc}>
+                      Root-cause categorization, severity impact scoring (P0-P4), step-by-step reproduction instructions, and canonical grading.
+                    </p>
+                    <div className={styles.methodTagsList}>
+                      <span className={styles.methodTag}>Root Cause</span>
+                      <span className={styles.methodTag}>Letter Grade</span>
+                      <span className={styles.methodTag}>Reproduction</span>
+                    </div>
+                  </div>
+
+                  <div className={styles.methodCard}>
+                    <div className={styles.methodIconWrapper}>
+                      <GitCompare size={22} color="#f59e0b" />
+                    </div>
+                    <div className={styles.methodTitle}>Regression & Executive Exports</div>
+                    <p className={styles.methodDesc}>
+                      Historical baseline diffing to identify new vs resolved defects, with one-click export to PDF, Excel, JSON, and Markdown.
+                    </p>
+                    <div className={styles.methodTagsList}>
+                      <span className={styles.methodTag}>PDF Audit</span>
+                      <span className={styles.methodTag}>Excel Sheets</span>
+                      <span className={styles.methodTag}>Diffing</span>
+                    </div>
+                  </div>
+                </div>
+              </section>
             )}
 
-            {/* Tab 3: Cross-Device & Responsive QA */}
-            {activeTab === 'devices' && results.report_metadata?.cross_device_metrics && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* RESULTS DASHBOARD */}
+            {results && status === 'completed' && (
+              <motion.div
+                className={styles.resultsPanel}
+                initial={{ opacity: 0, y: 25 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4 }}
+              >
+                <div className={styles.resultsHeader}>
+                  <div>
+                    <h2>
+                      <FileText size={24} color="#6366f1" /> QA Scan Report
+                    </h2>
+                    <div style={{ color: '#94a3b8', fontSize: '0.9rem', marginTop: '4px' }}>
+                      Target: <strong>{results.report_metadata?.target}</strong> · Generated at{' '}
+                      {new Date(results.report_metadata?.generated_at).toLocaleTimeString()}
+                    </div>
+                  </div>
+
+                  <div className={styles.exportActions}>
+                    <button
+                      className={styles.exportBtn}
+                      onClick={() =>
+                        handleDownloadReport({
+                          results,
+                          scanId,
+                          format: 'pdf',
+                          sessionToken: session?.access_token,
+                        })
+                      }
+                      title="Download PDF Report"
+                    >
+                      <Download size={16} /> PDF
+                    </button>
+
+                    <button
+                      className={styles.exportBtn}
+                      onClick={() =>
+                        handleDownloadReport({
+                          results,
+                          scanId,
+                          format: 'excel',
+                          sessionToken: session?.access_token,
+                        })
+                      }
+                      title="Download Excel Spreadsheet"
+                    >
+                      <FileSpreadsheet size={16} /> Excel
+                    </button>
+
+                    <button
+                      className={styles.exportBtn}
+                      onClick={() =>
+                        handleDownloadReport({
+                          results,
+                          scanId,
+                          format: 'json',
+                          sessionToken: session?.access_token,
+                        })
+                      }
+                      title="Download Raw JSON"
+                    >
+                      <Download size={16} /> JSON
+                    </button>
+
+                    <button
+                      className={styles.exportBtn}
+                      onClick={() =>
+                        handleDownloadReport({
+                          results,
+                          scanId,
+                          format: 'md',
+                          sessionToken: session?.access_token,
+                        })
+                      }
+                      title="Download Markdown Report"
+                    >
+                      <Download size={16} /> Markdown
+                    </button>
+
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => {
+                        setScanId(null);
+                        setResults(null);
+                        setStatus('');
+                        setProgress(null);
+                        setLoading(false);
+                        setScanError('');
+                      }}
+                      style={{ padding: '8px 16px', fontSize: '0.88rem' }}
+                    >
+                      <RefreshCw size={15} /> New Scan
+                    </button>
+                  </div>
+                </div>
+
+                {results.report_metadata?.ai_analysis_degraded && (
+                  <div className={styles.degradedBanner}>
+                    <AlertTriangle size={20} style={{ flexShrink: 0 }} />
+                    <div>
+                      <strong>AI Analysis Incomplete:</strong> {results.report_metadata.ai_analysis_failures} findings
+                      used deterministic fallbacks because the Gemini endpoint was unreachable.
+                    </div>
+                  </div>
+                )}
+
+                <div className={styles.scoreCard}>
+                  <div className={styles.scoreDialContainer}>
+                    <div className={styles.scoreCircleWrapper}>
+                      <svg width="130" height="130" viewBox="0 0 130 130">
+                        <circle
+                          cx="65"
+                          cy="65"
+                          r="54"
+                          fill="none"
+                          stroke="rgba(255, 255, 255, 0.08)"
+                          strokeWidth="10"
+                        />
+                        <circle
+                          cx="65"
+                          cy="65"
+                          r="54"
+                          fill="none"
+                          stroke={safeScore >= 80 ? '#10b981' : safeScore >= 60 ? '#f59e0b' : '#ef4444'}
+                          strokeWidth="10"
+                          strokeDasharray="339.29"
+                          strokeDashoffset={339.29 - (339.29 * safeScore) / 100}
+                          strokeLinecap="round"
+                          transform="rotate(-90 65 65)"
+                          style={{ transition: 'stroke-dashoffset 1s ease-out' }}
+                        />
+                      </svg>
+                      <div className={styles.scoreCircleCenter}>
+                        <span className={styles.scoreNumber}>{safeScore}</span>
+                        <span className={styles.scoreGradePill}>{letterGrade}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={styles.scoreDetails}>
+                    <div
+                      className={styles.scoreVerdictBadge}
+                      style={{
+                        background: safeScore >= 80 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                        color: safeScore >= 80 ? '#34d399' : '#fbbf24',
+                        border: `1px solid ${safeScore >= 80 ? 'rgba(16, 185, 129, 0.35)' : 'rgba(245, 158, 11, 0.35)'}`,
+                      }}
+                    >
+                      <Award size={14} /> {verdictText}
+                    </div>
+                    <div className={styles.scoreTitle}>
+                      {safeScore >= 80 ? 'High Software Quality & Stability' : 'Defects Identified Requiring Remediation'}
+                    </div>
+                    <div className={styles.scoreDescription}>
+                      {safeScore >= 80
+                        ? 'Target website passed automated assertions and user journeys with strong responsiveness and zero critical runtime exceptions.'
+                        : 'Discovered critical defects, network failures, or unhandled exceptions that require attention prior to release.'}
+                    </div>
+                  </div>
+                </div>
+
                 <div className={styles.statsGrid}>
                   <div className={styles.statCard}>
                     <div className={styles.statHeader}>
-                      <span>Desktop (1920x1080)</span>
-                      <Monitor size={18} color="#818cf8" />
+                      <span>Total Test Cases</span>
+                      <Layers size={18} color="#818cf8" />
                     </div>
                     <div className={styles.statValue}>
-                      {results.report_metadata.cross_device_metrics.device_breakdown.desktop}
+                      {results.qa_metrics?.test_cases?.total ?? results.test_cases?.length ?? 0}
                     </div>
-                    <div className={styles.statSub}>Responsive Findings</div>
+                    <div className={styles.statSub}>
+                      {results.qa_metrics?.test_cases?.passed ?? 0} Passed · {results.qa_metrics?.test_cases?.failed ?? 0} Failed
+                    </div>
                   </div>
 
                   <div className={styles.statCard}>
                     <div className={styles.statHeader}>
-                      <span>iPhone 13 (390x844)</span>
-                      <Smartphone size={18} color="#38bdf8" />
+                      <span>Total Findings</span>
+                      <Bug size={18} color="#ef4444" />
                     </div>
-                    <div className={styles.statValue}>
-                      {results.report_metadata.cross_device_metrics.device_breakdown.iphone}
+                    <div className={styles.statValue}>{results.findings?.length ?? 0}</div>
+                    <div className={styles.statSub}>
+                      {results.qa_metrics?.findings?.confirmed_bugs ?? 0} Confirmed Bugs
                     </div>
-                    <div className={styles.statSub}>Touch & Viewport Findings</div>
                   </div>
 
                   <div className={styles.statCard}>
                     <div className={styles.statHeader}>
-                      <span>iPad (820x1180)</span>
-                      <Tablet size={18} color="#34d399" />
+                      <span>Pages & Devices</span>
+                      <Monitor size={18} color="#38bdf8" />
                     </div>
                     <div className={styles.statValue}>
-                      {results.report_metadata.cross_device_metrics.device_breakdown.ipad}
+                      {results.report_metadata?.pages_crawled ?? 1}
                     </div>
-                    <div className={styles.statSub}>Tablet Layout Findings</div>
+                    <div className={styles.statSub}>Desktop · iPhone 13 · iPad</div>
                   </div>
 
                   <div className={styles.statCard}>
                     <div className={styles.statHeader}>
-                      <span>Total Responsive Issues</span>
-                      <Activity size={18} color="#f59e0b" />
+                      <span>Execution Duration</span>
+                      <Clock size={18} color="#34d399" />
                     </div>
                     <div className={styles.statValue}>
-                      {results.report_metadata.cross_device_metrics.responsive_findings}
+                      {results.qa_metrics?.duration?.formatted_duration ?? '00:15s'}
                     </div>
-                    <div className={styles.statSub}>Across all emulated viewports</div>
+                    <div className={styles.statSub}>Automated isolated contexts</div>
+                  </div>
+                </div>
+
+                <div className={styles.tabsBar}>
+                  <button
+                    className={`${styles.tabBtn} ${activeTab === 'findings' ? styles.tabActive : ''}`}
+                    onClick={() => setActiveTab('findings')}
+                  >
+                    <Bug size={16} /> Defect Triage ({results.findings?.length ?? 0})
+                  </button>
+
+                  {results.test_cases && results.test_cases.length > 0 && (
+                    <button
+                      className={`${styles.tabBtn} ${activeTab === 'tests' ? styles.tabActive : ''}`}
+                      onClick={() => setActiveTab('tests')}
+                    >
+                      <Layers size={16} /> Automated Tests ({results.test_cases.length})
+                    </button>
+                  )}
+
+                  {results.report_metadata?.cross_device_metrics && (
+                    <button
+                      className={`${styles.tabBtn} ${activeTab === 'devices' ? styles.tabActive : ''}`}
+                      onClick={() => setActiveTab('devices')}
+                    >
+                      <Smartphone size={16} /> Responsive QA Matrix
+                    </button>
+                  )}
+                </div>
+
+                {activeTab === 'findings' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div className={styles.filterBar}>
+                      <div className={styles.searchInputWrapper}>
+                        <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+                        <input
+                          type="text"
+                          placeholder="Search findings by ID, title, or keyword..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className={styles.searchInput}
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <select
+                          className={styles.filterSelect}
+                          value={filterSeverity}
+                          onChange={(e) => setFilterSeverity(e.target.value)}
+                        >
+                          <option value="ALL">All Severities</option>
+                          <option value="critical">Critical</option>
+                          <option value="high">High</option>
+                          <option value="medium">Medium</option>
+                          <option value="low">Low</option>
+                        </select>
+
+                        <select
+                          className={styles.filterSelect}
+                          value={filterPriority}
+                          onChange={(e) => setFilterPriority(e.target.value)}
+                        >
+                          <option value="ALL">All Priorities</option>
+                          <option value="P0">P0 (Blocker)</option>
+                          <option value="P1">P1 (Critical)</option>
+                          <option value="P2">P2 (Major)</option>
+                          <option value="P3">P3 (Minor)</option>
+                        </select>
+
+                        <select
+                          className={styles.filterSelect}
+                          value={filterClass}
+                          onChange={(e) => setFilterClass(e.target.value)}
+                        >
+                          <option value="ALL">All Classifications</option>
+                          <option value="confirmed_bug">Confirmed Bug</option>
+                          <option value="high_confidence_candidate">Candidate</option>
+                          <option value="needs_manual_review">Needs Review</option>
+                          <option value="informational">Info</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className={styles.findingsList}>
+                      {filteredFindings.map((finding, idx) => (
+                        <div key={finding.id || idx} className={styles.findingItem}>
+                          <div className={styles.findingHeader}>
+                            <span className={styles.findingId}>{finding.id}</span>
+                            <span className={`${styles.severityBadge} ${styles[finding.severity] ?? ''}`}>
+                              {finding.severity}
+                            </span>
+                          </div>
+
+                          <h3 style={{ fontSize: '1.15rem', color: '#f8fafc' }}>{finding.title}</h3>
+                          <p className={styles.findingDesc}>{finding.description || finding.manual_verification}</p>
+
+                          <div className={styles.tagsRow}>
+                            {finding.priority && <span className={styles.chip}>Priority: {finding.priority}</span>}
+                            {finding.user_impact && <span className={styles.chip}>Impact: {finding.user_impact.toUpperCase()}</span>}
+                            {finding.root_cause?.category && (
+                              <span className={styles.chip}>Cause: {finding.root_cause.category.replace('_', ' ')}</span>
+                            )}
+                            {finding.page && <span className={styles.chip}>{finding.page}</span>}
+                          </div>
+
+                          <details className={styles.evidenceAccordion}>
+                            <summary className={styles.evidenceSummary}>View Evidence & Remediation Steps</summary>
+                            <div className={styles.evidenceBody}>
+                              {finding.root_cause?.summary && (
+                                <p style={{ marginBottom: '8px' }}>
+                                  <strong>Root Cause Summary:</strong> {finding.root_cause.summary}
+                                </p>
+                              )}
+                              <p style={{ marginBottom: '8px' }}>
+                                <strong>Recommendation:</strong> {finding.recommendation || 'Review component lifecycle and error bounds.'}
+                              </p>
+
+                              {finding.reproduction?.steps && finding.reproduction.steps.length > 0 && (
+                                <div style={{ marginTop: '10px' }}>
+                                  <strong>Reproduction Steps:</strong>
+                                  <ol style={{ paddingLeft: '20px', marginTop: '4px' }}>
+                                    {finding.reproduction.steps.map((step, sIdx) => (
+                                      <li key={sIdx}>{step}</li>
+                                    ))}
+                                  </ol>
+                                </div>
+                              )}
+                            </div>
+                          </details>
+                        </div>
+                      ))}
+
+                      {filteredFindings.length === 0 && (
+                        <div className={styles.noFindings}>
+                          ✨ No bugs or anomalies match the selected filters.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'tests' && results.test_cases && (
+                  <div className={styles.findingsList}>
+                    {results.test_cases.map((tc, idx) => {
+                      const status = tc.status || 'passed';
+                      const isPassed = status === 'passed';
+                      const isFailed = status === 'failed';
+                      const isErrored = status === 'errored';
+                      const isBlocked = status === 'blocked';
+
+                      return (
+                        <div
+                          key={tc.id || idx}
+                          className={styles.findingItem}
+                          style={{
+                            borderLeftColor: isPassed ? '#10b981' : isFailed ? '#ef4444' : isErrored ? '#f43f5e' : '#f59e0b',
+                          }}
+                        >
+                          <div className={styles.findingHeader}>
+                            <span className={styles.findingId}>{tc.id}</span>
+                            <span
+                              className={styles.severityBadge}
+                              style={{
+                                background: isPassed ? 'rgba(16, 185, 129, 0.2)' : isFailed ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                                color: isPassed ? '#34d399' : isFailed ? '#f87171' : '#fbbf24',
+                              }}
+                            >
+                              {status.toUpperCase()}
+                            </span>
+                          </div>
+
+                          <h3 style={{ fontSize: '1.1rem', color: '#f8fafc' }}>{tc.title}</h3>
+
+                          <div className={styles.tagsRow}>
+                            <span className={styles.chip}>{tc.category || 'General'}</span>
+                            {tc.priority && <span className={styles.chip}>Priority: {tc.priority}</span>}
+                            {tc.source_page && <span className={styles.chip}>{tc.source_page}</span>}
+                          </div>
+
+                          <div style={{ fontSize: '0.9rem', color: '#cbd5e1' }}>
+                            <div>
+                              <strong>Expected:</strong> {tc.expected_result || 'N/A'}
+                            </div>
+                            <div style={{ marginTop: '4px' }}>
+                              <strong>Actual:</strong> {tc.actual_result || 'Assertion passed successfully.'}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {activeTab === 'devices' && results.report_metadata?.cross_device_metrics && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div className={styles.statsGrid}>
+                      <div className={styles.statCard}>
+                        <div className={styles.statHeader}>
+                          <span>Desktop (1920x1080)</span>
+                          <Monitor size={18} color="#818cf8" />
+                        </div>
+                        <div className={styles.statValue}>
+                          {results.report_metadata.cross_device_metrics.device_breakdown.desktop}
+                        </div>
+                        <div className={styles.statSub}>Responsive Findings</div>
+                      </div>
+
+                      <div className={styles.statCard}>
+                        <div className={styles.statHeader}>
+                          <span>iPhone 13 (390x844)</span>
+                          <Smartphone size={18} color="#38bdf8" />
+                        </div>
+                        <div className={styles.statValue}>
+                          {results.report_metadata.cross_device_metrics.device_breakdown.iphone}
+                        </div>
+                        <div className={styles.statSub}>Touch & Viewport Findings</div>
+                      </div>
+
+                      <div className={styles.statCard}>
+                        <div className={styles.statHeader}>
+                          <span>iPad (820x1180)</span>
+                          <Tablet size={18} color="#34d399" />
+                        </div>
+                        <div className={styles.statValue}>
+                          {results.report_metadata.cross_device_metrics.device_breakdown.ipad}
+                        </div>
+                        <div className={styles.statSub}>Tablet Layout Findings</div>
+                      </div>
+
+                      <div className={styles.statCard}>
+                        <div className={styles.statHeader}>
+                          <span>Total Responsive Issues</span>
+                          <Activity size={18} color="#f59e0b" />
+                        </div>
+                        <div className={styles.statValue}>
+                          {results.report_metadata.cross_device_metrics.responsive_findings}
+                        </div>
+                        <div className={styles.statSub}>Across all emulated viewports</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ==============================================================
+       * PRICING & MULTI-PAYMENT GATEWAY MODAL
+       * ============================================================== */}
+      <AnimatePresence>
+        {showPricingModal && (
+          <motion.div
+            className={styles.modalOverlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowPricingModal(false)}
+          >
+            <motion.div
+              className={styles.pricingModalCard}
+              initial={{ scale: 0.95, y: 20, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 20, opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={styles.modalHeader}>
+                <div className={styles.modalLogo}>
+                  <ShieldCheck size={22} color="#6366f1" />
+                  <span>JASUSS Enterprise Plans & Pricing</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPricingModal(false)}
+                  className={styles.modalCloseBtn}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className={styles.pricingModalBody}>
+                {billingMessage && (
+                  <div className={`${styles.authBanner} ${billingMessage.includes('Redirecting') || billingMessage.includes('success') ? styles.authBannerSuccess : styles.authBannerError}`}>
+                    <CheckCircle2 size={16} />
+                    <span>{billingMessage}</span>
+                  </div>
+                )}
+
+                {/* Gateway Selector */}
+                <div className={styles.gatewaySelectSection}>
+                  <div className={styles.gatewaySelectLabel}>Choose Preferred Payment Gateway</div>
+                  <div className={styles.gatewayGrid}>
+                    {[
+                      { id: 'stripe', name: 'Stripe', icon: <CreditCard size={16} /> },
+                      { id: 'lemonsqueezy', name: 'LemonSqueezy', icon: <ShoppingBag size={16} /> },
+                      { id: 'razorpay', name: 'Razorpay', icon: <Zap size={16} /> },
+                      { id: 'paypal', name: 'PayPal', icon: <DollarSign size={16} /> },
+                    ].map((gw) => (
+                      <button
+                        key={gw.id}
+                        type="button"
+                        onClick={() => setSelectedGateway(gw.id as any)}
+                        className={`${styles.gatewayOption} ${selectedGateway === gw.id ? styles.gatewayOptionActive : ''}`}
+                      >
+                        {gw.icon}
+                        <span>{gw.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Pricing Grid */}
+                <div className={styles.pricingGrid}>
+                  {/* Plan 1: Free */}
+                  <div className={styles.planCard}>
+                    <div className={styles.planHeader}>
+                      <div className={styles.planName}>Community Starter</div>
+                      <div className={styles.planPriceRow}>
+                        <span className={styles.planPrice}>$0</span>
+                        <span className={styles.planInterval}>/ month</span>
+                      </div>
+                      <div className={styles.planDesc}>Ideal for developers & open source projects testing core sites.</div>
+                    </div>
+
+                    <div className={styles.planFeaturesList}>
+                      <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> 10 Automated Scans / mo</div>
+                      <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Multi-Viewport (Desktop, Mobile, Tablet)</div>
+                      <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Deterministic Defect Triage</div>
+                      <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Executive Score & Grade</div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={billingLoading}
+                      onClick={() => handleCheckout('free')}
+                      className={styles.planSelectBtn}
+                    >
+                      Switch to Starter
+                    </button>
+                  </div>
+
+                  {/* Plan 2: Pro (Recommended) */}
+                  <div className={`${styles.planCard} ${styles.planCardHighlighted}`}>
+                    <div className={styles.planPopularBadge}>Most Popular</div>
+                    <div className={styles.planHeader}>
+                      <div className={styles.planName}>Professional QA</div>
+                      <div className={styles.planPriceRow}>
+                        <span className={styles.planPrice}>$49</span>
+                        <span className={styles.planInterval}>/ month</span>
+                      </div>
+                      <div className={styles.planDesc}>Continuous testing for growth teams, SaaS apps, and QA engineers.</div>
+                    </div>
+
+                    <div className={styles.planFeaturesList}>
+                      <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> 200 Automated Scans / mo</div>
+                      <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Up to 50 Pages Deep Crawling</div>
+                      <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Authenticated Route & Session Crawling</div>
+                      <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Executive PDF & Excel Multi-Tab Exports</div>
+                      <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Priority Processing Queue</div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={billingLoading}
+                      onClick={() => handleCheckout('pro')}
+                      className={`${styles.planSelectBtn} ${styles.planSelectBtnPrimary}`}
+                    >
+                      {billingLoading ? 'Processing...' : `Upgrade with ${selectedGateway.toUpperCase()}`}
+                    </button>
+                  </div>
+
+                  {/* Plan 3: Enterprise */}
+                  <div className={styles.planCard}>
+                    <div className={styles.planHeader}>
+                      <div className={styles.planName}>Enterprise Suite</div>
+                      <div className={styles.planPriceRow}>
+                        <span className={styles.planPrice}>$199</span>
+                        <span className={styles.planInterval}>/ month</span>
+                      </div>
+                      <div className={styles.planDesc}>Full continuous compliance platform with dedicated cluster workers.</div>
+                    </div>
+
+                    <div className={styles.planFeaturesList}>
+                      <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Unlimited Automated QA Scans</div>
+                      <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Deep Unlimited Page Discovery</div>
+                      <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Custom MFA / Complex Auth Portals</div>
+                      <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Dedicated Worker Node & SLA</div>
+                      <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> 24/7 Priority Support</div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={billingLoading}
+                      onClick={() => handleCheckout('enterprise')}
+                      className={styles.planSelectBtn}
+                    >
+                      {billingLoading ? 'Processing...' : `Select Enterprise (${selectedGateway.toUpperCase()})`}
+                    </button>
                   </div>
                 </div>
               </div>
-            )}
+            </motion.div>
           </motion.div>
         )}
-      </div>
+      </AnimatePresence>
 
       {/* ==============================================================
        * PRODUCTION AUTH MODAL (Sign In / Get Started)
@@ -1680,7 +2173,7 @@ export default function Home() {
               <div className={styles.modalHeader}>
                 <div className={styles.modalLogo}>
                   <ShieldCheck size={20} color="#6366f1" />
-                  <span>NexusQA Suite</span>
+                  <span>JASUSS Workspace</span>
                 </div>
                 <button
                   type="button"
@@ -1791,7 +2284,7 @@ export default function Home() {
                   ) : (
                     <>
                       {authMode === 'signin' ? <LogIn size={16} /> : <UserPlus size={16} />}
-                      <span>{authMode === 'signin' ? 'Sign In to Workspace' : 'Create NexusQA Account'}</span>
+                      <span>{authMode === 'signin' ? 'Sign In to Workspace' : 'Create JASUSS Account'}</span>
                     </>
                   )}
                 </button>
