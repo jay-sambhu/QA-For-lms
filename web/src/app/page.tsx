@@ -37,6 +37,12 @@ import {
   ChevronRight,
   ExternalLink,
   Square,
+  X,
+  LogIn,
+  UserPlus,
+  Compass,
+  Cpu,
+  GitCompare,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient, type Session } from '@supabase/supabase-js';
@@ -208,10 +214,16 @@ type ScanStatus = 'pending' | 'running' | 'completed' | 'failed' | 'error' | 'ca
 export default function Home() {
   const [session, setSession] = useState<Session | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(!supabase);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+
+  // Production Auth Modal States
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPass, setAuthPass] = useState('');
+  const [authConfirmPass, setAuthConfirmPass] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [authSuccess, setAuthSuccess] = useState('');
 
   // Scan input states
   const [url, setUrl] = useState('');
@@ -249,18 +261,12 @@ export default function Home() {
       .then(({ data, error }) => {
         if (error) {
           console.error('Failed to restore session:', error);
-          setAuthError(`Could not reach the authentication service: ${error.message}`);
           return;
         }
         setSession(data.session);
       })
       .catch((err: unknown) => {
         console.error('Failed to restore session:', err);
-        setAuthError(
-          err instanceof Error
-            ? `Could not reach the authentication service: ${err.message}`
-            : 'Could not reach the authentication service.',
-        );
       })
       .finally(() => {
         setSessionLoaded(true);
@@ -300,21 +306,73 @@ export default function Home() {
     }
   }, [progress?.message]);
 
-  const handleDevSignIn = () => {
-    setSession({
-      access_token: 'dev-token',
-      token_type: 'bearer',
-      expires_in: 3600,
-      refresh_token: 'dev-refresh',
-      user: {
-        id: '00000000-0000-0000-0000-000000000001',
-        app_metadata: {},
-        user_metadata: {},
-        aud: 'authenticated',
-        created_at: new Date().toISOString(),
-        email: 'dev@example.com',
-      },
-    } as unknown as Session);
+  // Production Sign In Handler
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase) {
+      setAuthError('Authentication service is not configured.');
+      return;
+    }
+    setAuthLoading(true);
+    setAuthError('');
+    setAuthSuccess('');
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: authEmail,
+        password: authPass,
+      });
+      if (error) throw error;
+      setSession(data.session);
+      setShowAuthModal(false);
+      setAuthEmail('');
+      setAuthPass('');
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Sign in failed.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Production Sign Up (Get Started) Handler
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase) {
+      setAuthError('Authentication service is not configured.');
+      return;
+    }
+    if (authPass !== authConfirmPass) {
+      setAuthError('Passwords do not match.');
+      return;
+    }
+    if (authPass.length < 6) {
+      setAuthError('Password must be at least 6 characters.');
+      return;
+    }
+    setAuthLoading(true);
+    setAuthError('');
+    setAuthSuccess('');
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: authEmail,
+        password: authPass,
+      });
+      if (error) throw error;
+      if (data.session) {
+        setSession(data.session);
+        setShowAuthModal(false);
+        setAuthEmail('');
+        setAuthPass('');
+        setAuthConfirmPass('');
+      } else {
+        setAuthSuccess('Account created! Please check your email inbox to verify and sign in.');
+      }
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Registration failed.');
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   const handleSignOut = async () => {
@@ -354,7 +412,14 @@ export default function Home() {
 
   const startScan = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!url || !session) return;
+    if (!url) return;
+
+    if (!session) {
+      setAuthError('Please sign in or create an account to run automated QA scans.');
+      setAuthMode('signin');
+      setShowAuthModal(true);
+      return;
+    }
 
     setLoading(true);
     setResults(null);
@@ -590,9 +655,32 @@ export default function Home() {
                 </button>
               </div>
             ) : (
-              <button onClick={handleDevSignIn} className="btn btn-primary" style={{ padding: '8px 18px', fontSize: '0.88rem' }}>
-                Dev Sign In
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <button
+                  onClick={() => {
+                    setAuthMode('signin');
+                    setAuthError('');
+                    setAuthSuccess('');
+                    setShowAuthModal(true);
+                  }}
+                  className={styles.headerSignInBtn}
+                >
+                  Sign In
+                </button>
+
+                <button
+                  onClick={() => {
+                    setAuthMode('signup');
+                    setAuthError('');
+                    setAuthSuccess('');
+                    setShowAuthModal(true);
+                  }}
+                  className={styles.headerGetStartedBtn}
+                >
+                  <Sparkles size={15} />
+                  <span>Get Started</span>
+                </button>
+              </div>
             )}
           </div>
         </header>
@@ -658,7 +746,7 @@ export default function Home() {
                   <option value="50">50 pages (Full)</option>
                 </select>
 
-                <button type="submit" className={styles.launchBtn} disabled={loading || !session}>
+                <button type="submit" className={styles.launchBtn} disabled={loading}>
                   <span>Run QA Scan</span>
                   <ArrowRight size={18} />
                 </button>
@@ -998,6 +1086,113 @@ export default function Home() {
             </div>
           )}
         </motion.div>
+
+        {/* ==============================================================
+         * TESTING METHODS & CAPABILITIES SHOWCASE SECTION
+         * ============================================================== */}
+        {showForm && (
+          <section className={styles.methodsSection}>
+            <div className={styles.methodsHeader}>
+              <h2>Comprehensive QA Testing Methods</h2>
+              <p>
+                NexusQA executes automated verification pipelines across viewports, interactive elements,
+                and performance heuristics to ensure production reliability.
+              </p>
+            </div>
+
+            <div className={styles.methodsGrid}>
+              <div className={styles.methodCard}>
+                <div className={styles.methodIconWrapper}>
+                  <Monitor size={22} color="#818cf8" />
+                </div>
+                <div className={styles.methodTitle}>Multi-Viewport Crawling</div>
+                <p className={styles.methodDesc}>
+                  Parallel inspection across Desktop (1920x1080), iPhone 13 (390x844), and iPad (820x1180) to detect layout breakages and overflow.
+                </p>
+                <div className={styles.methodTagsList}>
+                  <span className={styles.methodTag}>Desktop</span>
+                  <span className={styles.methodTag}>Mobile Touch</span>
+                  <span className={styles.methodTag}>Tablet</span>
+                </div>
+              </div>
+
+              <div className={styles.methodCard}>
+                <div className={styles.methodIconWrapper}>
+                  <Zap size={22} color="#38bdf8" />
+                </div>
+                <div className={styles.methodTitle}>Synthetic Interactive Testing</div>
+                <p className={styles.methodDesc}>
+                  Automated discovery and execution of interactive buttons, links, inputs, and dialog dismissals to verify client-side responsiveness.
+                </p>
+                <div className={styles.methodTagsList}>
+                  <span className={styles.methodTag}>Forms</span>
+                  <span className={styles.methodTag}>Clicks</span>
+                  <span className={styles.methodTag}>Navigation</span>
+                </div>
+              </div>
+
+              <div className={styles.methodCard}>
+                <div className={styles.methodIconWrapper}>
+                  <Bug size={22} color="#ef4444" />
+                </div>
+                <div className={styles.methodTitle}>Deterministic Defect Triage</div>
+                <p className={styles.methodDesc}>
+                  Real-time trapping of HTTP 4xx/5xx responses, unhandled JavaScript runtime exceptions, and console error log telemetry.
+                </p>
+                <div className={styles.methodTagsList}>
+                  <span className={styles.methodTag}>HTTP 500</span>
+                  <span className={styles.methodTag}>Console Trace</span>
+                  <span className={styles.methodTag}>CORS</span>
+                </div>
+              </div>
+
+              <div className={styles.methodCard}>
+                <div className={styles.methodIconWrapper}>
+                  <Lock size={22} color="#10b981" />
+                </div>
+                <div className={styles.methodTitle}>Authenticated Session Testing</div>
+                <p className={styles.methodDesc}>
+                  Form-based authentication flow with transient in-memory credentials and strict zero-leakage security invariants.
+                </p>
+                <div className={styles.methodTagsList}>
+                  <span className={styles.methodTag}>Login Portals</span>
+                  <span className={styles.methodTag}>SecretStr</span>
+                  <span className={styles.methodTag}>Protected Routes</span>
+                </div>
+              </div>
+
+              <div className={styles.methodCard}>
+                <div className={styles.methodIconWrapper}>
+                  <Cpu size={22} color="#a855f7" />
+                </div>
+                <div className={styles.methodTitle}>AI-Assisted Quality Synthesis</div>
+                <p className={styles.methodDesc}>
+                  Root-cause categorization, severity impact scoring (P0-P4), step-by-step reproduction instructions, and canonical grading.
+                </p>
+                <div className={styles.methodTagsList}>
+                  <span className={styles.methodTag}>Root Cause</span>
+                  <span className={styles.methodTag}>Letter Grade</span>
+                  <span className={styles.methodTag}>Reproduction</span>
+                </div>
+              </div>
+
+              <div className={styles.methodCard}>
+                <div className={styles.methodIconWrapper}>
+                  <GitCompare size={22} color="#f59e0b" />
+                </div>
+                <div className={styles.methodTitle}>Regression & Executive Exports</div>
+                <p className={styles.methodDesc}>
+                  Historical baseline diffing to identify new vs resolved defects, with one-click export to PDF, Excel, JSON, and Markdown.
+                </p>
+                <div className={styles.methodTagsList}>
+                  <span className={styles.methodTag}>PDF Audit</span>
+                  <span className={styles.methodTag}>Excel Sheets</span>
+                  <span className={styles.methodTag}>Diffing</span>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* ==============================================================
          * EXECUTIVE RESULTS DASHBOARD
@@ -1461,6 +1656,150 @@ export default function Home() {
           </motion.div>
         )}
       </div>
+
+      {/* ==============================================================
+       * PRODUCTION AUTH MODAL (Sign In / Get Started)
+       * ============================================================== */}
+      <AnimatePresence>
+        {showAuthModal && (
+          <motion.div
+            className={styles.modalOverlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowAuthModal(false)}
+          >
+            <motion.div
+              className={styles.modalCard}
+              initial={{ scale: 0.95, y: 15, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 15, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={styles.modalHeader}>
+                <div className={styles.modalLogo}>
+                  <ShieldCheck size={20} color="#6366f1" />
+                  <span>NexusQA Suite</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAuthModal(false)}
+                  className={styles.modalCloseBtn}
+                  title="Close"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Tab Switcher */}
+              <div className={styles.modalTabs}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('signin');
+                    setAuthError('');
+                    setAuthSuccess('');
+                  }}
+                  className={`${styles.modalTab} ${authMode === 'signin' ? styles.modalTabActive : ''}`}
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('signup');
+                    setAuthError('');
+                    setAuthSuccess('');
+                  }}
+                  className={`${styles.modalTab} ${authMode === 'signup' ? styles.modalTabActive : ''}`}
+                >
+                  Get Started
+                </button>
+              </div>
+
+              {/* Auth Form Body */}
+              <form
+                onSubmit={authMode === 'signin' ? handleSignIn : handleSignUp}
+                className={styles.modalBody}
+              >
+                {authError && (
+                  <div className={`${styles.authBanner} ${styles.authBannerError}`}>
+                    <AlertCircle size={16} />
+                    <span>{authError}</span>
+                  </div>
+                )}
+
+                {authSuccess && (
+                  <div className={`${styles.authBanner} ${styles.authBannerSuccess}`}>
+                    <CheckCircle2 size={16} />
+                    <span>{authSuccess}</span>
+                  </div>
+                )}
+
+                <div className={styles.modalFormGroup}>
+                  <label className={styles.modalFormLabel}>Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="name@company.com"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    className={styles.modalInput}
+                    autoComplete="email"
+                  />
+                </div>
+
+                <div className={styles.modalFormGroup}>
+                  <label className={styles.modalFormLabel}>Password</label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="••••••••••••"
+                    value={authPass}
+                    onChange={(e) => setAuthPass(e.target.value)}
+                    className={styles.modalInput}
+                    autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'}
+                  />
+                </div>
+
+                {authMode === 'signup' && (
+                  <div className={styles.modalFormGroup}>
+                    <label className={styles.modalFormLabel}>Confirm Password</label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="••••••••••••"
+                      value={authConfirmPass}
+                      onChange={(e) => setAuthConfirmPass(e.target.value)}
+                      className={styles.modalInput}
+                      autoComplete="new-password"
+                    />
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className={styles.modalSubmitBtn}
+                >
+                  {authLoading ? (
+                    <>
+                      <Loader2 size={16} className="pulse" />
+                      <span>{authMode === 'signin' ? 'Signing In...' : 'Creating Account...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      {authMode === 'signin' ? <LogIn size={16} /> : <UserPlus size={16} />}
+                      <span>{authMode === 'signin' ? 'Sign In to Workspace' : 'Create NexusQA Account'}</span>
+                    </>
+                  )}
+                </button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }

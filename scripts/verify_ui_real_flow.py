@@ -11,79 +11,52 @@ async def run_verification():
         context = await browser.new_context(viewport={"width": 1280, "height": 950})
         page = await context.new_page()
 
-        print("[1/6] Navigating to http://localhost:3000...")
+        print("[1/5] Navigating to http://localhost:3000...")
         await page.goto("http://localhost:3000", wait_until="networkidle")
 
-        # Click Dev Sign In if present
-        try:
-            dev_btn = page.locator("button:has-text('Dev Sign In')")
-            await dev_btn.wait_for(state="visible", timeout=4000)
-            print("[2/6] Clicking Dev Sign In...")
-            await dev_btn.click()
-            await page.wait_for_timeout(1000)
-        except Exception:
-            print("Already signed in or no Dev Sign In button.")
+        # Capture Clean Landing with Get Started & Sign In buttons and Testing Methods
+        landing_shot = os.path.join(SCREENSHOTS_DIR, "production_ui_landing_get_started.png")
+        await page.screenshot(path=landing_shot, full_page=False)
+        print(f"Saved: {landing_shot}")
 
-        # Capture Hero & Launch Form
-        form_shot = os.path.join(SCREENSHOTS_DIR, "enterprise_ui_dashboard_form.png")
-        await page.screenshot(path=form_shot, full_page=False)
-        print(f"Saved: {form_shot}")
+        # Test Get Started modal
+        print("[2/5] Testing Get Started button & registration modal...")
+        get_started_btn = page.locator("button:has-text('Get Started')")
+        await get_started_btn.wait_for(state="visible", timeout=5000)
+        await get_started_btn.click()
+        await page.wait_for_timeout(600)
 
-        print("[3/6] Launching QA Scan on https://example.com...")
-        quick_pill = page.locator("button:has-text('example.com')")
-        await quick_pill.click()
-        await page.select_option("select#max-pages", "1")
+        signup_shot = os.path.join(SCREENSHOTS_DIR, "production_ui_auth_modal_signup.png")
+        await page.screenshot(path=signup_shot, full_page=False)
+        print(f"Saved: {signup_shot}")
 
-        run_btn = page.locator("button[type='submit']:has-text('Run QA Scan')")
-        await run_btn.wait_for(state="visible", timeout=5000)
-        await run_btn.click()
-
-        # Wait 3 seconds and capture prominent loading screen with Stop Button & Multi-Device Deck
-        await page.wait_for_timeout(3000)
-        loading_shot = os.path.join(SCREENSHOTS_DIR, "enterprise_ui_loading_screen_with_devices.png")
-        await page.screenshot(path=loading_shot, full_page=False)
-        print(f"Saved Loading Screen: {loading_shot}")
-
-        # Wait for scan completion
-        print("[4/6] Awaiting scan completion and executive dashboard...")
-        for attempt in range(45):
-            await page.wait_for_timeout(2000)
-            if await page.locator("text=QA Scan Report").count() > 0 or await page.locator("text=High Software Quality").count() > 0:
-                print("Dashboard detected!")
-                break
-            if attempt % 5 == 0:
-                print(f"Still running (elapsed ~{attempt * 2}s)...")
-
-        results_shot = os.path.join(SCREENSHOTS_DIR, "enterprise_ui_completed_dashboard.png")
-        await page.screenshot(path=results_shot, full_page=False)
-        print(f"Saved Results Dashboard: {results_shot}")
-
-        # Test Stop Button functionality on a new scan
-        print("[5/6] Testing Stop Scan button...")
-        new_scan_btn = page.locator("button:has-text('New Scan')")
-        await new_scan_btn.wait_for(state="visible", timeout=5000)
-        await new_scan_btn.click()
-        await page.wait_for_timeout(1500)
-
-        # Fill and launch 2nd scan
-        await page.fill("input[type='url']", "https://example.com")
+        # Switch to Sign In tab inside modal
+        print("[3/5] Switching to Sign In tab inside modal...")
+        signin_tab = page.locator("button.page-module___8aEwW__modalTab:has-text('Sign In')")
+        await signin_tab.click()
         await page.wait_for_timeout(500)
-        await page.click("button[type='submit']:has-text('Run QA Scan')")
-        await page.wait_for_timeout(1500)
 
-        # Click Stop Scan button
-        stop_btn = page.locator("button:has-text('Stop Scan')")
-        await stop_btn.wait_for(state="visible", timeout=5000)
-        print("[6/6] Clicking Stop Scan button...")
-        await stop_btn.click()
-        await page.wait_for_timeout(2000)
+        signin_shot = os.path.join(SCREENSHOTS_DIR, "production_ui_auth_modal_signin.png")
+        await page.screenshot(path=signin_shot, full_page=False)
+        print(f"Saved: {signin_shot}")
 
-        stopped_shot = os.path.join(SCREENSHOTS_DIR, "enterprise_ui_stopped_scan.png")
-        await page.screenshot(path=stopped_shot, full_page=False)
-        print(f"Saved Stopped Scan Screenshot: {stopped_shot}")
+        # Close modal
+        close_btn = page.locator("button.page-module___8aEwW__modalCloseBtn")
+        await close_btn.click()
+        await page.wait_for_timeout(500)
+
+        # Scroll down to Testing Methods section and capture
+        print("[4/5] Inspecting Comprehensive QA Testing Methods section...")
+        methods_section = page.locator("h2:has-text('Comprehensive QA Testing Methods')")
+        await methods_section.scroll_into_view_if_needed()
+        await page.wait_for_timeout(500)
+
+        methods_shot = os.path.join(SCREENSHOTS_DIR, "production_ui_testing_methods.png")
+        await page.screenshot(path=methods_shot, full_page=False)
+        print(f"Saved: {methods_shot}")
 
         await browser.close()
-        print("All UI & Stop Button verifications completed successfully!")
+        print("[5/5] All production UI verifications completed successfully!")
 
 if __name__ == "__main__":
     asyncio.run(run_verification())
