@@ -16,7 +16,7 @@ class TestAlembicMigrations(unittest.TestCase):
     """Test Alembic migration upgrade and downgrade lifecycle."""
 
     def setUp(self):
-        self.alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "alembic.ini"))
+        self.alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "..", "alembic.ini"))
 
     def test_alembic_upgrade_and_downgrade(self):
         """Verify upgrade to head, downgrade to base, and upgrade back to head."""
@@ -43,7 +43,7 @@ class TestDatabaseUnifiedCRUD(unittest.TestCase):
 
     def setUp(self):
         # Ensure schema is up to date
-        alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "alembic.ini"))
+        alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "..", "alembic.ini"))
         command.upgrade(alembic_cfg, "head")
         self.user_id = str(uuid.uuid4())
         self.scan_id = str(uuid.uuid4())

@@ -15,9 +15,9 @@ import sys
 from datetime import datetime
 
 from crawler.crawler import WebsiteCrawler
-from bug_detector import generate_qa_findings
-from gemini_analyzer import generate_report
-from qa_report_generator import QAReportGenerator
+from core.bug_detector import generate_qa_findings
+from core.gemini_analyzer import generate_report
+from core.qa_report_generator import QAReportGenerator
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -88,7 +88,7 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
     report_progress("interactive_testing", 30, "Running deterministic interactive tests...")
 
     print("\n[Stage 2] Running deterministic interactive testing...")
-    from interactive_tester import InteractiveTester
+    from core.interactive_tester import InteractiveTester
     tester = InteractiveTester(
         crawl_result,
         max_interactions_per_page=3,

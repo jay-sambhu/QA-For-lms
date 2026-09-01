@@ -17,7 +17,7 @@ from pathlib import Path
 from security.redactor import SecretRedactor  # noqa: F401 — re-exported for backward compat
 
 
-from calculation_engine import CalculationEngine
+from core.calculation_engine import CalculationEngine
 
 
 class QAReportGenerator:

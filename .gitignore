@@ -1,12 +1,33 @@
+# Environment & Secrets
 .env
+.env.local
+.env.*.local
+
+# Python Environments & Caches
 .venv/
 .venv312/
 __pycache__/
-*.db
+*.py[cod]
+*$py.class
 .pytest_cache/
 .ruff_cache/
-screenshots/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Local Output & Scan Artifacts (Local-only, never committed)
+results/
 reports/
+screenshots/
 user_data/
+*.har
+*.zip
+dist/
 
-
+# Node.js & Next.js
+node_modules/
+.next/
+web/.next/
+web/node_modules/

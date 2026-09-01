@@ -1,5 +1,9 @@
 import re
-from .config import settings
+
+try:
+    from config import settings
+except ImportError:
+    from ..config import settings
 
 # Simple heuristic patterns for short, administrative queries
 _SIMPLE_PATTERNS = re.compile(r"\b(deadline|syllabus|due date|grade|schedule)\b", re.IGNORECASE)
