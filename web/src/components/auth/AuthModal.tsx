@@ -2,7 +2,17 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldCheck, X, Loader2, LogIn, UserPlus, AlertCircle, CheckCircle2 } from 'lucide-react';
+import {
+  RiShieldFlashFill,
+  RiCloseLine,
+  RiLoginCircleLine,
+  RiUserAddLine,
+  RiMailLine,
+  RiLockPasswordLine,
+  RiCheckboxCircleFill,
+  RiErrorWarningFill,
+} from 'react-icons/ri';
+import { TbLoader2 } from 'react-icons/tb';
 import { useAuth, supabase } from '../../context/AuthContext';
 import styles from '../../app/page.module.css';
 
@@ -99,7 +109,7 @@ export const AuthModal: React.FC = () => {
         >
           <div className={styles.modalHeader}>
             <div className={styles.modalLogo}>
-              <ShieldCheck size={20} color="#6366f1" />
+              <RiShieldFlashFill size={22} color="#6366f1" />
               <span>JASUSS Workspace</span>
             </div>
             <button
@@ -108,7 +118,7 @@ export const AuthModal: React.FC = () => {
               className={styles.modalCloseBtn}
               title="Close"
             >
-              <X size={18} />
+              <RiCloseLine size={20} />
             </button>
           </div>
 
@@ -122,6 +132,7 @@ export const AuthModal: React.FC = () => {
               }}
               className={`${styles.modalTab} ${authMode === 'signin' ? styles.modalTabActive : ''}`}
             >
+              <RiLoginCircleLine size={16} style={{ display: 'inline', marginRight: '5px' }} />
               Sign In
             </button>
             <button
@@ -133,6 +144,7 @@ export const AuthModal: React.FC = () => {
               }}
               className={`${styles.modalTab} ${authMode === 'signup' ? styles.modalTabActive : ''}`}
             >
+              <RiUserAddLine size={16} style={{ display: 'inline', marginRight: '5px' }} />
               Get Started
             </button>
           </div>
@@ -143,20 +155,22 @@ export const AuthModal: React.FC = () => {
           >
             {error && (
               <div className={`${styles.authBanner} ${styles.authBannerError}`}>
-                <AlertCircle size={16} />
+                <RiErrorWarningFill size={18} />
                 <span>{error}</span>
               </div>
             )}
 
             {success && (
               <div className={`${styles.authBanner} ${styles.authBannerSuccess}`}>
-                <CheckCircle2 size={16} />
+                <RiCheckboxCircleFill size={18} />
                 <span>{success}</span>
               </div>
             )}
 
             <div className={styles.modalFormGroup}>
-              <label className={styles.modalFormLabel}>Email Address</label>
+              <label className={styles.modalFormLabel}>
+                <RiMailLine size={14} style={{ display: 'inline', marginRight: '4px' }} /> Email Address
+              </label>
               <input
                 type="email"
                 required
@@ -169,7 +183,9 @@ export const AuthModal: React.FC = () => {
             </div>
 
             <div className={styles.modalFormGroup}>
-              <label className={styles.modalFormLabel}>Password</label>
+              <label className={styles.modalFormLabel}>
+                <RiLockPasswordLine size={14} style={{ display: 'inline', marginRight: '4px' }} /> Password
+              </label>
               <input
                 type="password"
                 required
@@ -183,7 +199,9 @@ export const AuthModal: React.FC = () => {
 
             {authMode === 'signup' && (
               <div className={styles.modalFormGroup}>
-                <label className={styles.modalFormLabel}>Confirm Password</label>
+                <label className={styles.modalFormLabel}>
+                  <RiLockPasswordLine size={14} style={{ display: 'inline', marginRight: '4px' }} /> Confirm Password
+                </label>
                 <input
                   type="password"
                   required
@@ -203,12 +221,12 @@ export const AuthModal: React.FC = () => {
             >
               {loading ? (
                 <>
-                  <Loader2 size={16} className="pulse" />
+                  <TbLoader2 size={18} className="pulse" />
                   <span>{authMode === 'signin' ? 'Signing In...' : 'Creating Account...'}</span>
                 </>
               ) : (
                 <>
-                  {authMode === 'signin' ? <LogIn size={16} /> : <UserPlus size={16} />}
+                  {authMode === 'signin' ? <RiLoginCircleLine size={18} /> : <RiUserAddLine size={18} />}
                   <span>{authMode === 'signin' ? 'Sign In to Workspace' : 'Create JASUSS Account'}</span>
                 </>
               )}

@@ -4,7 +4,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { RefreshCw, Loader2 } from 'lucide-react';
+import { RiRefreshLine } from 'react-icons/ri';
+import { TbLoader2, TbArrowRight, TbChecklist } from 'react-icons/tb';
 import { useAuth } from '../context/AuthContext';
 import { ScanForm } from '../components/scan/ScanForm';
 import styles from '../app/page.module.css';
@@ -91,7 +92,7 @@ export const DashboardPage: React.FC = () => {
   if (!sessionLoaded) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
-        <Loader2 size={36} className="pulse" color="#6366f1" />
+        <TbLoader2 size={36} className="pulse" color="#6366f1" />
         <p style={{ color: '#94a3b8' }}>Loading workspace...</p>
       </div>
     );
@@ -110,7 +111,7 @@ export const DashboardPage: React.FC = () => {
           className={styles.exportBtn}
           disabled={loadingHistory}
         >
-          <RefreshCw size={14} className={loadingHistory ? 'pulse' : ''} /> Refresh History
+          <RiRefreshLine size={16} className={loadingHistory ? 'pulse' : ''} /> Refresh History
         </button>
       </div>
 
@@ -127,7 +128,9 @@ export const DashboardPage: React.FC = () => {
       {/* Recent Scans History Section */}
       <div className={styles.adminTableCard}>
         <div className={styles.adminTableCardTitle}>
-          <span>Recent Automated QA Runs</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+            <TbChecklist size={18} color="#818cf8" /> Recent Automated QA Runs
+          </span>
           <span style={{ fontSize: '0.82rem', color: '#94a3b8', fontWeight: 500 }}>
             {recentScans.length} scans recorded
           </span>
@@ -177,9 +180,10 @@ export const DashboardPage: React.FC = () => {
                     <Link
                       href={`/dashboard/scan/${s.id}`}
                       className="btn btn-secondary"
-                      style={{ padding: '6px 12px', fontSize: '0.8rem', borderRadius: '8px', textDecoration: 'none' }}
+                      style={{ padding: '6px 14px', fontSize: '0.8rem', borderRadius: '8px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                     >
-                      View Report →
+                      <span>View Report</span>
+                      <TbArrowRight size={14} />
                     </Link>
                   </td>
                 </tr>

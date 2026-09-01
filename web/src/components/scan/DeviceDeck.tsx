@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { Monitor, Smartphone, Tablet } from 'lucide-react';
+import { TbDeviceDesktop, TbDeviceMobile, TbDeviceTablet, TbActivity } from 'react-icons/tb';
 import styles from '../../app/page.module.css';
 
 interface DeviceDeckProps {
@@ -20,27 +20,31 @@ export const DeviceDeck: React.FC<DeviceDeckProps> = ({
       id: 'desktop',
       name: 'Desktop Chrome',
       resolution: '1920 × 1080',
-      icon: <Monitor size={18} />,
+      icon: <TbDeviceDesktop size={20} />,
     },
     {
       id: 'iphone',
       name: 'iPhone 13',
       resolution: '390 × 844 (Touch)',
-      icon: <Smartphone size={18} />,
+      icon: <TbDeviceMobile size={20} />,
     },
     {
       id: 'ipad',
       name: 'iPad (gen 7)',
       resolution: '820 × 1180 (Tablet)',
-      icon: <Tablet size={18} />,
+      icon: <TbDeviceTablet size={20} />,
     },
   ];
 
   return (
     <div className={styles.deviceDeckSection}>
       <div className={styles.deviceDeckTitleRow}>
-        <span>Live Multi-Device Emulation Viewports</span>
-        <span style={{ color: '#34d399', fontSize: '0.75rem' }}>● 3 ISOLATED CONTEXTS ACTIVE</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <TbActivity size={16} color="#38bdf8" /> Live Multi-Device Emulation Viewports
+        </span>
+        <span style={{ color: '#34d399', fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.04em' }}>
+          ● 3 ISOLATED CONTEXTS ACTIVE
+        </span>
       </div>
 
       <div className={styles.deviceDeckGrid}>

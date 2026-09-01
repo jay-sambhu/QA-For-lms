@@ -2,7 +2,21 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, ArrowRight, Lock, KeyRound, User, Eye, EyeOff, AlertTriangle } from 'lucide-react';
+import {
+  RiGlobalLine,
+  RiLockPasswordLine,
+  RiKey2Line,
+  RiUser3Line,
+  RiEyeLine,
+  RiEyeOffLine,
+  RiErrorWarningFill,
+} from 'react-icons/ri';
+import {
+  TbPlayerPlayFilled,
+  TbSparkles,
+  TbWorldWww,
+  TbShieldLock,
+} from 'react-icons/tb';
 import styles from '../../app/page.module.css';
 
 interface ScanFormProps {
@@ -52,10 +66,10 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onSubmit, loading, error }) 
     <form onSubmit={handleSubmit} className={styles.form}>
       <div className={styles.inputRow}>
         <div className={styles.inputGroup}>
-          <Search className={styles.inputIcon} size={20} />
+          <RiGlobalLine className={styles.inputIcon} size={20} color="#818cf8" />
           <input
             type="url"
-            placeholder="https://example.com or your web application URL"
+            placeholder="https://example.com or enter your target web application URL"
             className={styles.urlInput}
             value={url}
             onChange={(e) => setUrl(e.target.value)}
@@ -70,7 +84,7 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onSubmit, loading, error }) 
           onChange={(e) => setMaxPages(e.target.value)}
           title="Maximum Pages to Crawl"
         >
-          <option value="1">1 page</option>
+          <option value="1">1 page (Quick)</option>
           <option value="5">5 pages</option>
           <option value="10">10 pages (Standard)</option>
           <option value="20">20 pages (Deep)</option>
@@ -78,34 +92,36 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onSubmit, loading, error }) 
         </select>
 
         <button type="submit" className={styles.launchBtn} disabled={loading}>
+          <TbPlayerPlayFilled size={16} />
           <span>Run QA Scan</span>
-          <ArrowRight size={18} />
         </button>
       </div>
 
       {/* Quick Sample URLs */}
       <div className={styles.quickPillsRow}>
-        <span>Try Instant Demo:</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+          <TbSparkles size={14} color="#818cf8" /> Instant Demo Targets:
+        </span>
         <button
           type="button"
           onClick={() => setUrl('https://example.com')}
           className={styles.quickPill}
         >
-          example.com
+          <TbWorldWww size={13} /> example.com
         </button>
         <button
           type="button"
           onClick={() => setUrl('https://news.ycombinator.com')}
           className={styles.quickPill}
         >
-          Hacker News
+          <TbWorldWww size={13} /> Hacker News
         </button>
         <button
           type="button"
           onClick={() => setUrl('https://httpbin.org/status/200')}
           className={styles.quickPill}
         >
-          HTTPBin Demo
+          <TbWorldWww size={13} /> HTTPBin Demo
         </button>
       </div>
 
@@ -119,7 +135,7 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onSubmit, loading, error }) 
             className={styles.authCheckbox}
           />
           <span className={styles.authToggleText}>
-            <Lock size={16} /> Requires Website Login?
+            <TbShieldLock size={17} color="#a855f7" /> Requires Authenticated Portal Login?
           </span>
         </label>
       </div>
@@ -136,7 +152,7 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onSubmit, loading, error }) 
           >
             <div className={styles.authFieldGroup}>
               <label className={styles.authFieldLabel}>
-                <KeyRound size={13} /> Login URL
+                <RiKey2Line size={14} /> Login URL
               </label>
               <input
                 type="url"
@@ -149,7 +165,7 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onSubmit, loading, error }) 
 
             <div className={styles.authFieldGroup}>
               <label className={styles.authFieldLabel}>
-                <User size={13} /> Username / Email
+                <RiUser3Line size={14} /> Username / Email
               </label>
               <input
                 type="text"
@@ -163,7 +179,7 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onSubmit, loading, error }) 
 
             <div className={styles.authFieldGroup}>
               <label className={styles.authFieldLabel}>
-                <Lock size={13} /> Password
+                <RiLockPasswordLine size={14} /> Password
               </label>
               <div className={styles.passwordInputWrapper}>
                 <input
@@ -180,7 +196,7 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onSubmit, loading, error }) 
                   className={styles.passwordToggleBtn}
                   title={showPassword ? 'Hide Password' : 'Show Password'}
                 >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {showPassword ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
                 </button>
               </div>
             </div>
@@ -189,8 +205,8 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onSubmit, loading, error }) 
       </AnimatePresence>
 
       {error && (
-        <div style={{ color: 'var(--danger)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <AlertTriangle size={16} /> {error}
+        <div style={{ color: 'var(--danger)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+          <RiErrorWarningFill size={18} /> {error}
         </div>
       )}
     </form>

@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Loader2 } from 'lucide-react';
+import { RiRefreshLine, RiShieldUserFill } from 'react-icons/ri';
+import { TbLoader2 } from 'react-icons/tb';
 import { useAuth } from '../context/AuthContext';
 import { AdminMetrics } from '../components/admin/AdminMetrics';
 import { TenantTable } from '../components/admin/TenantTable';
@@ -51,7 +52,7 @@ export const AdminPage: React.FC = () => {
   if (!sessionLoaded) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
-        <Loader2 size={36} className="pulse" color="#6366f1" />
+        <TbLoader2 size={36} className="pulse" color="#6366f1" />
         <p style={{ color: '#94a3b8' }}>Verifying admin authorization...</p>
       </div>
     );
@@ -67,7 +68,10 @@ export const AdminPage: React.FC = () => {
     >
       <div className={styles.adminTopBar}>
         <div className={styles.adminTitleBlock}>
-          <h2>JASUSS Admin & Cluster Telemetry</h2>
+          <h2>
+            <RiShieldUserFill size={26} color="#6366f1" style={{ display: 'inline', marginRight: '8px' }} />
+            JASUSS Admin & Cluster Telemetry
+          </h2>
           <p>Global platform oversight, revenue metrics, active tenants, and worker nodes.</p>
         </div>
 
@@ -77,7 +81,7 @@ export const AdminPage: React.FC = () => {
             className={styles.exportBtn}
             disabled={loading}
           >
-            <RefreshCw size={14} className={loading ? 'pulse' : ''} /> Refresh Telemetry
+            <RiRefreshLine size={16} className={loading ? 'pulse' : ''} /> Refresh Telemetry
           </button>
         </div>
       </div>

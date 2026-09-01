@@ -2,21 +2,28 @@
 
 import React, { useState, useMemo } from 'react';
 import {
-  FileText,
-  Download,
-  FileSpreadsheet,
-  RefreshCw,
-  AlertTriangle,
-  Award,
-  Layers,
-  Bug,
-  Monitor,
-  Clock,
-  Smartphone,
-  Tablet,
-  Activity,
-  Search,
-} from 'lucide-react';
+  RiFileExcel2Line,
+  RiCodeSSlashLine,
+  RiMarkdownLine,
+  RiAwardFill,
+  RiBug2Line,
+  RiErrorWarningFill,
+  RiSearchLine,
+  RiRefreshLine,
+  RiDownload2Line,
+} from 'react-icons/ri';
+import { FaRegFilePdf } from 'react-icons/fa6';
+import {
+  TbDeviceDesktop,
+  TbDeviceMobile,
+  TbDeviceTablet,
+  TbClock,
+  TbChecklist,
+  TbDevices,
+  TbActivity,
+  TbTestPipe,
+  TbFileAnalytics,
+} from 'react-icons/tb';
 import { QAReport } from '../../types/qa';
 import { handleDownloadReport } from '../../utils/export';
 import styles from '../../app/page.module.css';
@@ -73,10 +80,10 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
       <div className={styles.resultsHeader}>
         <div>
           <h2>
-            <FileText size={24} color="#6366f1" /> QA Scan Report
+            <TbFileAnalytics size={26} color="#818cf8" /> Autonomous QA Scan Report
           </h2>
-          <div style={{ color: '#94a3b8', fontSize: '0.9rem', marginTop: '4px' }}>
-            Target: <strong>{results.report_metadata?.target}</strong> · Generated at{' '}
+          <div style={{ color: '#94a3b8', fontSize: '0.92rem', marginTop: '4px' }}>
+            Target: <strong style={{ color: '#f8fafc' }}>{results.report_metadata?.target}</strong> · Generated at{' '}
             {new Date(results.report_metadata?.generated_at).toLocaleTimeString()}
           </div>
         </div>
@@ -94,7 +101,7 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
             }
             title="Download PDF Report"
           >
-            <Download size={16} /> PDF
+            <FaRegFilePdf size={15} color="#ef4444" /> PDF Report
           </button>
 
           <button
@@ -109,7 +116,7 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
             }
             title="Download Excel Spreadsheet"
           >
-            <FileSpreadsheet size={16} /> Excel
+            <RiFileExcel2Line size={16} color="#10b981" /> Excel Sheet
           </button>
 
           <button
@@ -124,7 +131,7 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
             }
             title="Download Raw JSON"
           >
-            <Download size={16} /> JSON
+            <RiCodeSSlashLine size={16} color="#38bdf8" /> JSON
           </button>
 
           <button
@@ -139,25 +146,25 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
             }
             title="Download Markdown Report"
           >
-            <Download size={16} /> Markdown
+            <RiMarkdownLine size={16} color="#a855f7" /> Markdown
           </button>
 
           <button
             className="btn btn-primary"
             onClick={onNewScan}
-            style={{ padding: '8px 16px', fontSize: '0.88rem' }}
+            style={{ padding: '9px 18px', fontSize: '0.88rem' }}
           >
-            <RefreshCw size={15} /> New Scan
+            <RiRefreshLine size={16} /> New Scan
           </button>
         </div>
       </div>
 
       {results.report_metadata?.ai_analysis_degraded && (
         <div className={styles.degradedBanner}>
-          <AlertTriangle size={20} style={{ flexShrink: 0 }} />
+          <RiErrorWarningFill size={22} style={{ flexShrink: 0 }} />
           <div>
             <strong>AI Analysis Incomplete:</strong> {results.report_metadata.ai_analysis_failures} findings
-            used deterministic fallbacks because the Gemini endpoint was unreachable.
+            used deterministic fallbacks because the AI endpoint was unreachable.
           </div>
         </div>
       )}
@@ -205,15 +212,15 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
               border: `1px solid ${safeScore >= 80 ? 'rgba(16, 185, 129, 0.35)' : 'rgba(245, 158, 11, 0.35)'}`,
             }}
           >
-            <Award size={14} /> {verdictText}
+            <RiAwardFill size={15} /> {verdictText}
           </div>
           <div className={styles.scoreTitle}>
-            {safeScore >= 80 ? 'High Software Quality & Stability' : 'Defects Identified Requiring Remediation'}
+            {safeScore >= 80 ? 'High Software Quality & Reliability' : 'Remediation Required Before Release'}
           </div>
           <div className={styles.scoreDescription}>
             {safeScore >= 80
-              ? 'Target website passed automated assertions and user journeys with strong responsiveness and zero critical runtime exceptions.'
-              : 'Discovered critical defects, network failures, or unhandled exceptions that require attention prior to release.'}
+              ? 'Target web application successfully passed automated multi-viewport assertions and user journeys with zero critical runtime exceptions.'
+              : 'Discovered defects, unhandled network failures, or layout anomalies that require attention.'}
           </div>
         </div>
       </div>
@@ -223,7 +230,7 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
         <div className={styles.statCard}>
           <div className={styles.statHeader}>
             <span>Total Test Cases</span>
-            <Layers size={18} color="#818cf8" />
+            <TbTestPipe size={20} color="#818cf8" />
           </div>
           <div className={styles.statValue}>
             {results.qa_metrics?.test_cases?.total ?? results.test_cases?.length ?? 0}
@@ -236,7 +243,7 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
         <div className={styles.statCard}>
           <div className={styles.statHeader}>
             <span>Total Findings</span>
-            <Bug size={18} color="#ef4444" />
+            <RiBug2Line size={20} color="#ef4444" />
           </div>
           <div className={styles.statValue}>{results.findings?.length ?? 0}</div>
           <div className={styles.statSub}>
@@ -247,7 +254,7 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
         <div className={styles.statCard}>
           <div className={styles.statHeader}>
             <span>Pages & Devices</span>
-            <Monitor size={18} color="#38bdf8" />
+            <TbDeviceDesktop size={20} color="#38bdf8" />
           </div>
           <div className={styles.statValue}>
             {results.report_metadata?.pages_crawled ?? 1}
@@ -258,12 +265,12 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
         <div className={styles.statCard}>
           <div className={styles.statHeader}>
             <span>Execution Duration</span>
-            <Clock size={18} color="#34d399" />
+            <TbClock size={20} color="#34d399" />
           </div>
           <div className={styles.statValue}>
             {results.qa_metrics?.duration?.formatted_duration ?? '00:15s'}
           </div>
-          <div className={styles.statSub}>Automated isolated contexts</div>
+          <div className={styles.statSub}>Parallel worker pipeline</div>
         </div>
       </div>
 
@@ -273,7 +280,7 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
           className={`${styles.tabBtn} ${activeTab === 'findings' ? styles.tabActive : ''}`}
           onClick={() => setActiveTab('findings')}
         >
-          <Bug size={16} /> Defect Triage ({results.findings?.length ?? 0})
+          <RiBug2Line size={17} /> Defect Triage ({results.findings?.length ?? 0})
         </button>
 
         {results.test_cases && results.test_cases.length > 0 && (
@@ -281,7 +288,7 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
             className={`${styles.tabBtn} ${activeTab === 'tests' ? styles.tabActive : ''}`}
             onClick={() => setActiveTab('tests')}
           >
-            <Layers size={16} /> Automated Tests ({results.test_cases.length})
+            <TbChecklist size={17} /> Automated Test Cases ({results.test_cases.length})
           </button>
         )}
 
@@ -290,7 +297,7 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
             className={`${styles.tabBtn} ${activeTab === 'devices' ? styles.tabActive : ''}`}
             onClick={() => setActiveTab('devices')}
           >
-            <Smartphone size={16} /> Responsive QA Matrix
+            <TbDevices size={17} /> Responsive QA Matrix
           </button>
         )}
       </div>
@@ -300,7 +307,7 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div className={styles.filterBar}>
             <div className={styles.searchInputWrapper}>
-              <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+              <RiSearchLine size={17} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
               <input
                 type="text"
                 placeholder="Search findings by ID, title, or keyword..."
@@ -359,7 +366,7 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
                   </span>
                 </div>
 
-                <h3 style={{ fontSize: '1.15rem', color: '#f8fafc' }}>{finding.title}</h3>
+                <h3 style={{ fontSize: '1.18rem', color: '#f8fafc' }}>{finding.title}</h3>
                 <p className={styles.findingDesc}>{finding.description || finding.manual_verification}</p>
 
                 <div className={styles.tagsRow}>
@@ -437,7 +444,7 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
                   </span>
                 </div>
 
-                <h3 style={{ fontSize: '1.1rem', color: '#f8fafc' }}>{tc.title}</h3>
+                <h3 style={{ fontSize: '1.12rem', color: '#f8fafc' }}>{tc.title}</h3>
 
                 <div className={styles.tagsRow}>
                   <span className={styles.chip}>{tc.category || 'General'}</span>
@@ -466,7 +473,7 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
             <div className={styles.statCard}>
               <div className={styles.statHeader}>
                 <span>Desktop (1920x1080)</span>
-                <Monitor size={18} color="#818cf8" />
+                <TbDeviceDesktop size={20} color="#818cf8" />
               </div>
               <div className={styles.statValue}>
                 {results.report_metadata.cross_device_metrics.device_breakdown.desktop}
@@ -477,7 +484,7 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
             <div className={styles.statCard}>
               <div className={styles.statHeader}>
                 <span>iPhone 13 (390x844)</span>
-                <Smartphone size={18} color="#38bdf8" />
+                <TbDeviceMobile size={20} color="#38bdf8" />
               </div>
               <div className={styles.statValue}>
                 {results.report_metadata.cross_device_metrics.device_breakdown.iphone}
@@ -488,7 +495,7 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
             <div className={styles.statCard}>
               <div className={styles.statHeader}>
                 <span>iPad (820x1180)</span>
-                <Tablet size={18} color="#34d399" />
+                <TbDeviceTablet size={20} color="#34d399" />
               </div>
               <div className={styles.statValue}>
                 {results.report_metadata.cross_device_metrics.device_breakdown.ipad}
@@ -499,7 +506,7 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
             <div className={styles.statCard}>
               <div className={styles.statHeader}>
                 <span>Total Responsive Issues</span>
-                <Activity size={18} color="#f59e0b" />
+                <TbActivity size={20} color="#f59e0b" />
               </div>
               <div className={styles.statValue}>
                 {results.report_metadata.cross_device_metrics.responsive_findings}

@@ -4,15 +4,14 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  ShieldCheck,
-  LayoutDashboard,
-  CreditCard,
-  Settings,
-  LogOut,
-  Sparkles,
-  Home,
-  CheckCircle2,
-} from 'lucide-react';
+  RiShieldFlashFill,
+  RiHome5Line,
+  RiShieldUserLine,
+  RiLoginCircleLine,
+} from 'react-icons/ri';
+import { TbDashboard, TbCreditCard } from 'react-icons/tb';
+import { HiSparkles } from 'react-icons/hi2';
+import { FiLogOut } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import styles from '../../app/page.module.css';
 
@@ -29,7 +28,7 @@ export const NavBar: React.FC = () => {
     <header className={styles.header}>
       <Link href="/" className={styles.logo}>
         <div className={styles.logoIconWrapper}>
-          <ShieldCheck size={22} color="#ffffff" />
+          <RiShieldFlashFill size={24} color="#ffffff" />
         </div>
         <div>
           <span>JASUSS</span>
@@ -42,7 +41,7 @@ export const NavBar: React.FC = () => {
           href="/"
           className={`${styles.navLink} ${isHome ? styles.navLinkActive : ''}`}
         >
-          <Home size={15} />
+          <RiHome5Line size={17} />
           <span>Home</span>
         </Link>
 
@@ -50,7 +49,7 @@ export const NavBar: React.FC = () => {
           href="/dashboard"
           className={`${styles.navLink} ${isDashboard ? styles.navLinkActive : ''}`}
         >
-          <LayoutDashboard size={15} />
+          <TbDashboard size={17} />
           <span>Dashboard</span>
         </Link>
 
@@ -58,7 +57,7 @@ export const NavBar: React.FC = () => {
           href="/pricing"
           className={`${styles.navLink} ${isPricing ? styles.navLinkActive : ''}`}
         >
-          <CreditCard size={15} />
+          <TbCreditCard size={17} />
           <span>Pricing</span>
         </Link>
 
@@ -66,7 +65,7 @@ export const NavBar: React.FC = () => {
           href="/admin"
           className={`${styles.navLink} ${isAdmin ? styles.navLinkActive : ''}`}
         >
-          <Settings size={15} />
+          <RiShieldUserLine size={17} />
           <span>Admin</span>
         </Link>
 
@@ -96,23 +95,24 @@ export const NavBar: React.FC = () => {
               </span>
             </div>
             <button onClick={signOut} className={styles.signOutBtn} title="Sign Out">
-              <LogOut size={16} />
+              <FiLogOut size={16} />
               <span>Exit</span>
             </button>
           </div>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button
               onClick={() => openAuthModal('signin')}
               className={styles.headerSignInBtn}
             >
-              Sign In
+              <RiLoginCircleLine size={16} />
+              <span>Sign In</span>
             </button>
             <button
               onClick={() => openAuthModal('signup')}
               className={styles.headerGetStartedBtn}
             >
-              <Sparkles size={15} />
+              <HiSparkles size={16} />
               <span>Get Started</span>
             </button>
           </div>

@@ -4,15 +4,31 @@ import React from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
-  Sparkles,
-  ArrowRight,
-  Monitor,
-  Zap,
-  Bug,
-  Lock,
-  Cpu,
-  GitCompare,
-} from 'lucide-react';
+  RiShieldCheckFill,
+  RiBug2Line,
+  RiLockPasswordLine,
+  RiCheckDoubleLine,
+  RiSpeedUpLine,
+  RiFileDownloadLine,
+  RiChromeFill,
+} from 'react-icons/ri';
+import {
+  TbDevices,
+  TbBolt,
+  TbBrain,
+  TbReportAnalytics,
+  TbArrowRight,
+  TbSparkles,
+  TbShieldLock,
+} from 'react-icons/tb';
+import {
+  SiFastapi,
+  SiNextdotjs,
+  SiRedis,
+  SiPython,
+  SiTypescript,
+} from 'react-icons/si';
+import { HiSparkles, HiOutlineCheckCircle } from 'react-icons/hi2';
 import { useAuth } from '../context/AuthContext';
 import styles from '../app/page.module.css';
 
@@ -20,35 +36,35 @@ export const LandingPage: React.FC = () => {
   const { session, openAuthModal } = useAuth();
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '48px', padding: '20px 0 60px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '56px', padding: '24px 0 80px' }}>
       {/* Hero Banner */}
       <motion.section
         className={styles.hero}
-        initial={{ opacity: 0, y: 15 }}
+        initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
+        transition={{ duration: 0.45 }}
       >
         <div className={styles.badge}>
-          <Sparkles size={14} /> Continuous Web Quality & Regression Suite
+          <HiSparkles size={15} /> Continuous Web Quality & Autonomous Regression Suite
         </div>
         <h1 className={styles.title}>
           Enterprise Automated{' '}
           <span className={styles.gradientText}>Web Quality Assurance</span>
         </h1>
         <p className={styles.subtitle}>
-          Full-stack website verification: multi-viewport crawling, synthetic interaction testing,
-          automated defect triage, and executive compliance reports.
+          Full-stack website verification powered by Nexus: multi-viewport crawling, synthetic interaction testing,
+          deterministic defect triage, and audit-ready compliance reports.
         </p>
 
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '28px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '32px', flexWrap: 'wrap' }}>
           {session ? (
             <Link
               href="/dashboard"
               className={styles.launchBtn}
-              style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+              style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '10px' }}
             >
               <span>Go to QA Dashboard</span>
-              <ArrowRight size={18} />
+              <TbArrowRight size={18} />
             </Link>
           ) : (
             <>
@@ -56,19 +72,20 @@ export const LandingPage: React.FC = () => {
                 type="button"
                 onClick={() => openAuthModal('signup')}
                 className={styles.launchBtn}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '10px' }}
               >
+                <TbSparkles size={18} />
                 <span>Get Started Free</span>
-                <ArrowRight size={18} />
+                <TbArrowRight size={18} />
               </button>
 
               <button
                 type="button"
                 onClick={() => openAuthModal('signin')}
                 className="btn btn-secondary"
-                style={{ padding: '12px 24px', fontSize: '0.95rem', borderRadius: '12px' }}
+                style={{ padding: '12px 26px', fontSize: '0.95rem', borderRadius: '12px' }}
               >
-                Sign In
+                Sign In to Workspace
               </button>
             </>
           )}
@@ -76,10 +93,26 @@ export const LandingPage: React.FC = () => {
           <Link
             href="/pricing"
             className="btn btn-secondary"
-            style={{ padding: '12px 24px', fontSize: '0.95rem', borderRadius: '12px', textDecoration: 'none' }}
+            style={{ padding: '12px 26px', fontSize: '0.95rem', borderRadius: '12px', textDecoration: 'none' }}
           >
             View Pricing & Plans
           </Link>
+        </div>
+
+        {/* Feature Highlights Ticker */}
+        <div className={styles.heroHighlightsRow}>
+          <div className={styles.heroHighlightItem}>
+            <RiCheckDoubleLine size={17} color="#10b981" />
+            <span>Zero-Setup Browser Cluster</span>
+          </div>
+          <div className={styles.heroHighlightItem}>
+            <RiSpeedUpLine size={17} color="#38bdf8" />
+            <span>Parallel Viewport Auditing</span>
+          </div>
+          <div className={styles.heroHighlightItem}>
+            <TbShieldLock size={17} color="#a855f7" />
+            <span>Encrypted In-Memory Auth</span>
+          </div>
         </div>
       </motion.section>
 
@@ -89,14 +122,14 @@ export const LandingPage: React.FC = () => {
           <h2>Comprehensive QA Testing Methods</h2>
           <p>
             JASUSS executes automated verification pipelines across viewports, interactive elements,
-            and performance heuristics to ensure production reliability.
+            and performance heuristics to guarantee production stability.
           </p>
         </div>
 
         <div className={styles.methodsGrid}>
           <div className={styles.methodCard}>
             <div className={styles.methodIconWrapper}>
-              <Monitor size={22} color="#818cf8" />
+              <TbDevices size={24} color="#818cf8" />
             </div>
             <div className={styles.methodTitle}>Multi-Viewport Crawling</div>
             <p className={styles.methodDesc}>
@@ -111,7 +144,7 @@ export const LandingPage: React.FC = () => {
 
           <div className={styles.methodCard}>
             <div className={styles.methodIconWrapper}>
-              <Zap size={22} color="#38bdf8" />
+              <TbBolt size={24} color="#38bdf8" />
             </div>
             <div className={styles.methodTitle}>Synthetic Interactive Testing</div>
             <p className={styles.methodDesc}>
@@ -126,7 +159,7 @@ export const LandingPage: React.FC = () => {
 
           <div className={styles.methodCard}>
             <div className={styles.methodIconWrapper}>
-              <Bug size={22} color="#ef4444" />
+              <RiBug2Line size={24} color="#ef4444" />
             </div>
             <div className={styles.methodTitle}>Deterministic Defect Triage</div>
             <p className={styles.methodDesc}>
@@ -141,7 +174,7 @@ export const LandingPage: React.FC = () => {
 
           <div className={styles.methodCard}>
             <div className={styles.methodIconWrapper}>
-              <Lock size={22} color="#10b981" />
+              <RiLockPasswordLine size={24} color="#10b981" />
             </div>
             <div className={styles.methodTitle}>Authenticated Session Testing</div>
             <p className={styles.methodDesc}>
@@ -156,7 +189,7 @@ export const LandingPage: React.FC = () => {
 
           <div className={styles.methodCard}>
             <div className={styles.methodIconWrapper}>
-              <Cpu size={22} color="#a855f7" />
+              <TbBrain size={24} color="#a855f7" />
             </div>
             <div className={styles.methodTitle}>AI-Assisted Quality Synthesis</div>
             <p className={styles.methodDesc}>
@@ -171,7 +204,7 @@ export const LandingPage: React.FC = () => {
 
           <div className={styles.methodCard}>
             <div className={styles.methodIconWrapper}>
-              <GitCompare size={22} color="#f59e0b" />
+              <TbReportAnalytics size={24} color="#f59e0b" />
             </div>
             <div className={styles.methodTitle}>Regression & Executive Exports</div>
             <p className={styles.methodDesc}>
@@ -186,20 +219,45 @@ export const LandingPage: React.FC = () => {
         </div>
       </section>
 
+      {/* Tech Stack Ecosystem Row */}
+      <section className={styles.techStackSection}>
+        <div className={styles.techStackTitle}>Powered by Modern Open Standards & Enterprise Runtimes</div>
+        <div className={styles.techStackGrid}>
+          <div className={styles.techStackItem}><SiFastapi size={20} color="#009688" /> FastAPI</div>
+          <div className={styles.techStackItem}><RiChromeFill size={20} color="#2e7d32" /> Playwright</div>
+          <div className={styles.techStackItem}><SiNextdotjs size={20} color="#ffffff" /> Next.js 16</div>
+          <div className={styles.techStackItem}><SiRedis size={20} color="#dc2626" /> Redis</div>
+          <div className={styles.techStackItem}><SiPython size={20} color="#3776ab" /> Python 3.12</div>
+          <div className={styles.techStackItem}><SiTypescript size={20} color="#3178c6" /> TypeScript</div>
+        </div>
+      </section>
+
       {/* Enterprise CTA Banner */}
-      <section style={{ background: 'linear-gradient(180deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '20px', padding: '40px', textAlign: 'center' }}>
-        <h2 style={{ fontSize: '1.8rem', fontWeight: 800, color: '#f8fafc' }}>Ready to Elevate Your Web QA?</h2>
-        <p style={{ color: '#94a3b8', maxWidth: '600px', margin: '12px auto 24px' }}>
-          Launch automated multi-device crawls and defect detection on your web application in seconds.
+      <section className={styles.ctaBanner}>
+        <div className={styles.ctaBadge}>
+          <RiShieldCheckFill size={15} /> Production Ready Platform
+        </div>
+        <h2 className={styles.ctaTitle}>Ready to Elevate Your Web QA Pipeline?</h2>
+        <p className={styles.ctaDesc}>
+          Launch automated multi-device crawls, synthetic user journeys, and defect triage on your web application in seconds.
         </p>
-        <Link
-          href="/dashboard"
-          className={styles.launchBtn}
-          style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-        >
-          <span>Start Instant Scan</span>
-          <ArrowRight size={18} />
-        </Link>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', flexWrap: 'wrap' }}>
+          <Link
+            href="/dashboard"
+            className={styles.launchBtn}
+            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '10px' }}
+          >
+            <span>Start Instant Scan</span>
+            <TbArrowRight size={18} />
+          </Link>
+          <Link
+            href="/pricing"
+            className="btn btn-secondary"
+            style={{ padding: '12px 24px', borderRadius: '12px' }}
+          >
+            Explore Plan Tiers
+          </Link>
+        </div>
       </section>
     </div>
   );

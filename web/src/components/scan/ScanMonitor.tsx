@@ -2,17 +2,20 @@
 
 import React, { useMemo } from 'react';
 import {
-  Globe,
-  Square,
-  Clock,
-  CheckCircle2,
-  Loader2,
-  Monitor,
-  Zap,
-  Bug,
-  Sparkles,
-  Terminal,
-} from 'lucide-react';
+  RiGlobalLine,
+  RiStopCircleFill,
+  RiCheckDoubleFill,
+  RiBug2Line,
+  RiTerminalBoxLine,
+} from 'react-icons/ri';
+import {
+  TbDeviceDesktop,
+  TbBolt,
+  TbSparkles,
+  TbClock,
+  TbLoader2,
+  TbBroadcast,
+} from 'react-icons/tb';
 import { DeviceDeck } from './DeviceDeck';
 import { ProgressPayload } from '../../types/qa';
 import styles from '../../app/page.module.css';
@@ -62,25 +65,25 @@ export const ScanMonitor: React.FC<ScanMonitorProps> = ({
       step: 1,
       title: 'Multi-Device Crawl',
       desc: 'Desktop, iPhone 13, iPad viewports',
-      icon: <Monitor size={16} />,
+      icon: <TbDeviceDesktop size={18} />,
     },
     {
       step: 2,
       title: 'Interactive Testing',
       desc: 'Forms, clicks, state transitions',
-      icon: <Zap size={16} />,
+      icon: <TbBolt size={18} />,
     },
     {
       step: 3,
       title: 'Defect Detection',
       desc: 'Network errors, console, layout',
-      icon: <Bug size={16} />,
+      icon: <RiBug2Line size={18} />,
     },
     {
       step: 4,
       title: 'Quality Synthesis',
       desc: 'Compliance grading & executive report',
-      icon: <Sparkles size={16} />,
+      icon: <TbSparkles size={18} />,
     },
   ];
 
@@ -89,7 +92,7 @@ export const ScanMonitor: React.FC<ScanMonitorProps> = ({
       <div className={styles.loadingHeader}>
         <div className={styles.loadingControlBar}>
           <div className={styles.targetUrlBadge}>
-            <Globe size={15} />
+            <RiGlobalLine size={16} />
             <span>Inspecting Target: {url}</span>
           </div>
 
@@ -99,16 +102,16 @@ export const ScanMonitor: React.FC<ScanMonitorProps> = ({
             className={styles.stopScanBtn}
             title="Stop and cancel the active scan"
           >
-            <Square size={14} fill="#ef4444" />
+            <RiStopCircleFill size={16} color="#ef4444" />
             <span>Stop Scan</span>
           </button>
         </div>
 
-        <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#f8fafc', marginTop: '6px' }}>
+        <h2 style={{ fontSize: '1.8rem', fontWeight: 700, color: '#f8fafc', marginTop: '8px' }}>
           Automated Test Execution Running
         </h2>
-        <p style={{ color: '#94a3b8', fontSize: '0.92rem' }}>
-          Executing multi-viewport crawler, synthetic user journeys, and defect analysis.
+        <p style={{ color: '#94a3b8', fontSize: '0.94rem' }}>
+          Executing multi-viewport crawler, synthetic user journeys, and defect analysis in parallel.
         </p>
       </div>
 
@@ -145,7 +148,7 @@ export const ScanMonitor: React.FC<ScanMonitorProps> = ({
         <div className={styles.radarCenterContent}>
           <span className={styles.radarPercent}>{progress?.percent || 5}%</span>
           <span className={styles.radarElapsed}>
-            <Clock size={10} style={{ display: 'inline', marginRight: '3px' }} />
+            <TbClock size={12} style={{ display: 'inline', marginRight: '3px' }} />
             {formattedTime}
           </span>
         </div>
@@ -174,9 +177,9 @@ export const ScanMonitor: React.FC<ScanMonitorProps> = ({
               <div className={styles.stepHeader}>
                 <span className={styles.stepNumber}>Stage 0{st.step}</span>
                 {isDone ? (
-                  <CheckCircle2 size={16} color="#34d399" />
+                  <RiCheckDoubleFill size={18} color="#34d399" />
                 ) : isActive ? (
-                  <Loader2 size={16} className="pulse" color="#818cf8" />
+                  <TbLoader2 size={18} className="pulse" color="#818cf8" />
                 ) : (
                   <span style={{ color: '#475569' }}>{st.icon}</span>
                 )}
@@ -197,9 +200,11 @@ export const ScanMonitor: React.FC<ScanMonitorProps> = ({
             <div className={styles.terminalDot} style={{ background: '#10b981' }} />
           </div>
           <div className={styles.terminalTitle}>
-            <Terminal size={14} /> LIVE DIAGNOSTIC STREAM
+            <RiTerminalBoxLine size={16} /> LIVE DIAGNOSTIC TELEMETRY STREAM
           </div>
-          <div style={{ fontSize: '0.72rem', color: '#10b981' }}>STREAMING ●</div>
+          <div style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <TbBroadcast size={14} /> STREAMING ●
+          </div>
         </div>
 
         <div className={styles.terminalBody}>

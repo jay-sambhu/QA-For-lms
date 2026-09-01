@@ -1,15 +1,10 @@
 "use client";
 
 import React, { useState } from 'react';
-import {
-  CreditCard,
-  ShoppingBag,
-  Zap,
-  DollarSign,
-  Check,
-  CheckCircle2,
-  AlertCircle,
-} from 'lucide-react';
+import { FaStripe, FaPaypal } from 'react-icons/fa6';
+import { SiLemonsqueezy, SiRazorpay } from 'react-icons/si';
+import { HiCheck, HiOutlineSparkles } from 'react-icons/hi2';
+import { RiShieldStarLine, RiCheckboxCircleFill, RiErrorWarningLine } from 'react-icons/ri';
 import { useAuth } from '../../context/AuthContext';
 import styles from '../../app/page.module.css';
 
@@ -59,20 +54,20 @@ export const PricingCards: React.FC = () => {
   };
 
   const gateways = [
-    { id: 'stripe', name: 'Stripe', icon: <CreditCard size={16} /> },
-    { id: 'lemonsqueezy', name: 'LemonSqueezy', icon: <ShoppingBag size={16} /> },
-    { id: 'razorpay', name: 'Razorpay', icon: <Zap size={16} /> },
-    { id: 'paypal', name: 'PayPal', icon: <DollarSign size={16} /> },
+    { id: 'stripe', name: 'Stripe', icon: <FaStripe size={24} color="#635bff" /> },
+    { id: 'lemonsqueezy', name: 'LemonSqueezy', icon: <SiLemonsqueezy size={20} color="#ffc233" /> },
+    { id: 'razorpay', name: 'Razorpay', icon: <SiRazorpay size={20} color="#0c2340" /> },
+    { id: 'paypal', name: 'PayPal', icon: <FaPaypal size={20} color="#00457c" /> },
   ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '28px', maxWidth: '1080px', margin: '0 auto', width: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
       {billingMessage && (
         <div className={`${styles.authBanner} ${billingMessage.includes('Redirecting') || billingMessage.includes('success') ? styles.authBannerSuccess : styles.authBannerError}`}>
           {billingMessage.includes('Redirecting') || billingMessage.includes('success') ? (
-            <CheckCircle2 size={16} />
+            <RiCheckboxCircleFill size={18} />
           ) : (
-            <AlertCircle size={16} />
+            <RiErrorWarningLine size={18} />
           )}
           <span>{billingMessage}</span>
         </div>
@@ -80,7 +75,10 @@ export const PricingCards: React.FC = () => {
 
       {/* Gateway Selector */}
       <div className={styles.gatewaySelectSection}>
-        <div className={styles.gatewaySelectLabel}>Select Payment Gateway & Merchant</div>
+        <div className={styles.gatewaySelectLabel}>
+          <span>Choose Preferred Payment Gateway & Currency</span>
+          <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Global 256-Bit SSL Encrypted Checkout</span>
+        </div>
         <div className={styles.gatewayGrid}>
           {gateways.map((gw) => (
             <button
@@ -110,10 +108,10 @@ export const PricingCards: React.FC = () => {
           </div>
 
           <div className={styles.planFeaturesList}>
-            <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> 10 Automated Scans / mo</div>
-            <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Multi-Viewport (Desktop, Mobile, Tablet)</div>
-            <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Deterministic Defect Triage</div>
-            <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Executive Score & Grading</div>
+            <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> 10 Automated Scans / mo</div>
+            <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> Multi-Viewport (Desktop, Mobile, Tablet)</div>
+            <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> Deterministic Defect Triage</div>
+            <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> Executive Score & Grading</div>
           </div>
 
           <button
@@ -128,7 +126,9 @@ export const PricingCards: React.FC = () => {
 
         {/* Pro Plan */}
         <div className={`${styles.planCard} ${styles.planCardHighlighted}`}>
-          <div className={styles.planPopularBadge}>Recommended</div>
+          <div className={styles.planPopularBadge}>
+            <HiOutlineSparkles size={13} /> Recommended
+          </div>
           <div className={styles.planHeader}>
             <div className={styles.planName}>Professional QA</div>
             <div className={styles.planPriceRow}>
@@ -139,11 +139,11 @@ export const PricingCards: React.FC = () => {
           </div>
 
           <div className={styles.planFeaturesList}>
-            <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> 200 Automated Scans / mo</div>
-            <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Up to 50 Pages Deep Crawling</div>
-            <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Authenticated Route & Session Crawling</div>
-            <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Executive PDF & Excel Multi-Tab Exports</div>
-            <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Priority Processing Queue</div>
+            <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> 200 Automated Scans / mo</div>
+            <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> Up to 50 Pages Deep Crawling</div>
+            <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> Authenticated Route & Session Crawling</div>
+            <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> Executive PDF & Excel Multi-Tab Exports</div>
+            <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> Priority Processing Queue</div>
           </div>
 
           <button
@@ -159,7 +159,10 @@ export const PricingCards: React.FC = () => {
         {/* Enterprise Plan */}
         <div className={styles.planCard}>
           <div className={styles.planHeader}>
-            <div className={styles.planName}>Enterprise Suite</div>
+            <div className={styles.planName}>
+              <RiShieldStarLine size={18} color="#a855f7" style={{ display: 'inline', marginRight: '6px' }} />
+              Enterprise Suite
+            </div>
             <div className={styles.planPriceRow}>
               <span className={styles.planPrice}>$199</span>
               <span className={styles.planInterval}>/ month</span>
@@ -168,11 +171,11 @@ export const PricingCards: React.FC = () => {
           </div>
 
           <div className={styles.planFeaturesList}>
-            <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Unlimited Automated QA Scans</div>
-            <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Deep Unlimited Page Discovery</div>
-            <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Custom MFA & Complex Auth Portals</div>
-            <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> Dedicated Worker Node & SLA</div>
-            <div className={styles.planFeatureItem}><Check size={14} color="#10b981" /> 24/7 Priority Support</div>
+            <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> Unlimited Automated QA Scans</div>
+            <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> Deep Unlimited Page Discovery</div>
+            <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> Custom MFA & Complex Auth Portals</div>
+            <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> Dedicated Worker Node & SLA</div>
+            <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> 24/7 Priority Support</div>
           </div>
 
           <button
