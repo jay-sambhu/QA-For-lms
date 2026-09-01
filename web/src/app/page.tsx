@@ -637,14 +637,14 @@ export default function Home() {
               <div className={styles.exportActions}>
                 <button
                   className={`btn ${styles.exportBtn}`}
-                  onClick={() => downloadPDF(results)}
+                  onClick={() => downloadPDF(results, scanId)}
                   title="Download PDF"
                 >
                   <Download size={18} /> PDF
                 </button>
                 <button
                   className={`btn ${styles.exportBtn}`}
-                  onClick={() => downloadExcel(results)}
+                  onClick={() => downloadExcel(results, scanId)}
                   title="Download Excel"
                 >
                   <FileSpreadsheet size={18} /> Excel

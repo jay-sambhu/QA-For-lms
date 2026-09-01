@@ -2,275 +2,697 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 
-// Use any to avoid strict type dependencies in this utility file,
-// we assume it matches QAReport from page.tsx
-export const downloadPDF = (results: any) => {
-  if (!results) return;
+export interface CanonicalExportData {
+  target: string;
+  scanId: string;
+  generatedAt: string;
+  status: string;
+  pagesCrawled: number;
+  pagesDiscovered: number;
+  durationSeconds: number;
+  qualityScore: {
+    score: number;
+    grade: string;
+    summary: string;
+  };
+  testCasesSummary: {
+    total: number;
+    executed: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+    blocked: number;
+    errored: number;
+    pass_rate: number;
+    fail_rate: number;
+    skip_rate: number;
+    block_rate: number;
+    errored_rate: number;
+    duration_ms: number;
+  };
+  findingsSummary: {
+    total: number;
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+    info: number;
+    P0: number;
+    P1: number;
+    P2: number;
+    P3: number;
+    P4: number;
+    confirmed_bugs: number;
+    high_confidence_candidates: number;
+    needs_manual_review: number;
+    informational: number;
+    duplicates: number;
+    regression: { new: number; fixed: number; unchanged: number; worsened: number; improved: number };
+  };
+  findings: Array<any>;
+  testCases: Array<any>;
+  crossDevice: {
+    devices_tested: number;
+    responsive_findings: number;
+    device_breakdown: { desktop: number; iphone: number; ipad: number };
+  };
+  isDegraded: boolean;
+  degradedCount: number;
+}
 
-  const doc = new jsPDF('landscape');
-  const target = results.report_metadata?.target || 'Unknown Target';
-  const generatedAt = results.report_metadata?.generated_at
-    ? new Date(results.report_metadata.generated_at).toLocaleString()
-    : new Date().toLocaleString();
-
-  // Title & Header
-  doc.setFontSize(22);
-  doc.setTextColor(33, 37, 41);
-  doc.text('QA Scan Report', 14, 22);
-
-  doc.setFontSize(12);
-  doc.setTextColor(108, 117, 125);
-  doc.text(`Target: ${target}`, 14, 32);
-  doc.text(`Generated: ${generatedAt}`, 14, 38);
-  doc.text(`Pages Crawled: ${results.report_metadata?.pages_crawled || 0}`, 14, 44);
-
-  let startY = 55;
-
-  // AI Analysis Degraded Warning
-  if (results.report_metadata?.ai_analysis_degraded) {
-    doc.setFontSize(11);
-    doc.setTextColor(220, 53, 69); // Red
-    doc.text(
-      `Warning: AI analysis was incomplete. ${
-        results.report_metadata.ai_analysis_failures || 0
-      } findings could not be analysed by the model.`,
-      14,
-      startY
-    );
-    startY += 10;
+/**
+ * Normalizes scan results from any API / report format into a strict canonical export model.
+ */
+export const extractCanonicalExportData = (results: any, scanId: string | null = ''): CanonicalExportData => {
+  if (!results) {
+    return {
+      target: 'Unknown',
+      scanId: scanId || 'N/A',
+      generatedAt: new Date().toISOString(),
+      status: 'completed',
+      pagesCrawled: 0,
+      pagesDiscovered: 0,
+      durationSeconds: 0,
+      qualityScore: { score: 100, grade: 'A', summary: 'Excellent' },
+      testCasesSummary: {
+        total: 0,
+        executed: 0,
+        passed: 0,
+        failed: 0,
+        skipped: 0,
+        blocked: 0,
+        errored: 0,
+        pass_rate: 0.0,
+        fail_rate: 0.0,
+        skip_rate: 0.0,
+        block_rate: 0.0,
+        errored_rate: 0.0,
+        duration_ms: 0,
+      },
+      findingsSummary: {
+        total: 0,
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+        info: 0,
+        P0: 0,
+        P1: 0,
+        P2: 0,
+        P3: 0,
+        P4: 0,
+        confirmed_bugs: 0,
+        high_confidence_candidates: 0,
+        needs_manual_review: 0,
+        informational: 0,
+        duplicates: 0,
+        regression: { new: 0, fixed: 0, unchanged: 0, worsened: 0, improved: 0 },
+      },
+      findings: [],
+      testCases: [],
+      crossDevice: {
+        devices_tested: 3,
+        responsive_findings: 0,
+        device_breakdown: { desktop: 0, iphone: 0, ipad: 0 },
+      },
+      isDegraded: false,
+      degradedCount: 0,
+    };
   }
 
-  // Summary Table
+  const qa = results.qa_metrics || {};
+  const meta = results.report_metadata || {};
   const summary = results.summary || {};
   const severity = results.severity || {};
-  const tcm = results.test_case_metrics;
-  const qs = results.qa_metrics?.quality_score || results.report_metadata?.quality_score;
-  const durationSec = results.qa_metrics?.duration_seconds ?? results.report_metadata?.duration_seconds;
-  
-  const summaryBody = [
-    ['Total Findings', summary.total_candidates?.toString() || '0'],
-    ['Needs Review', summary.manual_review?.toString() || '0'],
-    ['Critical / High Severity', `${severity.critical || 0} / ${severity.high || 0}`],
-    ['Medium / Low / Info', `${severity.medium || 0} / ${severity.low || 0} / ${severity.info || 0}`],
-  ];
-  if (qs) {
-    summaryBody.push(['Site Health Score', `${qs.score} / 100 (Grade ${qs.grade} - ${qs.summary})`]);
-  }
-  if (durationSec !== undefined && durationSec > 0) {
-    summaryBody.push(['Scan Duration', `${durationSec}s`]);
-  }
-  if (tcm) {
-    const passRateStr = tcm.pass_rate !== undefined ? ` (${tcm.pass_rate}%)` : '';
-    summaryBody.push(['Test Cases Executed / Total', `${tcm.executed} / ${tcm.total}`]);
-    summaryBody.push(['Test Cases Passed / Failed', `${tcm.passed}${passRateStr} / ${tcm.failed}`]);
-  }
-  
-  autoTable(doc, {
-    startY,
-    head: [['Metric', 'Value']],
-    body: summaryBody,
-    theme: 'grid',
-    headStyles: { fillColor: [79, 70, 229] }, // Indigo
-    styles: { fontSize: 11 },
-  });
-
-  // Bug Triage Summary Table
   const triage = results.triage_metrics || {};
-  if (Object.keys(triage).length > 0) {
-    const triageBody = [
-      ['Confirmed Bugs', triage.confirmed_bug?.toString() || '0'],
-      ['High Confidence Candidates', triage.high_confidence_candidate?.toString() || '0'],
-      ['Needs Manual Review', triage.needs_manual_review?.toString() || '0'],
-      ['Duplicates', triage.duplicate?.toString() || '0'],
-      ['Priority (P0/P1/P2/P3/P4)', `${triage.priority?.P0||0} / ${triage.priority?.P1||0} / ${triage.priority?.P2||0} / ${triage.priority?.P3||0} / ${triage.priority?.P4||0}`],
-    ];
-    
-    if (triage.regression_summary) {
-      const rs = triage.regression_summary;
-      triageBody.push(['Regression (New/Fixed/Unchanged/Worsened/Improved)', `${rs.new||0} / ${rs.fixed||0} / ${rs.unchanged||0} / ${rs.worsened||0} / ${rs.improved||0}`]);
-    }
-    
-    autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 15,
-      head: [['AI Bug Triage Metrics', 'Value']],
-      body: triageBody,
-      theme: 'grid',
-      headStyles: { fillColor: [139, 92, 246] }, // Violet
-      styles: { fontSize: 11 },
-    });
-  }
+  const tcm = results.test_case_metrics || qa.test_cases || {};
+  const qs = qa.quality_score || meta.quality_score || { score: 100, grade: 'A', summary: 'Excellent' };
+  const crawl = qa.crawl || meta.cross_device_metrics || {};
+  const findingsMetrics = qa.findings || {};
 
-  // Findings Table
-  const findings = results.findings || [];
-  if (findings.length > 0) {
-    const tableData = findings.map((f: any) => [
-      f.id,
-      f.severity.toUpperCase(),
-      f.title,
-      `${(f.description || f.manual_verification || '').substring(0, 150)}...
-      
-Expected: ${f.expected_result || 'Not specified.'}
-Actual: ${f.actual_result || 'Not specified.'}
-Reproduction: ${f.reproduction?.steps ? f.reproduction.steps.join(' -> ') : 'None'}`,
-      f.affected_pages_count?.toString() || '1',
-      f.page || 'N/A'
-    ]);
+  const target = qa.target || meta.target || results.target || 'Unknown';
+  const resolvedScanId = scanId || results.id || results.scan_id || meta.scan_id || 'N/A';
+  const generatedAt = qa.generated_at || meta.generated_at || new Date().toISOString();
+  const status = results.status || 'completed';
 
-    autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 15,
-      head: [['ID', 'Severity', 'Issue', 'Description', 'Affected Pages', 'Example Page']],
-      body: tableData,
-      theme: 'striped',
-      headStyles: { fillColor: [16, 185, 129] }, // Emerald
-      styles: { fontSize: 9, cellPadding: 3 },
-      columnStyles: {
-        0: { cellWidth: 20 },
-        1: { cellWidth: 25 },
-        2: { cellWidth: 50 },
-        3: { cellWidth: 120 },
-        4: { cellWidth: 20 },
+  const pagesCrawled = crawl.pages_crawled ?? meta.pages_crawled ?? 0;
+  const pagesDiscovered = crawl.pages_discovered ?? pagesCrawled;
+  const durationSeconds = qa.duration_seconds ?? meta.duration_seconds ?? 0;
+
+  // Test Case Metrics
+  const tcTotal = tcm.total ?? 0;
+  const tcPassed = tcm.passed ?? 0;
+  const tcFailed = tcm.failed ?? 0;
+  const tcSkipped = tcm.skipped ?? tcm.manual_review ?? 0;
+  const tcBlocked = tcm.blocked ?? 0;
+  const tcErrored = tcm.errored ?? 0;
+  const tcExecuted = tcm.executed ?? (tcPassed + tcFailed + tcErrored);
+  const tcPassRate = tcm.pass_rate ?? (tcTotal > 0 ? Number(((tcPassed / tcTotal) * 100).toFixed(2)) : 0.0);
+  const tcFailRate = tcm.fail_rate ?? (tcTotal > 0 ? Number(((tcFailed / tcTotal) * 100).toFixed(2)) : 0.0);
+  const tcSkipRate = tcm.skip_rate ?? (tcTotal > 0 ? Number(((tcSkipped / tcTotal) * 100).toFixed(2)) : 0.0);
+  const tcBlockRate = tcm.block_rate ?? (tcTotal > 0 ? Number(((tcBlocked / tcTotal) * 100).toFixed(2)) : 0.0);
+  const tcErroredRate = tcm.errored_rate ?? (tcTotal > 0 ? Number(((tcErrored / tcTotal) * 100).toFixed(2)) : 0.0);
+  const tcDurationMs = tcm.duration_ms ?? 0;
+
+  // Findings Metrics
+  const bySev = findingsMetrics.by_severity || severity || {};
+  const byPri = findingsMetrics.by_priority || triage.priority || {};
+  const byClass = findingsMetrics.by_classification || {};
+  const reg = findingsMetrics.by_regression || triage.regression_summary || summary.regression_summary || {};
+
+  const totalFindings = findingsMetrics.total ?? summary.total_candidates ?? (results.findings?.length || 0);
+  const criticalFindings = bySev.critical ?? 0;
+  const highFindings = bySev.high ?? 0;
+  const medFindings = bySev.medium ?? 0;
+  const lowFindings = bySev.low ?? 0;
+  const infoFindings = bySev.info ?? 0;
+
+  const p0 = byPri.P0 ?? 0;
+  const p1 = byPri.P1 ?? 0;
+  const p2 = byPri.P2 ?? 0;
+  const p3 = byPri.P3 ?? 0;
+  const p4 = byPri.P4 ?? 0;
+
+  const confirmedBugs = byClass.confirmed_bug ?? triage.confirmed_bug ?? summary.confirmed_bugs ?? 0;
+  const highConf = byClass.high_confidence_candidate ?? triage.high_confidence_candidate ?? summary.potential_issues ?? 0;
+  const manualReview = byClass.needs_manual_review ?? triage.needs_manual_review ?? summary.manual_review ?? 0;
+  const informational = byClass.informational ?? triage.informational ?? summary.informational ?? 0;
+  const duplicates = byClass.duplicate ?? triage.duplicate ?? 0;
+
+  const isDegraded = Boolean(meta.ai_analysis_degraded || meta.ai_analysis_failures);
+  const degradedCount = meta.ai_analysis_failures ?? 0;
+
+  return {
+    target,
+    scanId: resolvedScanId,
+    generatedAt,
+    status,
+    pagesCrawled,
+    pagesDiscovered,
+    durationSeconds,
+    qualityScore: {
+      score: qs.score ?? 100,
+      grade: qs.grade || 'A',
+      summary: qs.summary || 'Excellent',
+    },
+    testCasesSummary: {
+      total: tcTotal,
+      executed: tcExecuted,
+      passed: tcPassed,
+      failed: tcFailed,
+      skipped: tcSkipped,
+      blocked: tcBlocked,
+      errored: tcErrored,
+      pass_rate: tcPassRate,
+      fail_rate: tcFailRate,
+      skip_rate: tcSkipRate,
+      block_rate: tcBlockRate,
+      errored_rate: tcErroredRate,
+      duration_ms: tcDurationMs,
+    },
+    findingsSummary: {
+      total: totalFindings,
+      critical: criticalFindings,
+      high: highFindings,
+      medium: medFindings,
+      low: lowFindings,
+      info: infoFindings,
+      P0: p0,
+      P1: p1,
+      P2: p2,
+      P3: p3,
+      P4: p4,
+      confirmed_bugs: confirmedBugs,
+      high_confidence_candidates: highConf,
+      needs_manual_review: manualReview,
+      informational: informational,
+      duplicates: duplicates,
+      regression: {
+        new: reg.new ?? 0,
+        fixed: reg.fixed ?? 0,
+        unchanged: reg.unchanged ?? 0,
+        worsened: reg.worsened ?? 0,
+        improved: reg.improved ?? 0,
       },
-      didDrawPage: (data) => {
-        // Add Header to subsequent pages
-        if (data.pageNumber > 1) {
-          doc.setFontSize(10);
-          doc.setTextColor(150);
-          doc.text(`QA Scan Report - ${target}`, data.settings.margin.left, 10);
-        }
-      }
-    });
-  } else {
-    doc.setFontSize(12);
-    doc.setTextColor(40, 167, 69);
-    doc.text('No deterministic bugs or AI candidates found! Your site looks healthy.', 14, (doc as any).lastAutoTable.finalY + 20);
-  }
-
-  // Footer with Page Numbers
-  const pageCount = (doc as any).internal.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(10);
-    doc.setTextColor(150);
-    doc.text(
-      `Page ${i} of ${pageCount}`,
-      doc.internal.pageSize.width / 2,
-      doc.internal.pageSize.height - 10,
-      { align: 'center' }
-    );
-  }
-
-  doc.save(`QA_Report_${target.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`);
+    },
+    findings: results.findings || [],
+    testCases: results.test_cases || [],
+    crossDevice: {
+      devices_tested: crawl.devices_tested ?? 3,
+      responsive_findings: crawl.responsive_findings ?? 0,
+      device_breakdown: crawl.device_breakdown || { desktop: 0, iphone: 0, ipad: 0 },
+    },
+    isDegraded,
+    degradedCount,
+  };
 };
 
-export const downloadExcel = (results: any) => {
+/**
+ * Generates and triggers a PDF download for the QA scan.
+ */
+export const downloadPDF = (results: any, scanId: string | null = '') => {
   if (!results) return;
 
-  const target = results.report_metadata?.target || 'Unknown Target';
-  const findings = results.findings || [];
-  
-  const qs = results.qa_metrics?.quality_score || results.report_metadata?.quality_score;
-  const durationSec = results.qa_metrics?.duration_seconds ?? results.report_metadata?.duration_seconds;
+  const data = extractCanonicalExportData(results, scanId);
+  const doc = new jsPDF('p', 'mm', 'a4'); // A4 Portrait (210 x 297 mm)
 
-  const summaryData = [
-    { Metric: 'Target', Value: target },
-    { Metric: 'Generated At', Value: results.report_metadata?.generated_at || new Date().toISOString() },
-    { Metric: 'Pages Crawled', Value: results.report_metadata?.pages_crawled || 0 },
-    { Metric: 'Total Findings', Value: results.summary?.total_candidates || 0 },
-    { Metric: 'Needs Review', Value: results.summary?.manual_review || 0 },
-    { Metric: 'Critical Severity', Value: results.severity?.critical || 0 },
-    { Metric: 'High Severity', Value: results.severity?.high || 0 },
-    { Metric: 'Medium Severity', Value: results.severity?.medium || 0 },
-    { Metric: 'Low Severity', Value: results.severity?.low || 0 },
-    { Metric: 'Info Severity', Value: results.severity?.info || 0 },
+  const formattedDate = new Date(data.generatedAt).toLocaleString();
+
+  // 1. Header Banner
+  doc.setFillColor(30, 41, 59); // Slate 800
+  doc.rect(0, 0, 210, 28, 'F');
+
+  doc.setFontSize(16);
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.text('AI QA AGENT — EXECUTIVE SCAN REPORT', 14, 12);
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(203, 213, 225); // Slate 300
+  doc.text(`Target: ${data.target}  |  Scan ID: ${data.scanId}  |  Date: ${formattedDate}`, 14, 20);
+
+  let currentY = 34;
+
+  // 2. Degradation Warning Banner
+  if (data.isDegraded) {
+    doc.setFillColor(254, 242, 242); // Red 50
+    doc.setDrawColor(239, 68, 68); // Red 500
+    doc.rect(14, currentY, 182, 12, 'FD');
+
+    doc.setFontSize(9);
+    doc.setTextColor(185, 28, 28); // Red 700
+    doc.setFont('helvetica', 'bold');
+    doc.text(
+      `Warning: AI analysis was incomplete. ${data.degradedCount} finding(s) could not be analysed by the model.`,
+      18,
+      currentY + 7
+    );
+    currentY += 16;
+  }
+
+  // 3. Executive Overview Summary Table
+  const overviewBody = [
+    ['Target URL', data.target, 'Site Health Score', `${data.qualityScore.score} / 100 (Grade ${data.qualityScore.grade} - ${data.qualityScore.summary})`],
+    ['Pages Crawled / Discovered', `${data.pagesCrawled} / ${data.pagesDiscovered}`, 'Scan Duration', `${data.durationSeconds}s`],
+    ['Total Automated Test Cases', `${data.testCasesSummary.total}`, 'Test Pass Rate', `${data.testCasesSummary.pass_rate}%`],
+    ['Total Defects / Findings', `${data.findingsSummary.total}`, 'Critical / High Severity', `${data.findingsSummary.critical} / ${data.findingsSummary.high}`],
   ];
 
-  if (qs) {
-    summaryData.push({ Metric: 'Health Score', Value: `${qs.score} / 100` });
-    summaryData.push({ Metric: 'Health Grade', Value: `Grade ${qs.grade} (${qs.summary})` });
-  }
-  if (durationSec !== undefined && durationSec > 0) {
-    summaryData.push({ Metric: 'Duration Seconds', Value: durationSec });
-  }
-  
-  if (results.triage_metrics) {
-    const tm = results.triage_metrics;
-    summaryData.push({ Metric: 'Triage - Confirmed Bugs', Value: tm.confirmed_bug || 0 });
-    summaryData.push({ Metric: 'Triage - Candidates', Value: tm.high_confidence_candidate || 0 });
-    summaryData.push({ Metric: 'Triage - Manual Review', Value: tm.needs_manual_review || 0 });
-    summaryData.push({ Metric: 'Triage - P0', Value: tm.priority?.P0 || 0 });
-    summaryData.push({ Metric: 'Triage - P1', Value: tm.priority?.P1 || 0 });
-    summaryData.push({ Metric: 'Triage - P2', Value: tm.priority?.P2 || 0 });
-    summaryData.push({ Metric: 'Triage - P3', Value: tm.priority?.P3 || 0 });
+  autoTable(doc, {
+    startY: currentY,
+    head: [['Scan Attribute', 'Value', 'Quality Metric', 'Result']],
+    body: overviewBody,
+    theme: 'grid',
+    headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+    bodyStyles: { fontSize: 8.5, textColor: [30, 41, 59] },
+    margin: { left: 14, right: 14 },
+  });
+
+  currentY = (doc as any).lastAutoTable.finalY + 8;
+
+  // 4. Test Execution Summary Table
+  const tc = data.testCasesSummary;
+  const testSummaryBody = [
+    ['Total Test Cases', tc.total.toString(), tc.total > 0 ? '100.0%' : '0.0%'],
+    ['Passed', tc.passed.toString(), `${tc.pass_rate}%`],
+    ['Failed', tc.failed.toString(), `${tc.fail_rate}%`],
+    ['Skipped / Manual Review', tc.skipped.toString(), `${tc.skip_rate}%`],
+    ['Blocked', tc.blocked.toString(), `${tc.block_rate}%`],
+    ['Errored', tc.errored.toString(), `${tc.errored_rate}%`],
+  ];
+
+  // 5. Findings Breakdown Table
+  const fs = data.findingsSummary;
+  const findingSummaryBody = [
+    ['Total Unique Findings', fs.total.toString(), 'P0 (Blocker)', fs.P0.toString()],
+    ['Critical Severity', fs.critical.toString(), 'P1 (High Priority)', fs.P1.toString()],
+    ['High Severity', fs.high.toString(), 'P2 (Medium Priority)', fs.P2.toString()],
+    ['Medium Severity', fs.medium.toString(), 'P3 (Low Priority)', fs.P3.toString()],
+    ['Low Severity', fs.low.toString(), 'P4 (Trivial)', fs.P4.toString()],
+    ['Informational', fs.info.toString(), 'Duplicates Filtered', fs.duplicates.toString()],
+  ];
+
+  autoTable(doc, {
+    startY: currentY,
+    head: [['Test Execution Metric', 'Count', 'Percentage Rate']],
+    body: testSummaryBody,
+    theme: 'striped',
+    headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+    bodyStyles: { fontSize: 8.5 },
+    margin: { left: 14, right: 14 },
+  });
+
+  currentY = (doc as any).lastAutoTable.finalY + 8;
+
+  autoTable(doc, {
+    startY: currentY,
+    head: [['Severity Classification', 'Count', 'Priority Level', 'Count']],
+    body: findingSummaryBody,
+    theme: 'striped',
+    headStyles: { fillColor: [139, 92, 246], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+    bodyStyles: { fontSize: 8.5 },
+    margin: { left: 14, right: 14 },
+  });
+
+  currentY = (doc as any).lastAutoTable.finalY + 8;
+
+  // 6. Test Case Details Table (if any)
+  if (data.testCases && data.testCases.length > 0) {
+    const testCasesRows = data.testCases.map((t: any) => {
+      const rawStatus = (t.status || t.execution_policy || 'skipped').toUpperCase();
+      const durationStr = t.duration_ms ? `${t.duration_ms}ms` : '0ms';
+      return [
+        t.id || 'TC',
+        rawStatus,
+        t.title || 'Untitled Test',
+        durationStr,
+        t.expected_result || 'Expected pass',
+        t.actual_result || 'N/A',
+      ];
+    });
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [['ID', 'Status', 'Test Case Title', 'Duration', 'Expected Result', 'Actual Result']],
+      body: testCasesRows,
+      theme: 'grid',
+      headStyles: { fillColor: [16, 185, 129], textColor: 255, fontStyle: 'bold', fontSize: 8.5 },
+      bodyStyles: { fontSize: 7.5, cellPadding: 2 },
+      columnStyles: {
+        0: { cellWidth: 20 },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 45 },
+        3: { cellWidth: 18 },
+        4: { cellWidth: 40 },
+        5: { cellWidth: 39 },
+      },
+      margin: { left: 14, right: 14 },
+    });
+
+    currentY = (doc as any).lastAutoTable.finalY + 8;
   }
 
-  if (results.report_metadata?.ai_analysis_degraded) {
-    summaryData.push({ Metric: 'Warning', Value: `AI analysis was incomplete. ${results.report_metadata.ai_analysis_failures || 0} findings could not be analysed.` });
+  // 7. Findings Details Table (if any)
+  if (data.findings && data.findings.length > 0) {
+    const findingsRows = data.findings.map((f: any) => {
+      const sev = (f.severity || 'info').toUpperCase();
+      const pri = (f.priority || 'P3').toUpperCase();
+      const desc = `${f.title || 'Issue'}\n${(f.description || f.manual_verification || '').substring(0, 200)}`;
+      const rec = f.recommendation || f.recommended_action || 'Review and remediate.';
+      const pageLoc = f.page || f.url || 'N/A';
+
+      return [
+        f.id || 'BUG',
+        `${sev}\n(${pri})`,
+        desc,
+        rec,
+        f.affected_pages_count?.toString() || '1',
+        pageLoc,
+      ];
+    });
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [['ID', 'Severity', 'Issue Description', 'Recommendation', 'Pages', 'Location']],
+      body: findingsRows,
+      theme: 'grid',
+      headStyles: { fillColor: [225, 29, 72], textColor: 255, fontStyle: 'bold', fontSize: 8.5 },
+      bodyStyles: { fontSize: 7.5, cellPadding: 2.5 },
+      columnStyles: {
+        0: { cellWidth: 18 },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 60 },
+        3: { cellWidth: 45 },
+        4: { cellWidth: 15 },
+        5: { cellWidth: 24 },
+      },
+      margin: { left: 14, right: 14 },
+    });
+  } else {
+    // Clean zero-findings banner
+    doc.setFillColor(240, 253, 244); // Green 50
+    doc.setDrawColor(34, 197, 94); // Green 500
+    doc.rect(14, currentY, 182, 14, 'FD');
+
+    doc.setFontSize(10);
+    doc.setTextColor(21, 128, 61); // Green 700
+    doc.setFont('helvetica', 'bold');
+    doc.text('Zero Defects Detected — Your site passed all automated QA checks cleanly.', 18, currentY + 9);
   }
 
-  // Prepare Findings Data
-  const findingsData = findings.map((f: any) => ({
-    'ID': f.id,
-    'Severity': f.severity.toUpperCase(),
-    'Title': f.title,
-    'Classification': f.classification || 'N/A',
-    'Confidence': f.confidence || 'N/A',
-    'Description': f.description || f.manual_verification || '',
-    'Expected Result': f.expected_result || 'Not specified.',
-    'Actual Result': f.actual_result || 'Not specified.',
-    'Reproduction Steps': f.reproduction?.steps ? f.reproduction.steps.join('\n') : '',
-    'Device': f.reproduction?.device || '',
-    'Viewport': f.reproduction?.viewport ? `${f.reproduction.viewport.width}x${f.reproduction.viewport.height}` : '',
-    'Screenshot': f.evidence?.screenshot || (f.screenshots && f.screenshots.length > 0 ? f.screenshots[0] : ''),
-    'Recommendation': f.recommendation || '',
-    'Affected Pages Count': f.affected_pages_count || 1,
-    'Example Page Crawled': f.page || 'N/A'
-  }));
+  // 8. Running Header & Footer with Pagination
+  const totalPages = (doc as any).internal.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
 
-  // Create Workbooks & Sheets
+    // Running Header (Pages 2+)
+    if (i > 1) {
+      doc.setFontSize(8);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`AI QA Agent Report — ${data.target}`, 14, 8);
+      doc.setDrawColor(226, 232, 240);
+      doc.line(14, 10, 196, 10);
+    }
+
+    // Running Footer
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184); // Slate 400
+    doc.setDrawColor(226, 232, 240);
+    doc.line(14, 287, 196, 287);
+    doc.text(`Confidential — AI QA Agent`, 14, 292);
+    doc.text(`Page ${i} of ${totalPages}`, 196, 292, { align: 'right' });
+  }
+
+  const safeFilename = `QA_Report_${data.target.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
+  doc.save(`${safeFilename}.pdf`);
+};
+
+/**
+ * Generates and triggers an Excel (.xlsx) workbook download for the QA scan.
+ */
+export const downloadExcel = (results: any, scanId: string | null = '') => {
+  if (!results) return;
+
+  const data = extractCanonicalExportData(results, scanId);
+  const tc = data.testCasesSummary;
+  const fs = data.findingsSummary;
+
   const wb = XLSX.utils.book_new();
-  
-  const summaryWs = XLSX.utils.json_to_sheet(summaryData);
-  XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
-  
-  if (results.triage_metrics) {
-    const triageData = findings.map((f: any) => ({
-      'ID': f.id,
-      'Classification': f.classification || 'N/A',
-      'Severity': f.severity.toUpperCase(),
-      'Confidence': f.confidence || 'N/A',
-      'Priority': f.priority || 'P3',
-      'Root Cause Category': f.root_cause?.category?.replace('_', ' ') || 'N/A',
-      'User Impact': f.user_impact || 'unknown',
-      'Total Occurrences': f.occurrence_count || 1,
-      'Affected Pages': f.affected_pages_count || 1,
-      'Recommendation': f.recommendation || '',
-      'Regression Status': f.regression_status || 'NEW'
-    }));
-    const triageWs = XLSX.utils.json_to_sheet(triageData);
+
+  // 1. Executive Summary Sheet
+  const summarySheetData: Array<Array<any>> = [
+    ['AI QA AGENT — EXECUTIVE SCAN REPORT'],
+    [],
+    ['GENERAL INFORMATION', ''],
+    ['Target URL', data.target],
+    ['Scan ID', data.scanId],
+    ['Scan Status', data.status.toUpperCase()],
+    ['Generated At', data.generatedAt],
+    ['Scan Duration (seconds)', data.durationSeconds],
+    ['Pages Crawled', data.pagesCrawled],
+    ['Pages Discovered', data.pagesDiscovered],
+    [],
+    ['QUALITY & HEALTH', ''],
+    ['Site Health Score', data.qualityScore.score],
+    ['Health Grade', data.qualityScore.grade],
+    ['Health Summary', data.qualityScore.summary],
+    [],
+    ['TEST EXECUTION METRICS', 'COUNT', 'RATE (%)'],
+    ['Total Test Cases', tc.total, tc.total > 0 ? 100.0 : 0.0],
+    ['Executed Test Cases', tc.executed, tc.total > 0 ? Number(((tc.executed / tc.total) * 100).toFixed(2)) : 0.0],
+    ['Passed', tc.passed, tc.pass_rate],
+    ['Failed', tc.failed, tc.fail_rate],
+    ['Skipped / Manual Review', tc.skipped, tc.skip_rate],
+    ['Blocked', tc.blocked, tc.block_rate],
+    ['Errored', tc.errored, tc.errored_rate],
+    ['Total Test Duration (ms)', tc.duration_ms, ''],
+    [],
+    ['FINDINGS BY SEVERITY', 'COUNT', 'PRIORITY BREAKDOWN', 'COUNT'],
+    ['Total Unique Findings', fs.total, 'P0 (Blocker)', fs.P0],
+    ['Critical Severity', fs.critical, 'P1 (High)', fs.P1],
+    ['High Severity', fs.high, 'P2 (Medium)', fs.P2],
+    ['Medium Severity', fs.medium, 'P3 (Low)', fs.P3],
+    ['Low Severity', fs.low, 'P4 (Trivial)', fs.P4],
+    ['Informational', fs.info, 'Duplicates Filtered', fs.duplicates],
+    [],
+    ['REGRESSION ANALYSIS', 'COUNT'],
+    ['New Defects', fs.regression.new],
+    ['Fixed Defects', fs.regression.fixed],
+    ['Unchanged Defects', fs.regression.unchanged],
+    ['Worsened Defects', fs.regression.worsened],
+    ['Improved Defects', fs.regression.improved],
+  ];
+
+  const summaryWs = XLSX.utils.aoa_to_sheet(summarySheetData);
+  summaryWs['!cols'] = [{ wch: 30 }, { wch: 25 }, { wch: 25 }, { wch: 15 }];
+  XLSX.utils.book_append_sheet(wb, summaryWs, 'Executive Summary');
+
+  // 2. Test Cases Sheet (if any)
+  if (data.testCases && data.testCases.length > 0) {
+    const tcHeaders = [
+      'Test ID',
+      'Status',
+      'Title',
+      'Category',
+      'Priority',
+      'Duration (ms)',
+      'Source Page',
+      'Expected Result',
+      'Actual Result',
+      'Evidence / Screenshot',
+    ];
+
+    const tcRows = data.testCases.map((t: any) => [
+      t.id || 'TC',
+      (t.status || t.execution_policy || 'SKIPPED').toUpperCase(),
+      t.title || 'Untitled Test Case',
+      t.category || 'Functional',
+      t.priority || 'P3',
+      typeof t.duration_ms === 'number' ? t.duration_ms : 0,
+      t.source_page || '',
+      t.expected_result || 'Expected pass',
+      t.actual_result || 'N/A',
+      t.evidence?.screenshot || (t.screenshots && t.screenshots[0]) || '',
+    ]);
+
+    const tcWs = XLSX.utils.aoa_to_sheet([tcHeaders, ...tcRows]);
+    tcWs['!cols'] = [
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 35 },
+      { wch: 15 },
+      { wch: 10 },
+      { wch: 15 },
+      { wch: 30 },
+      { wch: 35 },
+      { wch: 35 },
+      { wch: 30 },
+    ];
+    XLSX.utils.book_append_sheet(wb, tcWs, 'Test Cases');
+  }
+
+  // 3. Findings Sheet (if any)
+  if (data.findings && data.findings.length > 0) {
+    const findingHeaders = [
+      'Finding ID',
+      'Severity',
+      'Priority',
+      'Classification',
+      'Confidence',
+      'Title',
+      'Page Location',
+      'URL',
+      'Description',
+      'Expected Result',
+      'Actual Result',
+      'Reproduction Steps',
+      'Recommendation',
+      'Affected Pages Count',
+      'Regression Status',
+    ];
+
+    const findingRows = data.findings.map((f: any) => [
+      f.id || 'BUG',
+      (f.severity || 'INFO').toUpperCase(),
+      (f.priority || 'P3').toUpperCase(),
+      f.classification || 'N/A',
+      f.confidence || 'low',
+      f.title || 'Untitled Issue',
+      f.page || 'N/A',
+      f.url || '',
+      f.description || f.manual_verification || '',
+      f.expected_result || 'Not specified.',
+      f.actual_result || 'Not specified.',
+      f.reproduction?.steps ? f.reproduction.steps.join(' -> ') : '',
+      f.recommendation || f.recommended_action || '',
+      typeof f.affected_pages_count === 'number' ? f.affected_pages_count : 1,
+      f.regression_status || 'NEW',
+    ]);
+
+    const findingsWs = XLSX.utils.aoa_to_sheet([findingHeaders, ...findingRows]);
+    findingsWs['!cols'] = [
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 22 },
+      { wch: 12 },
+      { wch: 35 },
+      { wch: 30 },
+      { wch: 35 },
+      { wch: 45 },
+      { wch: 30 },
+      { wch: 30 },
+      { wch: 35 },
+      { wch: 40 },
+      { wch: 20 },
+      { wch: 15 },
+    ];
+    XLSX.utils.book_append_sheet(wb, findingsWs, 'Defect Findings');
+  }
+
+  // 4. Bug Triage Sheet (if findings exist)
+  if (data.findings && data.findings.length > 0) {
+    const triageHeaders = [
+      'Finding ID',
+      'Classification',
+      'Severity',
+      'Priority',
+      'Confidence',
+      'Root Cause Category',
+      'User Impact',
+      'Total Occurrences',
+      'Affected Pages',
+      'Regression Status',
+      'Recommendation',
+    ];
+
+    const triageRows = data.findings.map((f: any) => [
+      f.id || 'BUG',
+      f.classification || 'N/A',
+      (f.severity || 'INFO').toUpperCase(),
+      (f.priority || 'P3').toUpperCase(),
+      f.confidence || 'low',
+      f.root_cause?.category?.replace('_', ' ') || 'unknown',
+      f.user_impact || 'unknown',
+      typeof f.occurrence_count === 'number' ? f.occurrence_count : 1,
+      typeof f.affected_pages_count === 'number' ? f.affected_pages_count : 1,
+      f.regression_status || 'NEW',
+      f.recommendation || f.recommended_action || '',
+    ]);
+
+    const triageWs = XLSX.utils.aoa_to_sheet([triageHeaders, ...triageRows]);
+    triageWs['!cols'] = [
+      { wch: 15 },
+      { wch: 22 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 22 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 16 },
+      { wch: 40 },
+    ];
     XLSX.utils.book_append_sheet(wb, triageWs, 'Bug Triage');
   }
 
-  if (findingsData.length > 0) {
-    const findingsWs = XLSX.utils.json_to_sheet(findingsData);
-    XLSX.utils.book_append_sheet(wb, findingsWs, 'Findings');
+  // 5. Cross Device Responsiveness Sheet
+  if (data.crossDevice) {
+    const cdHeaders = ['Device Platform', 'Tested Status', 'Responsive Issues Identified'];
+    const cd = data.crossDevice;
+    const cdRows = [
+      ['Desktop (1920x1080)', 'Tested', cd.device_breakdown.desktop],
+      ['iPhone (Mobile Viewport)', 'Tested', cd.device_breakdown.iphone],
+      ['iPad (Tablet Viewport)', 'Tested', cd.device_breakdown.ipad],
+    ];
+
+    const cdWs = XLSX.utils.aoa_to_sheet([cdHeaders, ...cdRows]);
+    cdWs['!cols'] = [{ wch: 28 }, { wch: 16 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, cdWs, 'Device Responsiveness');
   }
 
-  if (results.test_cases && results.test_cases.length > 0) {
-    const testCasesData = results.test_cases.map((tc: any) => ({
-      'ID': tc.id,
-      'Title': tc.title,
-      'Category': tc.category,
-      'Priority': tc.priority,
-      'Status': (tc.status || tc.execution_policy || 'manual_review').toUpperCase(),
-      'Source Page': tc.source_page || '',
-      'Expected Result': tc.expected_result || '',
-      'Actual Result': tc.actual_result || '',
-      'Screenshot': tc.evidence?.screenshot || ''
-    }));
-    const testCasesWs = XLSX.utils.json_to_sheet(testCasesData);
-    XLSX.utils.book_append_sheet(wb, testCasesWs, 'Test Cases');
-  }
-
-  // Save the file
-  XLSX.writeFile(wb, `QA_Report_${target.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.xlsx`);
+  const safeFilename = `QA_Report_${data.target.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
+  XLSX.writeFile(wb, `${safeFilename}.xlsx`);
 };
