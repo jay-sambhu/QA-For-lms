@@ -8,16 +8,16 @@ import {
   RiHome5Line,
   RiShieldUserLine,
   RiLoginCircleLine,
+  RiUser3Line,
 } from 'react-icons/ri';
 import { TbDashboard, TbCreditCard } from 'react-icons/tb';
 import { HiSparkles } from 'react-icons/hi2';
-import { FiLogOut } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import styles from '../../app/page.module.css';
 
 export const NavBar: React.FC = () => {
   const pathname = usePathname();
-  const { session, userPlan, openAuthModal, signOut } = useAuth();
+  const { session, userPlan, userRole, openAuthModal, openProfileModal } = useAuth();
 
   const isHome = pathname === '/';
   const isDashboard = pathname.startsWith('/dashboard');
@@ -61,13 +61,16 @@ export const NavBar: React.FC = () => {
           <span>Pricing</span>
         </Link>
 
-        <Link
-          href="/admin"
-          className={`${styles.navLink} ${isAdmin ? styles.navLinkActive : ''}`}
-        >
-          <RiShieldUserLine size={17} />
-          <span>Admin</span>
-        </Link>
+        {/* Admin Link ONLY visible if user has admin role */}
+        {userRole === 'admin' && (
+          <Link
+            href="/admin"
+            className={`${styles.navLink} ${isAdmin ? styles.navLinkActive : ''}`}
+          >
+            <RiShieldUserLine size={17} />
+            <span>Admin</span>
+          </Link>
+        )}
 
         <div className={styles.engineStatusPill}>
           <div className={styles.engineStatusDot} />
@@ -75,12 +78,17 @@ export const NavBar: React.FC = () => {
         </div>
 
         {session ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div className={styles.userBadge}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Clickable User Avatar Button - opens profile & settings */}
+            <button
+              onClick={openProfileModal}
+              className={styles.userBadge}
+              style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+              title="Click to view Profile & Settings"
+            >
               <div className={styles.userAvatar}>
-                {session.user?.email ? session.user.email[0].toUpperCase() : 'U'}
+                {session.user?.email ? session.user.email[0].toUpperCase() : <RiUser3Line size={14} />}
               </div>
-              <span>{session.user?.email || 'User'}</span>
               <span
                 className={`${styles.tierPill} ${
                   userPlan === 'pro'
@@ -89,14 +97,9 @@ export const NavBar: React.FC = () => {
                     ? styles.tierEnterprise
                     : styles.tierFree
                 }`}
-                style={{ marginLeft: '4px' }}
               >
                 {userPlan.toUpperCase()}
               </span>
-            </div>
-            <button onClick={signOut} className={styles.signOutBtn} title="Sign Out">
-              <FiLogOut size={16} />
-              <span>Exit</span>
             </button>
           </div>
         ) : (
