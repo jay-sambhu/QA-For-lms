@@ -414,8 +414,9 @@ async def get_scan_status(scan_id: UUID, user=Depends(require_user)):
 
 @app.get("/api/scans/{scan_id}/download/{file_type}")
 async def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require_user)):
-    if file_type not in ("json", "md"):
-        raise HTTPException(status_code=400, detail="Invalid file type. Must be 'json' or 'md'")
+    file_type_norm = file_type.lower()
+    if file_type_norm not in ("json", "md", "markdown"):
+        raise HTTPException(status_code=400, detail="Invalid file type. Must be 'json', 'md', or 'markdown'")
 
     scan = get_scan(str(scan_id))
     user_id_val = str(getattr(user, "id", user))
