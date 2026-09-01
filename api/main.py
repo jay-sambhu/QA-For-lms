@@ -383,6 +383,7 @@ def run_qa_pipeline(
 @app.post("/api/scans")
 async def create_scan(
     request: ScanRequest,
+    background_tasks: BackgroundTasks,
     user=Depends(require_user),
 ):
     scan_id = str(uuid4())
@@ -418,9 +419,36 @@ async def create_scan(
     username = request.auth.username if request.auth else None
     password_raw = request.auth.password.get_secret_value() if request.auth and request.auth.password else None
 
-    # Enqueue asynchronous Celery task
-    if login_url or username or password_raw:
-        process_query_task.delay(
+    # Enqueue asynchronous Celery task with background task fallback
+    enqueued = False
+    try:
+        if login_url or username or password_raw:
+            process_query_task.delay(
+                scan_id,
+                user_id_val,
+                request.url,
+                request.max_pages,
+                request.auth_token,
+                login_url,
+                username,
+                password_raw,
+            )
+        else:
+            process_query_task.delay(
+                scan_id,
+                user_id_val,
+                request.url,
+                request.max_pages,
+                request.auth_token,
+            )
+        enqueued = True
+    except Exception as e:
+        logger.warning("Celery enqueue failed (%s), running via background task", e)
+
+    # In local development when standalone redis server is simulated, ensure background pipeline execution
+    if not enqueued or os.getenv("ENVIRONMENT", "development") == "development":
+        background_tasks.add_task(
+            run_qa_pipeline,
             scan_id,
             user_id_val,
             request.url,
@@ -429,14 +457,6 @@ async def create_scan(
             login_url,
             username,
             password_raw,
-        )
-    else:
-        process_query_task.delay(
-            scan_id,
-            user_id_val,
-            request.url,
-            request.max_pages,
-            request.auth_token,
         )
 
     return {

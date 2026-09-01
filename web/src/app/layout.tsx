@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI QA Agent",
+  title: "NexusQA — Automated Web Quality Assurance & Regression Platform",
   description:
-    "Automated website QA: crawl any site, detect real bugs, and get an AI-verified report.",
+    "Enterprise automated web quality assurance: end-to-end multi-viewport crawling, synthetic interaction testing, and defect triage.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
