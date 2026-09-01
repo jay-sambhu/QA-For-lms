@@ -527,6 +527,25 @@ async def get_scan_status(scan_id: UUID, user=Depends(require_user)):
 
     return response
 
+
+@app.post("/api/v1/scans/{scan_id}/cancel")
+@app.post("/api/scans/{scan_id}/cancel")
+@app.delete("/api/v1/scans/{scan_id}")
+@app.delete("/api/scans/{scan_id}")
+async def cancel_scan(scan_id: UUID, user=Depends(require_user)):
+    """Cancel an ongoing scan or mark it stopped."""
+    user_id_val = str(getattr(user, "id", user))
+    with SessionLocal() as db:
+        scan = db.query(Scan).filter(Scan.id == str(scan_id)).first()
+        if not scan or str(scan.user_id) != user_id_val:
+            raise HTTPException(status_code=404, detail="Scan not found")
+        if scan.status in ("pending", "running"):
+            scan.status = "cancelled"
+            scan.completed_at = datetime.now(timezone.utc)
+            db.commit()
+            return {"status": "cancelled", "message": "Scan has been stopped."}
+        return {"status": scan.status, "message": f"Scan is already {scan.status}."}
+
 def _get_download_media_type(format_ext: str) -> str:
     """Return canonical media type for download formats."""
     media_types = {

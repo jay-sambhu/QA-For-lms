@@ -36,6 +36,7 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
+  Square,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient, type Session } from '@supabase/supabase-js';
@@ -192,7 +193,17 @@ interface QAReport {
   };
 }
 
-type ScanStatus = 'pending' | 'running' | 'completed' | 'failed' | 'error' | '';
+interface ProgressPayload {
+  percent: number;
+  message: string;
+  stage?: string;
+  active_device?: string;
+  active_url?: string;
+  page_current?: number;
+  page_total?: number;
+}
+
+type ScanStatus = 'pending' | 'running' | 'completed' | 'failed' | 'error' | 'cancelled' | '';
 
 export default function Home() {
   const [session, setSession] = useState<Session | null>(null);
@@ -210,7 +221,7 @@ export default function Home() {
   const [status, setStatus] = useState<ScanStatus>('');
   const [scanError, setScanError] = useState('');
   const [results, setResults] = useState<QAReport | null>(null);
-  const [progress, setProgress] = useState<{ percent: number; message: string; stage?: string } | null>(null);
+  const [progress, setProgress] = useState<ProgressPayload | null>(null);
 
   // Authenticated Crawl Form State
   const [requiresAuth, setRequiresAuth] = useState(false);
@@ -289,24 +300,6 @@ export default function Home() {
     }
   }, [progress?.message]);
 
-  const handleSignUp = useCallback(async () => {
-    if (!supabase) return;
-    setAuthLoading(true);
-    setAuthError('');
-    const { error } = await supabase.auth.signUp({ email, password });
-    setAuthError(error ? error.message : 'Check your email for the confirmation link!');
-    setAuthLoading(false);
-  }, [email, password]);
-
-  const handleSignIn = useCallback(async () => {
-    if (!supabase) return;
-    setAuthLoading(true);
-    setAuthError('');
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setAuthError(error.message);
-    setAuthLoading(false);
-  }, [email, password]);
-
   const handleDevSignIn = () => {
     setSession({
       access_token: 'dev-token',
@@ -343,6 +336,22 @@ export default function Home() {
     setLogFeed([]);
   };
 
+  const handleStopScan = async () => {
+    if (!scanId || !session) return;
+    try {
+      await fetch(`/api/scans/${scanId}/cancel`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+    } catch (e) {
+      console.error('Cancel request failed:', e);
+    }
+    setLoading(false);
+    setStatus('cancelled');
+    setScanError('Scan was stopped by user.');
+    setProgress(null);
+  };
+
   const startScan = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url || !session) return;
@@ -351,7 +360,7 @@ export default function Home() {
     setResults(null);
     setElapsedSeconds(0);
     setLogFeed(['Spawning isolated browser contexts across viewports (Desktop, iPhone, iPad)...']);
-    setProgress({ percent: 5, message: 'Initializing QA Crawler...' });
+    setProgress({ percent: 5, message: 'Initializing multi-viewport crawler...' });
     setScanError('');
     try {
       const parsedMaxPages = parseInt(maxPages, 10);
@@ -418,7 +427,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!scanId || !session) return;
-    if (status === 'completed' || status === 'failed' || status === 'error') return;
+    if (status === 'completed' || status === 'failed' || status === 'error' || status === 'cancelled') return;
 
     let cancelled = false;
 
@@ -448,13 +457,15 @@ export default function Home() {
 
         setStatus(data.status);
 
-        if (data.status === 'completed' || data.status === 'failed') {
+        if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
           setLoading(false);
           setProgress(null);
           if (data.results) {
             setResults(data.results);
           } else if (data.status === 'failed') {
             setScanError('The scan failed to complete. The target site may be unreachable.');
+          } else if (data.status === 'cancelled') {
+            setScanError('Scan was stopped by user.');
           }
           return;
         }
@@ -468,7 +479,7 @@ export default function Home() {
     };
 
     poll();
-    const interval = setInterval(poll, 2500);
+    const interval = setInterval(poll, 2000);
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -503,11 +514,21 @@ export default function Home() {
   // Determine Active Pipeline Stage (0: Crawl, 1: Interactive, 2: Bugs, 3: AI Report)
   const currentStageIndex = useMemo(() => {
     const pct = progress?.percent || 0;
-    if (pct < 30) return 0;
+    if (pct < 35) return 0;
     if (pct < 60) return 1;
-    if (pct < 80) return 2;
+    if (pct < 75) return 2;
     return 3;
   }, [progress?.percent]);
+
+  // Active Device detection for Live Multi-Device Viewport Deck
+  const activeDeviceName = useMemo(() => {
+    if (progress?.active_device) return progress.active_device;
+    const msg = progress?.message || '';
+    if (msg.includes('iPhone')) return 'iPhone 13';
+    if (msg.includes('iPad')) return 'iPad (gen 7)';
+    if (msg.includes('Desktop')) return 'Desktop Chrome';
+    return 'Desktop Chrome';
+  }, [progress?.active_device, progress?.message]);
 
   // Quality metrics fallback
   const safeScore = useMemo(() => {
@@ -521,7 +542,7 @@ export default function Home() {
   const letterGrade = results?.qa_metrics?.letter_grade || 'A+';
   const verdictText = results?.qa_metrics?.verdict || 'EXCELLENT - Production Ready';
 
-  const showForm = !loading && (status === '' || status === 'error' || (status === 'completed' && !results));
+  const showForm = !loading && (status === '' || status === 'error' || status === 'cancelled' || (status === 'completed' && !results));
 
   if (!sessionLoaded) {
     return (
@@ -756,15 +777,28 @@ export default function Home() {
             </form>
           ) : (
             /* ==============================================================
-             * PROMINENT HIGH-VISIBILITY SCANNING / LOADING STATE
+             * PROMINENT SCANNING / LOADING STATE (With Stop Button & Multi-Device Deck)
              * ============================================================== */
             <div className={styles.loadingScreen}>
-              {/* Header Badge & Target */}
+              {/* Header Badge & Target with Stop Scan Action */}
               <div className={styles.loadingHeader}>
-                <div className={styles.targetUrlBadge}>
-                  <Globe size={15} />
-                  <span>Inspecting Target: {url}</span>
+                <div className={styles.loadingControlBar}>
+                  <div className={styles.targetUrlBadge}>
+                    <Globe size={15} />
+                    <span>Inspecting Target: {url}</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleStopScan}
+                    className={styles.stopScanBtn}
+                    title="Stop and cancel the active scan"
+                  >
+                    <Square size={14} fill="#ef4444" />
+                    <span>Stop Scan</span>
+                  </button>
                 </div>
+
                 <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#f8fafc', marginTop: '6px' }}>
                   Automated Test Execution Running
                 </h2>
@@ -773,17 +807,107 @@ export default function Home() {
                 </p>
               </div>
 
+              {/* Matched Progress Bar Card */}
+              <div className={styles.progressBarWrapper}>
+                <div className={styles.progressInfoRow}>
+                  <span className={styles.progressStageBadge}>
+                    {progress?.stage
+                      ? progress.stage.replace('_', ' ')
+                      : currentStageIndex === 0
+                      ? 'Stage 1: Multi-Device Crawling'
+                      : currentStageIndex === 1
+                      ? 'Stage 2: Interactive Testing'
+                      : currentStageIndex === 2
+                      ? 'Stage 3: Defect Detection'
+                      : 'Stage 4: Quality Synthesis'}
+                  </span>
+                  <span className={styles.progressNumbers}>
+                    {progress?.page_current
+                      ? `Page ${progress.page_current} of ${progress.page_total || maxPages} (${progress.percent}%)`
+                      : `${progress?.percent || 5}% Complete`}
+                  </span>
+                </div>
+                <div className={styles.progressBarTrack}>
+                  <div className={styles.progressBarFill} style={{ width: `${progress?.percent || 5}%` }} />
+                </div>
+              </div>
+
               {/* Glowing Radar Pulse & Live Percentage Dial */}
               <div className={styles.radarContainer}>
                 <div className={styles.radarOuterRing} />
                 <div className={styles.radarInnerRing} />
                 <div className={styles.radarSweep} />
                 <div className={styles.radarCenterContent}>
-                  <span className={styles.radarPercent}>{progress?.percent || 10}%</span>
+                  <span className={styles.radarPercent}>{progress?.percent || 5}%</span>
                   <span className={styles.radarElapsed}>
                     <Clock size={10} style={{ display: 'inline', marginRight: '3px' }} />
                     {formattedTime}
                   </span>
+                </div>
+              </div>
+
+              {/* LIVE MULTI-DEVICE VIEWPORT DECK */}
+              <div className={styles.deviceDeckSection}>
+                <div className={styles.deviceDeckTitleRow}>
+                  <span>Live Multi-Device Emulation Viewports</span>
+                  <span style={{ color: '#34d399', fontSize: '0.75rem' }}>● 3 ISOLATED CONTEXTS ACTIVE</span>
+                </div>
+
+                <div className={styles.deviceDeckGrid}>
+                  {[
+                    {
+                      id: 'desktop',
+                      name: 'Desktop Chrome',
+                      resolution: '1920 × 1080',
+                      icon: <Monitor size={18} />,
+                    },
+                    {
+                      id: 'iphone',
+                      name: 'iPhone 13',
+                      resolution: '390 × 844 (Touch)',
+                      icon: <Smartphone size={18} />,
+                    },
+                    {
+                      id: 'ipad',
+                      name: 'iPad (gen 7)',
+                      resolution: '820 × 1180 (Tablet)',
+                      icon: <Tablet size={18} />,
+                    },
+                  ].map((dev) => {
+                    const isCrawlingThis =
+                      activeDeviceName.toLowerCase().includes(dev.id) ||
+                      activeDeviceName.toLowerCase().includes(dev.name.toLowerCase());
+
+                    return (
+                      <div
+                        key={dev.id}
+                        className={`${styles.deviceCard} ${isCrawlingThis ? styles.deviceCardActive : ''}`}
+                      >
+                        <div className={styles.deviceCardHeader}>
+                          <div className={styles.deviceIconName}>
+                            <span style={{ color: isCrawlingThis ? '#818cf8' : '#64748b' }}>{dev.icon}</span>
+                            <span>{dev.name}</span>
+                          </div>
+                          <span
+                            className={`${styles.deviceStatusPill} ${
+                              isCrawlingThis ? styles.devicePillActive : styles.devicePillIdle
+                            }`}
+                          >
+                            {isCrawlingThis ? 'Crawling Now' : 'Ready'}
+                          </span>
+                        </div>
+
+                        <div className={styles.deviceMockupFrame}>
+                          <div style={{ color: isCrawlingThis ? '#38bdf8' : '#94a3b8', fontSize: '0.78rem' }}>
+                            {isCrawlingThis
+                              ? progress?.active_url || url || 'Navigating DOM...'
+                              : 'Waiting for viewport pass...'}
+                          </div>
+                          <span className={styles.deviceResolution}>{dev.resolution}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -961,8 +1085,12 @@ export default function Home() {
                 <button
                   className="btn btn-primary"
                   onClick={() => {
+                    setScanId(null);
                     setResults(null);
                     setStatus('');
+                    setProgress(null);
+                    setLoading(false);
+                    setScanError('');
                   }}
                   style={{ padding: '8px 16px', fontSize: '0.88rem' }}
                 >

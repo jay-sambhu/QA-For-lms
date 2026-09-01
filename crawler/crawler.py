@@ -382,10 +382,6 @@ class WebsiteCrawler:
                         continue
 
                     self.visited.add(url)
-                    
-                    if self.progress_cb:
-                        pct = int((len(self.visited) / self.max_pages) * 60)
-                        self.progress_cb(pct, f"Crawling page {len(self.visited)} of {self.max_pages}")
 
                     print()
                     print("=" * 70)
@@ -396,7 +392,25 @@ class WebsiteCrawler:
                     print("=" * 70)
                     
                     # Navigate Desktop first to extract internal links
-                    for dev_name, page in pages.items():
+                    dev_keys = list(pages.keys())
+                    for dev_idx, (dev_name, page) in enumerate(pages.items()):
+                        if self.progress_cb:
+                            pct = int(((len(self.visited) - 1) / self.max_pages) * 35 + ((dev_idx + 1) / len(pages)) * (35 / self.max_pages))
+                            try:
+                                self.progress_cb(
+                                    min(35, max(5, pct)),
+                                    f"Crawling page {len(self.visited)}/{self.max_pages} · [{dev_name}]",
+                                    active_device=dev_name,
+                                    active_url=url,
+                                    page_current=len(self.visited),
+                                    page_total=self.max_pages,
+                                )
+                            except TypeError:
+                                self.progress_cb(
+                                    min(35, max(5, pct)),
+                                    f"Crawling page {len(self.visited)}/{self.max_pages} · [{dev_name}]"
+                                )
+
                         try:
                             # Use f"{url} [{dev_name}]" as the canonical page ID for this device
                             page_id = f"{url} [{dev_name}]"

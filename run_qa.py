@@ -33,15 +33,21 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
     print(f"Run ID: {run_id}")
     print("=" * 60)
 
-    def report_progress(stage, percent, message):
+    def report_progress(stage, percent, message, **kwargs):
         progress_file = os.path.join(results_dir, f"progress_{run_id}.json")
         try:
+            data = {
+                "stage": stage,
+                "percent": max(0, min(100, int(percent))),
+                "message": message,
+                **kwargs
+            }
             with open(progress_file, "w", encoding="utf-8") as f:
-                json.dump({"stage": stage, "percent": percent, "message": message}, f)
+                json.dump(data, f)
         except Exception:
             pass
 
-    report_progress("crawling", 0, "Initializing crawler...")
+    report_progress("crawling", 5, "Initializing multi-device crawler...")
 
     print("\n[Stage 1] Crawling website...")
     crawler = WebsiteCrawler(
@@ -50,7 +56,7 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
         auth_token=auth_token,
         output_dir=base_dir,
         run_id=run_id,
-        progress_cb=lambda pct, msg: report_progress("crawling", pct, msg),
+        progress_cb=lambda pct, msg, **kw: report_progress("crawling", pct, msg, **kw),
         login_url=login_url,
         username=username,
         password=password,
