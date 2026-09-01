@@ -12,35 +12,32 @@ async def main():
         context = await browser.new_context(viewport={"width": 1400, "height": 900})
         page = await context.new_page()
 
-        print("[1/3] Navigating to JASUSS Landing Page...")
-        await page.goto(BASE_URL, wait_until="networkidle")
+        print("[1/4] Navigating to Landing Page (/) ...")
+        await page.goto(f"{BASE_URL}/", wait_until="networkidle")
         await page.wait_for_selector("header")
-        await page.screenshot(path=os.path.join(SCREENSHOTS_DIR, "jasuss_landing_page.png"), full_page=True)
-        print("  ✓ Saved jasuss_landing_page.png")
+        await page.screenshot(path=os.path.join(SCREENSHOTS_DIR, "route_home.png"), full_page=True)
+        print("  ✓ Saved route_home.png")
 
-        print("[2/3] Opening Pricing & Multi-Payment Gateways Modal...")
-        pricing_btn = page.locator("button:has-text('Pricing & Plans')")
-        if await pricing_btn.count() > 0:
-            await pricing_btn.first.click()
-            await page.wait_for_timeout(1000)
-            await page.screenshot(path=os.path.join(SCREENSHOTS_DIR, "jasuss_pricing_modal.png"))
-            print("  ✓ Saved jasuss_pricing_modal.png")
-            # Close modal
-            close_btn = page.locator("button[title='Close']").or_(page.locator("button:has-text('✕')")).or_(page.locator("div[class*='modalHeader'] button"))
-            if await close_btn.count() > 0:
-                await close_btn.first.click()
-                await page.wait_for_timeout(500)
+        print("[2/4] Navigating to Pricing Page (/pricing) ...")
+        await page.goto(f"{BASE_URL}/pricing", wait_until="networkidle")
+        await page.wait_for_timeout(1000)
+        await page.screenshot(path=os.path.join(SCREENSHOTS_DIR, "route_pricing.png"), full_page=True)
+        print("  ✓ Saved route_pricing.png")
 
-        print("[3/3] Opening Admin Dashboard View...")
-        admin_btn = page.locator("button:has-text('Admin Console')")
-        if await admin_btn.count() > 0:
-            await admin_btn.first.click()
-            await page.wait_for_timeout(1200)
-            await page.screenshot(path=os.path.join(SCREENSHOTS_DIR, "jasuss_admin_dashboard.png"), full_page=True)
-            print("  ✓ Saved jasuss_admin_dashboard.png")
+        print("[3/4] Navigating to Dashboard Page (/dashboard) ...")
+        await page.goto(f"{BASE_URL}/dashboard", wait_until="networkidle")
+        await page.wait_for_timeout(1000)
+        await page.screenshot(path=os.path.join(SCREENSHOTS_DIR, "route_dashboard.png"), full_page=True)
+        print("  ✓ Saved route_dashboard.png")
+
+        print("[4/4] Navigating to Admin Console (/admin) ...")
+        await page.goto(f"{BASE_URL}/admin", wait_until="networkidle")
+        await page.wait_for_timeout(1200)
+        await page.screenshot(path=os.path.join(SCREENSHOTS_DIR, "route_admin.png"), full_page=True)
+        print("  ✓ Saved route_admin.png")
 
         await browser.close()
-        print("All visual verifications completed successfully!")
+        print("All App Router route verifications completed successfully!")
 
 if __name__ == "__main__":
     asyncio.run(main())

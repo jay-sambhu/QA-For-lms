@@ -7,7 +7,7 @@
 [![Next.js](https://img.shields.io/badge/Next.js-16.3-black.svg?logo=next.js&logoColor=white)](https://nextjs.org)
 [![Playwright](https://img.shields.io/badge/Playwright-Chromium-green.svg?logo=playwright&logoColor=white)](https://playwright.dev)
 [![Celery](https://img.shields.io/badge/Celery-Distributed%20Queue-37814A.svg?logo=celery&logoColor=white)](https://docs.celeryq.dev)
-[![Pytest](https://img.shields.io/badge/Tests-154%2B%20Passing-brightgreen.svg?logo=pytest&logoColor=white)](https://pytest.org)
+[![Pytest](https://img.shields.io/badge/Tests-167%20Passing-brightgreen.svg?logo=pytest&logoColor=white)](https://pytest.org)
 
 ---
 
@@ -19,7 +19,7 @@
 - [Key Features & Capabilities](#-key-features--capabilities)
 - [Subscription & Multi-Payment Gateways](#-subscription--multi-payment-gateways)
 - [Technology Stack](#-technology-stack)
-- [Repository Structure](#-repository-structure)
+- [Repository Structure & Conventions](#-repository-structure--conventions)
 - [Getting Started & Local Development](#-getting-started--local-development)
 - [Admin Console & Telemetry](#-admin-console--telemetry)
 - [Running Automated Tests](#-running-automated-tests)
@@ -40,7 +40,7 @@ The following diagram illustrates how JASUSS orchestrates multi-viewport crawlin
 ```mermaid
 flowchart TD
     subgraph ClientLayer["🖥️ Presentation & Client Layer"]
-        A["User / CI Pipeline"] -->|"Submit Target URL"| B["Next.js 16 Web Dashboard\n(JASUSS UI)"]
+        A["User / CI Pipeline"] -->|"Submit Target URL"| B["Next.js 16 App Router\n(JASUSS UI)"]
         B -->|"REST API / Auth Bearer"| C["FastAPI Gateway\n(/api/v1/scans)"]
     end
 
@@ -49,7 +49,7 @@ flowchart TD
         D -->|"Consume Job"| E["Celery Worker Pool\n(Isolated Contexts)"]
     end
 
-    subgraph QAPipeline["🔍 Multi-Stage QA Engine"]
+    subgraph QAPipeline["🔍 Core Multi-Stage QA Engine"]
         E --> S1["Stage 1: Multi-Viewport Crawler\n• Desktop Chrome (1920x1080)\n• iPhone 13 (390x844)\n• iPad Gen 7 (820x1180)"]
         S1 --> S2["Stage 2: Synthetic Interactive Tester\n• Button & Link Discovery\n• Form Assertions\n• Dialog Dismissal"]
         S2 --> S3["Stage 3: Deterministic Defect Detector\n• HTTP 4xx/5xx Errors\n• Unhandled JS Exceptions\n• Layout Overflows"]
@@ -60,7 +60,7 @@ flowchart TD
 
     subgraph StorageLayer["💾 Unified Persistence & Artifacts"]
         S6 --> DB[("PostgreSQL / SQLite Database\n(SQLAlchemy Sole Truth)")]
-        S6 --> FS["Local User Artifacts\n• PDF Audit Reports\n• Multi-Tab Excel Sheets\n• Raw JSON Telemetry\n• Markdown Summary"]
+        S6 --> FS["Local Output Artifacts\n• PDF Audit Reports\n• Multi-Tab Excel Sheets\n• Raw JSON Telemetry\n• Markdown Summary"]
     end
 
     subgraph Exporters["📊 Reporting & Webhooks"]
@@ -143,7 +143,7 @@ erDiagram
    - Supports form-based authentication (`login_url`, `username`, `password`) using Pydantic `SecretStr` transient memory. Zero password leakage into databases, server logs, or report artifacts.
 
 4. **Canonical Calculation Engine**:
-   - Single source of truth for QA metrics (`calculation_engine.py`):
+   - Single source of truth for QA metrics (`core/calculation_engine.py`):
      - Normalized Pass/Fail rates.
      - Deterministic Health Score (0–100) and Letter Grade (A+, A, B, C, D, F).
      - Weighted severity penalties (Critical: 25 pts, High: 15 pts, Medium: 7 pts, Low: 2 pts).
@@ -191,46 +191,91 @@ JASUSS includes built-in multi-gateway payment processing supporting **Stripe**,
 
 ---
 
-## 📂 Repository Structure
+## 📂 Repository Structure & Conventions
 
 ```text
 ai-qa-agent/
-├── api/                        # FastAPI Route Controllers
-│   ├── main.py                 # Core API & Scan Pipeline Engine
+├── api/                        # FastAPI Route Controllers & API Endpoints
+│   ├── __init__.py
+│   ├── main.py                 # Core API & Scan Pipeline Orchestrator
 │   ├── billing.py              # Subscription & Multi-Gateway Checkout Endpoints
 │   ├── admin.py                # Admin Telemetry & Platform Metrics
 │   └── rate_limiter.py         # Client IP & User Rate Limiting
 ├── billing/                    # Payment Gateway Adapters
 │   ├── __init__.py
 │   └── gateways.py             # Stripe, LemonSqueezy, Razorpay, PayPal Adapters
-├── crawler/                    # Multi-Viewport Crawler
-│   └── crawler.py              # Playwright Desktop, Mobile, Tablet Engine
-├── security/                   # Sensitive Data Sanitization
+├── core/                       # Core QA Pipeline Engines & Stage Modules
+│   ├── __init__.py
+│   ├── bug_detector.py         # Deterministic Anomaly & Defect Trapper
+│   ├── bug_triage.py           # Severity, Confidence & Priority Triage Engine
+│   ├── calculation_engine.py   # Sole Backend Source of Truth for QA Metrics
+│   ├── ci_quality_gate.py      # Automated CI/CD Regression Gate Evaluator
+│   ├── evidence_engine.py      # Screenshot & Network Evidence Engine
+│   ├── explorer.py             # LLM Site Exploration Engine
+│   ├── gemini_analyzer.py      # AI Root-Cause & Verification Engine
+│   ├── interactive_tester.py   # Synthetic Interaction Runner
+│   ├── model_router.py         # Adaptive Gemini Model Router
+│   ├── qa_report_generator.py  # PDF, Excel, JSON & Markdown Exporters
+│   ├── regression_detector.py  # Historical Baseline Regression Diffing
+│   ├── test_case_executor.py   # Test Case Execution Engine
+│   └── test_case_generator.py  # Test Case Discovery & Generation
+├── crawler/                    # Multi-Viewport Playwright Crawler
+│   ├── __init__.py
+│   ├── crawler.py              # Playwright Desktop, Mobile, Tablet Engine
+│   ├── network.py              # Network HAR & Traffic Monitor
+│   └── viewport.py             # Viewport Configurations
+├── security/                   # Sensitive Data Sanitization & Redaction
+│   ├── __init__.py
 │   └── redactor.py             # Zero-Leakage SecretStr & PII Redactor
-├── worker/                     # Asynchronous Queue Workers
-│   ├── celery_app.py           # Celery Broker & Queue Setup
+├── worker/                     # Asynchronous Celery Queue Workers
+│   ├── __init__.py
+│   ├── celery_app.py           # Celery Broker & Queue Configuration
 │   └── tasks.py                # Distributed Scan Task Runner
-├── web/                        # Next.js 16 Frontend Web Application
-│   ├── src/app/
-│   │   ├── layout.tsx          # Root Metadata & Fonts
-│   │   ├── page.tsx            # JASUSS Dashboard, Scanner, Admin & Pricing UI
-│   │   └── page.module.css     # Luxury Dark Mode & Responsive Styling
-│   └── next.config.ts          # Turbopack & API Proxy Rewrites
-├── alembic/                    # Database Migrations
-├── tests/                      # Pytest Test Suites (154+ Automated Tests)
-├── calculation_engine.py       # Single Source of Truth for QA Metrics
-├── bug_detector.py             # Deterministic Anomaly & Defect Trapper
-├── bug_triage.py               # Severity & Priority Engine
-├── evidence_engine.py          # Screenshot & Network Evidence Engine
-├── gemini_analyzer.py          # AI Root-Cause & Verification Engine
-├── interactive_tester.py       # Synthetic Interaction Runner
-├── qa_report_generator.py      # PDF, Excel, JSON & Markdown Exporter
-├── run_qa.py                   # Standalone CLI QA Pipeline
-├── start.sh                    # Interactive Foreground Launcher
-├── Dockerfile                  # Production Docker Container
+├── web/                        # Next.js 16 App Router Frontend Web Application
+│   ├── src/
+│   │   ├── app/                # Dedicated App Router Routes
+│   │   │   ├── page.tsx        # Landing & Marketing Showcase Route (/)
+│   │   │   ├── dashboard/      # User QA Dashboard Route (/dashboard)
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── scan/[id]/  # Scan Detail & Live Monitor Route (/dashboard/scan/[id])
+│   │   │   │       └── page.tsx
+│   │   │   ├── pricing/        # Pricing & Gateways Route (/pricing)
+│   │   │   │   └── page.tsx
+│   │   │   ├── admin/          # Admin Telemetry Console Route (/admin)
+│   │   │   │   └── page.tsx
+│   │   │   ├── layout.tsx      # Global App Layout with AuthProvider & NavBar
+│   │   │   └── page.module.css # Luxury Dark Mode & Responsive CSS Module
+│   │   ├── components/         # Reusable Modular UI Components
+│   │   │   ├── layout/         # Persistent NavBar, Footer
+│   │   │   ├── auth/           # Production AuthModal (Sign In / Sign Up)
+│   │   │   ├── scan/           # ScanForm, ScanMonitor, ScanResults, DeviceDeck
+│   │   │   ├── admin/          # AdminMetrics, TenantTable, PipelineInspector, SystemTelemetry
+│   │   │   └── pricing/        # PricingCards & Multi-Gateway Selector
+│   │   ├── context/            # React AuthContext (Session & Subscription State)
+│   │   ├── types/              # Strongly-Typed QA & Scan Contracts (qa.ts)
+│   │   └── utils/              # Client-Side Exporters & Supabase Client
+│   └── next.config.ts          # Turbopack & Dynamic API Proxy Rewrites
+├── alembic/                    # Database Migrations (001 -> 002 -> 003)
+├── tests/                      # Consolidated Pytest Test Suite (167+ Tests)
+├── config.py                   # Global Pydantic Environment Configuration
+├── db.py                       # SQLAlchemy Session Factory & DB Connection
+├── models.py                   # SQLAlchemy Models (User, Scan, Subscription, Transaction)
+├── run_qa.py                   # Standalone CLI QA Automation Pipeline
+├── start.sh                    # Foreground Interactive Development Launcher
+├── Dockerfile                  # Production Container Definition
 ├── render.yaml                 # Render Cloud Deployment Blueprint
+├── .env.example                # Environment Template (Secrets Omitted)
 └── README.md                   # Platform Documentation
 ```
+
+### 📌 Project Structure Conventions
+- **Pipeline Stages**: All individual pipeline stages and analysis algorithms reside in `core/`.
+- **API Endpoints**: All FastAPI route handlers reside in `api/`.
+- **Worker Tasks**: Asynchronous Celery task wrappers reside in `worker/`.
+- **Testing Suite**: All automated unit and integration test modules reside exclusively in `tests/`.
+- **Frontend Routes**: Every top-level page lives in its own `web/src/app/<route>/page.tsx` directory.
+- **Frontend Components**: Reusable UI components live in `web/src/components/<domain>/`.
+- **Local Output Directories**: The `results/`, `reports/`, `screenshots/`, and `user_data/` directories are local-only transient output artifacts and are strictly `.gitignore`d (never committed to git history).
 
 ---
 
@@ -256,22 +301,9 @@ npm install --prefix web
 ```
 
 ### 3. Configure Environment Variables
-Create a `.env` file in the root directory:
-```env
-ENVIRONMENT=development
-DATABASE_URL=sqlite:///./qa_agent.db
-REDIS_URL=redis://localhost:6379/0
-GEMINI_API_KEY=your_gemini_api_key_here
-
-# Optional: Supabase Auth
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
-
-# Optional: Payment Gateway Keys
-STRIPE_SECRET_KEY=sk_test_...
-LEMONSQUEEZY_API_KEY=...
-RAZORPAY_KEY_ID=...
-PAYPAL_CLIENT_ID=...
+Copy `.env.example` to `.env` and fill in your keys:
+```bash
+cp .env.example .env
 ```
 
 ### 4. Start Interactive Development Servers
@@ -288,7 +320,7 @@ chmod +x start.sh
 
 ## 📊 Admin Console & Telemetry
 
-Click **"Admin Console"** in the top navigation bar to open the live operations dashboard:
+Navigate to `/admin` or click **"Admin"** in the top navigation bar:
 - **MRR & Financial Analytics**: Real-time revenue, active paid subscriptions, and transaction logs.
 - **Tenant Management**: View registered users, active plan tiers (`Free`, `Pro`, `Enterprise`), and scan history.
 - **Global Scan Pipeline Inspector**: Live visibility into all running, completed, and failed scans.
@@ -301,12 +333,12 @@ Click **"Admin Console"** in the top navigation bar to open the live operations 
 Run the full pytest suite across calculation engines, database migrations, security sanitizers, payment gateways, and report exporters:
 
 ```bash
-# Run entire test suite
+# Run entire test suite (167+ tests passing)
 pytest -q
 
 # Run specific test modules
 pytest -q tests/test_billing_gateways.py tests/test_admin_api.py
-pytest -q test_calculation_engine.py test_auth_crawl.py
+pytest -q tests/test_calculation_engine.py tests/test_auth_crawl.py
 ```
 
 ---
