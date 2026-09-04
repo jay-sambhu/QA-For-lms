@@ -1,21 +1,29 @@
+import sys
 import logging
 from typing import Optional
+from pathlib import Path
+
+# Ensure repo root is in sys.path
+_repo_root = str(Path(__file__).resolve().parent.parent)
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
 
 try:
     from config import settings
     from worker.celery_app import celery_app
 except ImportError:
-    from ..config import settings
     from .celery_app import celery_app
 
 logger = logging.getLogger("ai_qa_agent.worker")
 
 def run_qa_pipeline(*args, **kwargs):
     """Wrapper that resolves run_qa_pipeline from api.main."""
-    try:
-        from api.main import run_qa_pipeline as _run_pipeline
-    except ImportError:
-        from ..api.main import run_qa_pipeline as _run_pipeline
+    import sys
+    from pathlib import Path
+    _root = str(Path(__file__).resolve().parent.parent)
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
+    from api.main import run_qa_pipeline as _run_pipeline
     return _run_pipeline(*args, **kwargs)
 
 @celery_app.task(

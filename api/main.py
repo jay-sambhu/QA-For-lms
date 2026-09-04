@@ -433,6 +433,7 @@ async def create_scan(
     # Enqueue asynchronous Celery task with background task fallback
     enqueued = False
     try:
+        from worker.tasks import process_query_task
         if login_url or username or password_raw:
             process_query_task.delay(
                 scan_id,
@@ -456,8 +457,8 @@ async def create_scan(
     except Exception as e:
         logger.warning("Celery enqueue failed (%s), running via background task", e)
 
-    # In local development when standalone redis server is simulated, ensure background pipeline execution
-    if not enqueued or os.getenv("ENVIRONMENT", "development") == "development":
+    # In local development fallback to FastAPI background task if Celery was not enqueued
+    if not enqueued:
         background_tasks.add_task(
             run_qa_pipeline,
             scan_id,
