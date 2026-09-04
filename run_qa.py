@@ -118,21 +118,21 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
 
     report_progress("test_generation", 65, "Generating test cases...")
     print("\n[Stage 3.5] Generating AI Test Cases...")
-    from test_case_generator import TestCaseGenerator
+    from core.test_case_generator import TestCaseGenerator
     tc_generator = TestCaseGenerator(crawl_file=crawl_file, output_dir=base_dir)
     test_cases_file = await tc_generator.generate()
     
     test_results_file = None
     if test_cases_file:
         print("\n[Stage 3.6] Executing Safe Test Cases...")
-        from test_case_executor import TestCaseExecutor
+        from core.test_case_executor import TestCaseExecutor
         tc_executor = TestCaseExecutor(test_cases_file=test_cases_file, qa_findings_file=findings["output_file"], output_dir=base_dir)
         test_results_file = await tc_executor.execute()
 
     report_progress("evidence_engine", 70, "Generating deterministic evidence...")
     
     print("\n[Stage 4] Running Deterministic Evidence Engine...")
-    from evidence_engine import EvidenceEngine
+    from core.evidence_engine import EvidenceEngine
     evidence_enriched_path = EvidenceEngine.run(findings["output_file"], crawl_file)
     if not evidence_enriched_path:
         print("ERROR: Stage 4 produced no enriched evidence report.")
@@ -141,12 +141,12 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
     report_progress("bug_triage", 75, "Running deterministic bug triage...")
     
     print("\n[Stage 4.5] Running Deterministic Bug Triage...")
-    from bug_triage import BugTriageEngine
+    from core.bug_triage import BugTriageEngine
     triage_engine = BugTriageEngine(evidence_enriched_path)
     triaged_path = triage_engine.triage()
     
     print("\n[Stage 4.6] Running Regression Detection...")
-    from regression_detector import RegressionDetector
+    from core.regression_detector import RegressionDetector
     baseline_file = kwargs.get('baseline_file')
     regression_engine = RegressionDetector(triaged_path, results_dir, baseline_file)
     final_triaged_path = regression_engine.detect()
@@ -187,7 +187,7 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
     print(f"Final Markdown: {result['md_path']}")
 
     if kwargs.get('ci_mode'):
-        import ci_quality_gate
+        from core import ci_quality_gate
         exit_code = ci_quality_gate.evaluate_quality_gate(result['json_path'])
         if exit_code != 0:
             print(f"\nCI Quality Gate Failed with exit code {exit_code}")

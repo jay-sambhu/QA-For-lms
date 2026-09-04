@@ -480,6 +480,7 @@ async def create_scan(
 
 
 
+@app.get("/api/v1/scans")
 @app.get("/api/scans")
 async def list_scans(user=Depends(require_user)):
     """List the caller's own scans, newest first."""
@@ -501,6 +502,7 @@ async def list_scans(user=Depends(require_user)):
 
 
 
+@app.get("/api/v1/scans/{scan_id}")
 @app.get("/api/scans/{scan_id}")
 async def get_scan_status(scan_id: UUID, user=Depends(require_user)):
     scan = get_scan(str(scan_id))

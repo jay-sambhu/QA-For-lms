@@ -11,7 +11,7 @@ import os
 from datetime import datetime
 
 from playwright.async_api import async_playwright
-from qa_report_generator import SecretRedactor
+from security.redactor import SecretRedactor
 
 DESTRUCTIVE_KEYWORDS = {
     "delete", "remove", "deactivate", "cancel subscription",

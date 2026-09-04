@@ -191,7 +191,7 @@ export const extractCanonicalExportData = (results: any, scanId: string | null =
     pagesDiscovered,
     durationSeconds,
     qualityScore: {
-      score: qs.score ?? 100,
+      score: typeof qs.score === 'number' ? qs.score : 100,
       grade: qs.grade || 'A',
       summary: qs.summary || 'Excellent',
     },
@@ -262,12 +262,12 @@ export const downloadPDF = (results: any, scanId: string | null = '') => {
   doc.setFillColor(30, 41, 59); // Slate 800
   doc.rect(0, 0, 210, 28, 'F');
 
-  doc.setFontSize(16);
+  doc.setFontSize(15);
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.text('AI QA AGENT — EXECUTIVE SCAN REPORT', 14, 12);
+  doc.text('JASUSS QA PLATFORM — EXECUTIVE REPORT', 14, 12);
 
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(203, 213, 225); // Slate 300
   doc.text(`Target: ${data.target}  |  Scan ID: ${data.scanId}  |  Date: ${formattedDate}`, 14, 20);
@@ -309,7 +309,7 @@ export const downloadPDF = (results: any, scanId: string | null = '') => {
     margin: { left: 14, right: 14 },
   });
 
-  currentY = (doc as any).lastAutoTable.finalY + 8;
+  currentY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 8 : currentY + 36;
 
   // 4. Test Execution Summary Table
   const tc = data.testCasesSummary;
@@ -333,6 +333,11 @@ export const downloadPDF = (results: any, scanId: string | null = '') => {
     ['Informational', fs.info.toString(), 'Duplicates Filtered', fs.duplicates.toString()],
   ];
 
+  if (currentY > 230) {
+    doc.addPage();
+    currentY = 20;
+  }
+
   autoTable(doc, {
     startY: currentY,
     head: [['Test Execution Metric', 'Count', 'Percentage Rate']],
@@ -343,7 +348,12 @@ export const downloadPDF = (results: any, scanId: string | null = '') => {
     margin: { left: 14, right: 14 },
   });
 
-  currentY = (doc as any).lastAutoTable.finalY + 8;
+  currentY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 8 : currentY + 40;
+
+  if (currentY > 230) {
+    doc.addPage();
+    currentY = 20;
+  }
 
   autoTable(doc, {
     startY: currentY,
@@ -355,10 +365,15 @@ export const downloadPDF = (results: any, scanId: string | null = '') => {
     margin: { left: 14, right: 14 },
   });
 
-  currentY = (doc as any).lastAutoTable.finalY + 8;
+  currentY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 8 : currentY + 40;
 
   // 6. Test Case Details Table (if any)
   if (data.testCases && data.testCases.length > 0) {
+    if (currentY > 220) {
+      doc.addPage();
+      currentY = 20;
+    }
+
     const testCasesRows = data.testCases.map((t: any) => {
       const rawStatus = (t.status || t.execution_policy || 'skipped').toUpperCase();
       const durationStr = t.duration_ms ? `${t.duration_ms}ms` : '0ms';
@@ -390,11 +405,16 @@ export const downloadPDF = (results: any, scanId: string | null = '') => {
       margin: { left: 14, right: 14 },
     });
 
-    currentY = (doc as any).lastAutoTable.finalY + 8;
+    currentY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 8 : currentY + 40;
   }
 
   // 7. Findings Details Table (if any)
   if (data.findings && data.findings.length > 0) {
+    if (currentY > 220) {
+      doc.addPage();
+      currentY = 20;
+    }
+
     const findingsRows = data.findings.map((f: any) => {
       const sev = (f.severity || 'info').toUpperCase();
       const pri = (f.priority || 'P3').toUpperCase();
@@ -430,6 +450,10 @@ export const downloadPDF = (results: any, scanId: string | null = '') => {
       margin: { left: 14, right: 14 },
     });
   } else {
+    if (currentY > 250) {
+      doc.addPage();
+      currentY = 20;
+    }
     // Clean zero-findings banner
     doc.setFillColor(240, 253, 244); // Green 50
     doc.setDrawColor(34, 197, 94); // Green 500
@@ -450,7 +474,7 @@ export const downloadPDF = (results: any, scanId: string | null = '') => {
     if (i > 1) {
       doc.setFontSize(8);
       doc.setTextColor(148, 163, 184);
-      doc.text(`AI QA Agent Report — ${data.target}`, 14, 8);
+      doc.text(`JASUSS QA Platform — ${data.target}`, 14, 8);
       doc.setDrawColor(226, 232, 240);
       doc.line(14, 10, 196, 10);
     }
@@ -460,11 +484,11 @@ export const downloadPDF = (results: any, scanId: string | null = '') => {
     doc.setTextColor(148, 163, 184); // Slate 400
     doc.setDrawColor(226, 232, 240);
     doc.line(14, 287, 196, 287);
-    doc.text(`Confidential — AI QA Agent`, 14, 292);
+    doc.text(`Confidential — JASUSS QA Platform (Powered by Nexus)`, 14, 292);
     doc.text(`Page ${i} of ${totalPages}`, 196, 292, { align: 'right' });
   }
 
-  const safeScanId = scanId && scanId !== 'N/A' ? scanId : data.target.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  const safeScanId = scanId && scanId !== 'N/A' ? scanId : (data.target || 'scan').replace(/[^a-z0-9]/gi, '_').toLowerCase();
   const safeFilename = `qa-report-${safeScanId}.pdf`;
   doc.save(safeFilename);
 };
@@ -483,7 +507,8 @@ export const downloadExcel = (results: any, scanId: string | null = '') => {
 
   // 1. Executive Summary Sheet
   const summarySheetData: Array<Array<any>> = [
-    ['AI QA AGENT — EXECUTIVE SCAN REPORT'],
+    ['JASUSS QA PLATFORM — EXECUTIVE SCAN REPORT'],
+    ['Powered by Nexus Autonomous QA Intelligence'],
     [],
     ['GENERAL INFORMATION', ''],
     ['Target URL', data.target],
@@ -694,9 +719,176 @@ export const downloadExcel = (results: any, scanId: string | null = '') => {
     XLSX.utils.book_append_sheet(wb, cdWs, 'Device Responsiveness');
   }
 
-  const safeScanId = scanId && scanId !== 'N/A' ? scanId : data.target.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  const safeScanId = scanId && scanId !== 'N/A' ? scanId : (data.target || 'scan').replace(/[^a-z0-9]/gi, '_').toLowerCase();
   const safeFilename = `qa-report-${safeScanId}.xlsx`;
-  XLSX.writeFile(wb, safeFilename);
+
+  try {
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8',
+    });
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = downloadUrl;
+    anchor.download = safeFilename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    setTimeout(() => {
+      window.URL.revokeObjectURL(downloadUrl);
+    }, 1000);
+  } catch {
+    XLSX.writeFile(wb, safeFilename);
+  }
+};
+
+/**
+ * Generates formatted Markdown report string from canonical data.
+ */
+export const generateMarkdownReport = (data: CanonicalExportData): string => {
+  const formattedDate = new Date(data.generatedAt).toLocaleString();
+  const tc = data.testCasesSummary;
+  const fs = data.findingsSummary;
+
+  const lines: string[] = [];
+
+  lines.push('# JASUSS QA Report (Powered by Nexus)\n');
+
+  if (data.isDegraded) {
+    lines.push(
+      `> ⚠️ **Warning — AI analysis was incomplete.** ${data.degradedCount} candidate(s) could not be analysed by the model. Deterministic fallbacks are used.\n`
+    );
+  }
+
+  lines.push('## 1. Executive Summary\n');
+  lines.push(`- **Target URL:** ${data.target}`);
+  lines.push(`- **Scan ID:** \`${data.scanId}\``);
+  lines.push(`- **Generated At:** ${formattedDate}`);
+  lines.push(`- **Overall Health Score:** **${data.qualityScore.score} / 100** (Grade **${data.qualityScore.grade}** - *${data.qualityScore.summary}*)`);
+  lines.push(`- **Pages Crawled / Discovered:** ${data.pagesCrawled} / ${data.pagesDiscovered}`);
+  lines.push(`- **Scan Duration:** ${data.durationSeconds}s`);
+  lines.push(`- **Total Automated Test Cases:** ${tc.total} (Pass Rate: **${tc.pass_rate}%**)`);
+  lines.push(`- **Total Defects Identified:** ${fs.total} (Critical: ${fs.critical}, High: ${fs.high}, Medium: ${fs.medium}, Low: ${fs.low})\n`);
+
+  lines.push('## 2. Automated Test Execution Summary\n');
+  lines.push('| Metric | Count | Percentage |');
+  lines.push('| :--- | :--- | :--- |');
+  lines.push(`| Total Test Cases | ${tc.total} | ${tc.total > 0 ? '100.0%' : '0.0%'} |`);
+  lines.push(`| Passed | ${tc.passed} | ${tc.pass_rate}% |`);
+  lines.push(`| Failed | ${tc.failed} | ${tc.fail_rate}% |`);
+  lines.push(`| Skipped / Manual Review | ${tc.skipped} | ${tc.skip_rate}% |`);
+  lines.push(`| Blocked | ${tc.blocked} | ${tc.block_rate}% |`);
+  lines.push(`| Errored | ${tc.errored} | ${tc.errored_rate}% |`);
+  lines.push(`| Execution Duration | ${tc.duration_ms}ms | - |\n`);
+
+  lines.push('## 3. Defect & Finding Metrics\n');
+  lines.push('### Severity Breakdown\n');
+  lines.push('| Severity | Count | Priority Level | Count |');
+  lines.push('| :--- | :--- | :--- | :--- |');
+  lines.push(`| Critical | ${fs.critical} | P0 (Blocker) | ${fs.P0} |`);
+  lines.push(`| High | ${fs.high} | P1 (High) | ${fs.P1} |`);
+  lines.push(`| Medium | ${fs.medium} | P2 (Medium) | ${fs.P2} |`);
+  lines.push(`| Low | ${fs.low} | P3 (Low) | ${fs.P3} |`);
+  lines.push(`| Informational | ${fs.info} | P4 (Trivial) | ${fs.P4} |`);
+  lines.push(`| **Total Unique** | **${fs.total}** | Duplicates Filtered | ${fs.duplicates} |\n`);
+
+  if (data.crossDevice) {
+    const cd = data.crossDevice;
+    lines.push('## 4. Cross-Device Responsiveness\n');
+    lines.push('| Device Viewport | Status | Responsive Findings |');
+    lines.push('| :--- | :--- | :--- |');
+    lines.push(`| Desktop (1920x1080) | Tested | ${cd.device_breakdown.desktop} |`);
+    lines.push(`| Mobile (iPhone Viewport) | Tested | ${cd.device_breakdown.iphone} |`);
+    lines.push(`| Tablet (iPad Viewport) | Tested | ${cd.device_breakdown.ipad} |\n`);
+  }
+
+  if (data.testCases && data.testCases.length > 0) {
+    lines.push('## 5. Automated Test Cases Detail\n');
+    lines.push('| ID | Status | Title | Duration | Expected Result | Actual Result |');
+    lines.push('| :--- | :--- | :--- | :--- | :--- | :--- |');
+    data.testCases.forEach((t: any) => {
+      const status = (t.status || t.execution_policy || 'SKIPPED').toUpperCase();
+      const dur = t.duration_ms ? `${t.duration_ms}ms` : '0ms';
+      const cleanTitle = (t.title || 'Untitled').replace(/\|/g, '\\|');
+      const cleanExpected = (t.expected_result || 'Pass').replace(/\|/g, '\\|');
+      const cleanActual = (t.actual_result || 'N/A').replace(/\|/g, '\\|');
+      lines.push(`| \`${t.id || 'TC'}\` | **${status}** | ${cleanTitle} | ${dur} | ${cleanExpected} | ${cleanActual} |`);
+    });
+    lines.push('');
+  }
+
+  if (data.findings && data.findings.length > 0) {
+    lines.push('## 6. Detailed Defect Findings\n');
+    data.findings.forEach((f: any, idx: number) => {
+      const sev = (f.severity || 'INFO').toUpperCase();
+      const pri = (f.priority || 'P3').toUpperCase();
+      lines.push(`### ${idx + 1}. [${f.id || 'BUG'}] ${f.title || 'Untitled Defect'}\n`);
+      lines.push(`- **Severity:** \`${sev}\` | **Priority:** \`${pri}\` | **Classification:** \`${f.classification || 'N/A'}\``);
+      if (f.page || f.url) lines.push(`- **Location:** ${f.page || f.url}`);
+      if (f.description) lines.push(`- **Description:** ${f.description}`);
+      if (f.expected_result) lines.push(`- **Expected Result:** ${f.expected_result}`);
+      if (f.actual_result) lines.push(`- **Actual Result:** ${f.actual_result}`);
+      if (f.recommendation || f.recommended_action) lines.push(`- **Recommendation:** ${f.recommendation || f.recommended_action}`);
+      if (f.reproduction?.steps && f.reproduction.steps.length > 0) {
+        lines.push('- **Reproduction Steps:**');
+        f.reproduction.steps.forEach((step: string, sIdx: number) => {
+          lines.push(`  ${sIdx + 1}. ${step}`);
+        });
+      }
+      lines.push('');
+    });
+  } else {
+    lines.push('## 6. Defect Findings\n');
+    lines.push('✨ **Zero defects detected.** The target web application passed all automated QA checks cleanly.\n');
+  }
+
+  lines.push('---\n*Confidential report generated autonomously by JASUSS QA Platform (Powered by Nexus).*');
+
+  return lines.join('\n');
+};
+
+/**
+ * Downloads Markdown report file directly via Blob.
+ */
+export const downloadMarkdown = (results: any, scanId: string | null = '') => {
+  if (!results) return;
+  const data = extractCanonicalExportData(results, scanId);
+  const mdContent = generateMarkdownReport(data);
+
+  const safeScanId = scanId && scanId !== 'N/A' ? scanId : (data.target || 'scan').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  const filename = `qa-report-${safeScanId}.md`;
+
+  const blob = new Blob([mdContent], { type: 'text/markdown; charset=utf-8' });
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = downloadUrl;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 1000);
+};
+
+/**
+ * Downloads raw JSON report file directly via Blob.
+ */
+export const downloadJSON = (results: any, scanId: string | null = '') => {
+  if (!results) return;
+  const data = extractCanonicalExportData(results, scanId);
+  const jsonContent = JSON.stringify(results, null, 2);
+
+  const safeScanId = scanId && scanId !== 'N/A' ? scanId : (data.target || 'scan').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  const filename = `qa-report-${safeScanId}.json`;
+
+  const blob = new Blob([jsonContent], { type: 'application/json; charset=utf-8' });
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = downloadUrl;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 1000);
 };
 
 export type ExportFormat = 'pdf' | 'excel' | 'xlsx' | 'json' | 'md' | 'markdown';
@@ -744,7 +936,7 @@ export const handleDownloadReport = async ({
   sessionToken,
 }: DownloadReportOptions): Promise<void> => {
   const normFormat = format.toLowerCase() as ExportFormat;
-  const safeScanId = scanId || results?.report_metadata?.scan_id || 'unknown';
+  const safeScanId = scanId || results?.report_metadata?.scan_id || results?.id || 'unknown';
 
   if (normFormat === 'pdf') {
     downloadPDF(results, safeScanId);
@@ -756,43 +948,61 @@ export const handleDownloadReport = async ({
     return;
   }
 
-  if (normFormat === 'json' || normFormat === 'md' || normFormat === 'markdown') {
-    const apiFormat = normFormat === 'markdown' ? 'md' : normFormat;
-    const fallbackExt = apiFormat === 'json' ? 'json' : 'md';
-    const fallbackFilename = `qa-report-${safeScanId}.${fallbackExt}`;
-    const mediaType = apiFormat === 'json' ? 'application/json' : 'text/markdown; charset=utf-8';
-
-    const headers: Record<string, string> = {};
-    if (sessionToken) {
-      headers['Authorization'] = `Bearer ${sessionToken}`;
+  if (normFormat === 'json') {
+    // If we have local results, download directly or try backend
+    try {
+      if (sessionToken && safeScanId !== 'unknown') {
+        const headers: Record<string, string> = { Authorization: `Bearer ${sessionToken}` };
+        const response = await fetch(`/api/v1/scans/${safeScanId}/download/json`, { headers });
+        if (response.ok) {
+          const disposition = response.headers.get('content-disposition');
+          const filename = extractFilenameFromDisposition(disposition, `qa-report-${safeScanId}.json`);
+          const blob = await response.blob();
+          const typedBlob = new Blob([blob], { type: 'application/json' });
+          const downloadUrl = window.URL.createObjectURL(typedBlob);
+          const anchor = document.createElement('a');
+          anchor.href = downloadUrl;
+          anchor.download = filename;
+          document.body.appendChild(anchor);
+          anchor.click();
+          document.body.removeChild(anchor);
+          setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 1000);
+          return;
+        }
+      }
+    } catch {
+      // Fallback below
     }
+    downloadJSON(results, safeScanId);
+    return;
+  }
 
-    let response = await fetch(`/api/v1/scans/${safeScanId}/download/${apiFormat}`, { headers });
-    if (!response.ok) {
-      // Fallback for non-v1 endpoint
-      response = await fetch(`/api/scans/${safeScanId}/download/${apiFormat}`, { headers });
+  if (normFormat === 'md' || normFormat === 'markdown') {
+    // If we have local results, download directly or try backend
+    try {
+      if (sessionToken && safeScanId !== 'unknown') {
+        const headers: Record<string, string> = { Authorization: `Bearer ${sessionToken}` };
+        const response = await fetch(`/api/v1/scans/${safeScanId}/download/md`, { headers });
+        if (response.ok) {
+          const disposition = response.headers.get('content-disposition');
+          const filename = extractFilenameFromDisposition(disposition, `qa-report-${safeScanId}.md`);
+          const blob = await response.blob();
+          const typedBlob = new Blob([blob], { type: 'text/markdown; charset=utf-8' });
+          const downloadUrl = window.URL.createObjectURL(typedBlob);
+          const anchor = document.createElement('a');
+          anchor.href = downloadUrl;
+          anchor.download = filename;
+          document.body.appendChild(anchor);
+          anchor.click();
+          document.body.removeChild(anchor);
+          setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 1000);
+          return;
+        }
+      }
+    } catch {
+      // Fallback below
     }
-
-    if (!response.ok) {
-      throw new Error(`Failed to download report (${response.status}: ${response.statusText})`);
-    }
-
-    const disposition = response.headers.get('content-disposition');
-    const filename = extractFilenameFromDisposition(disposition, fallbackFilename);
-
-    const blob = await response.blob();
-    const typedBlob = new Blob([blob], { type: mediaType });
-    const downloadUrl = window.URL.createObjectURL(typedBlob);
-
-    const anchor = document.createElement('a');
-    anchor.href = downloadUrl;
-    anchor.download = filename.endsWith(`.${fallbackExt}`) ? filename : `${filename}.${fallbackExt}`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-
-    setTimeout(() => {
-      window.URL.revokeObjectURL(downloadUrl);
-    }, 1000);
+    downloadMarkdown(results, safeScanId);
+    return;
   }
 };

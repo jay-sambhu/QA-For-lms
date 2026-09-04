@@ -85,6 +85,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (!supabase) {
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem('jasuss_session');
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            if (parsed && parsed.access_token) {
+              setSession(parsed);
+              fetchUserSubscription(parsed.access_token, parsed);
+            }
+          } catch {}
+        }
+      }
       setSessionLoaded(true);
       return;
     }
@@ -95,6 +107,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!error && data.session) {
           setSession(data.session);
           fetchUserSubscription(data.session.access_token, data.session);
+        } else if (typeof window !== 'undefined') {
+          const stored = localStorage.getItem('jasuss_session');
+          if (stored) {
+            try {
+              const parsed = JSON.parse(stored);
+              if (parsed && parsed.access_token) {
+                setSession(parsed);
+                fetchUserSubscription(parsed.access_token, parsed);
+              }
+            } catch {}
+          }
         }
       })
       .finally(() => {
