@@ -46,6 +46,14 @@ else
     echo -e "${C_YELLOW}[!] Celery Worker:             NOT DETECTED (Fallback to Async Background Tasks)${C_RESET}"
 fi
 
+# Check Redis Server
+REDIS_PID=$(pgrep -f "run_local_redis.py" | head -n 1 || echo "NONE")
+if nc -z 127.0.0.1 6379 2>/dev/null || ss -lntp | grep -q ":6379"; then
+    echo -e "${C_GREEN}[✓] Redis Broker (port 6379):  RUNNING (PID: $REDIS_PID)${C_RESET}"
+else
+    echo -e "${C_YELLOW}[!] Redis Broker (port 6379):  OFFLINE (Fallback to Async Background Tasks)${C_RESET}"
+fi
+
 # Check SQLite Database Persistence File
 if [ -f "$ROOT_DIR/qa_agent.db" ]; then
     DB_SIZE=$(du -h "$ROOT_DIR/qa_agent.db" | cut -f1)
