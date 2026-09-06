@@ -23,12 +23,28 @@ class WorkflowModel(BaseModel):
     steps: List[WorkflowStepModel] = Field(default_factory=list)
 
 
+class ApplicationStateModel(BaseModel):
+    state_id: str
+    url: str
+    route: str
+    page_title: str = ""
+    authentication_state: str = "anonymous"
+    user_role: str = "guest"
+    visible_elements: int = 0
+    forms_count: int = 0
+    interactive_buttons: List[str] = Field(default_factory=list)
+    dom_fingerprint: str = ""
+    cookies_metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 class StateTransitionModel(BaseModel):
     transition_id: str
     from_route: str
     to_route: str
     trigger_action: str
     api_triggers: List[str] = Field(default_factory=list)
+    source_state_id: Optional[str] = None
+    target_state_id: Optional[str] = None
 
 
 class ApplicationKnowledgeModel(BaseModel):

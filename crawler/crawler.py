@@ -484,7 +484,9 @@ class WebsiteCrawler:
 
                             internal_links = []
                             
-                            # Only extract links on Desktop Chrome to avoid duplication
+                            internal_links = []
+                            
+                            # Extract links & discover interactive controls on Desktop Chrome
                             if dev_name == "Desktop Chrome":
                                 links = await page.locator("a").all()
                                 for link in links:
@@ -502,6 +504,26 @@ class WebsiteCrawler:
                                             and absolute_url not in self.queue
                                         ):
                                             self.queue.append(absolute_url)
+
+                                # Discover & click interactive buttons (SPA tabs, lazy loaders, modals)
+                                try:
+                                    interactive_btns = await page.locator("button, [role='button'], input[type='submit']").all()
+                                    for btn in interactive_btns[:8]:
+                                        if await btn.is_visible():
+                                            # Safely trigger click to uncover dynamic client-side SPA state transitions
+                                            try:
+                                                await btn.click(timeout=1500)
+                                                await page.wait_for_timeout(500)
+                                                
+                                                # Check if click changed URL or added new internal links
+                                                curr_url = self.normalize_url(page.url)
+                                                if self.is_internal_url(curr_url) and curr_url not in self.visited and curr_url not in self.queue:
+                                                    self.queue.append(curr_url)
+                                                    internal_links.append(curr_url)
+                                            except Exception:
+                                                pass
+                                except Exception as btn_err:
+                                    pass
 
                             safe_dev_name = dev_name.replace(" ", "_")
                             screenshot_path = os.path.join(

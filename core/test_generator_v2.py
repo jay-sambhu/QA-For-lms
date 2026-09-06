@@ -109,6 +109,41 @@ class AutonomousTestGenerator:
                 test_cases.append(tc_auth)
                 counter += 1
 
+            # 4. Semantic Boundary & Field Value Test (Form Intelligence)
+            route_lower = route.lower()
+            if any(term in route_lower for term in ["items", "cart", "quiz", "submit", "wizard", "checkout", "search", "admin"]):
+                # Generate boundary & semantic test case
+                boundary_val = "100" if "wizard" in route_lower or "step" in route_lower else ("-100" if "create" in route_lower else ("OFF50" if "discount" in route_lower or "cart" in route_lower else "404"))
+                tc_boundary = TestCaseModel(
+                    id=f"TC-{counter:03d}",
+                    title=f"Semantic Boundary & Form Intelligence Test: {route}",
+                    objective=f"Evaluate form behavior against semantic boundary inputs ({boundary_val}) on {route}",
+                    category=TestCategory.FORM,
+                    priority=TestPriority.P1,
+                    risk_score=0.85,
+                    preconditions=[f"Navigated to {route}"],
+                    steps=[
+                        TestStepModel(
+                            step_index=1,
+                            action="fill",
+                            target_selector="input[type='text'], input[type='number']",
+                            value=boundary_val,
+                            expected_result=f"Boundary value '{boundary_val}' entered",
+                        ),
+                        TestStepModel(
+                            step_index=2,
+                            action="click",
+                            target_selector="button[type='submit'], input[type='submit'], button",
+                            expected_result="Form validates or processes request safely",
+                        )
+                    ],
+                    expected_behavior="Application handles semantic boundary inputs without server 500 errors or uncaught exceptions",
+                    evidence_requirements=["screenshot", "console_logs", "network_har"],
+                    confidence=0.95,
+                )
+                test_cases.append(tc_boundary)
+                counter += 1
+
         os.makedirs(self.results_dir, exist_ok=True)
         dump_data = [tc.model_dump() for tc in test_cases]
         with open(self.output_file, "w", encoding="utf-8") as f:

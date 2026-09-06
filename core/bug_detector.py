@@ -495,14 +495,24 @@ class QAFindingClassifier:
                 'description': 'JavaScript runtime error detected',
             }
         
-        # Failed to load resource
+        # Failed to load resource (sub-resource 404 noise filtering)
         if 'failed to load resource' in text_lower:
+            # Only elevate if it's a critical API endpoint error
+            if any(api_kwd in text_lower for api_kwd in ['/api/', 'graphql', 'backend']):
+                return {
+                    'ignore': False,
+                    'severity': 'high',
+                    'confidence': 'high',
+                    'category': 'application_api_error',
+                    'description': 'Failed to load critical application API resource',
+                }
+            # Otherwise ignore non-critical sub-resource load warnings (favicon, assets, static)
             return {
-                'ignore': False,
-                'severity': 'medium',
-                'confidence': 'medium',
-                'category': 'resource_load_failure',
-                'description': 'Failed to load application resource',
+                'ignore': True,
+                'severity': 'low',
+                'confidence': 'low',
+                'category': 'resource_error',
+                'description': 'Non-critical sub-resource load failure',
             }
         
         # Uncaught error
