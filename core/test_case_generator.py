@@ -21,6 +21,7 @@ DESTRUCTIVE_KEYWORDS = {
 
 class TestCaseGenerator:
     """Generates structured test cases from crawled pages."""
+    __test__ = False
 
     def __init__(self, crawl_file, output_dir=None, max_pages=5, max_tests_per_page=10):
         self.crawl_file = crawl_file

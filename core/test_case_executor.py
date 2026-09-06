@@ -16,6 +16,7 @@ from crawler.network import NetworkMonitor
 
 class TestCaseExecutor:
     """Executes safe test cases and tracks results."""
+    __test__ = False
 
     def __init__(self, test_cases_file, qa_findings_file=None, output_dir=None):
         self.test_cases_file = test_cases_file
