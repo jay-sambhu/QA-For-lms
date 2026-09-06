@@ -23,6 +23,7 @@ python-dotenv==1.2.2
 # --- SaaS API (api/main.py) ---
 fastapi==0.141.1
 uvicorn==0.52.4
+gunicorn==23.0.0
 pydantic==2.12.5
 supabase==2.31.0
 
