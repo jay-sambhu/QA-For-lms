@@ -35,22 +35,38 @@ class RiskPlannerEngine:
         self.plan_path = os.path.join(results_dir, f"test_plan_{run_id}.json")
 
     def calculate_route_risk(self, route: str, route_info: Dict[str, Any]) -> float:
-        """Calculates risk score (0.0 to 1.0) for a given route."""
-        risk = 0.3  # baseline
-
+        """Calculates multi-factor risk score (0.0 to 1.0) for a given route."""
         route_lower = route.lower()
-        if any(term in route_lower for term in ["auth", "login", "pay", "checkout", "billing"]):
-            risk += 0.5
-        elif any(term in route_lower for term in ["admin", "settings", "user", "profile"]):
-            risk += 0.3
+        
+        # 1. Business Criticality (0.0 to 0.5)
+        business_criticality = 0.1
+        if any(term in route_lower for term in ["auth", "login", "pay", "checkout", "billing", "cart"]):
+            business_criticality = 0.5
+        elif any(term in route_lower for term in ["admin", "dashboard", "items", "course"]):
+            business_criticality = 0.3
 
-        if route_info.get("requires_auth", False):
-            risk += 0.1
+        # 2. Mutation Risk (0.0 to 0.2)
+        mutation_risk = 0.0
+        if any(term in route_lower for term in ["create", "edit", "delete", "update", "submit", "post"]):
+            mutation_risk = 0.2
+        elif route_info.get("forms_count", 0) > 0:
+            mutation_risk = 0.1
 
-        if route_info.get("forms_count", 0) > 0:
-            risk += 0.1
+        # 3. Security Risk (0.0 to 0.2)
+        security_risk = 0.0
+        if route_info.get("requires_auth", False) or "admin" in route_lower or "instructor" in route_lower:
+            security_risk = 0.2
 
-        return min(1.0, risk)
+        # 4. Complexity & Dependency Risk (0.0 to 0.2)
+        forms_count = route_info.get("forms_count", 0)
+        buttons_count = len(route_info.get("buttons", [])) if isinstance(route_info.get("buttons"), list) else 0
+        complexity = min(0.2, (forms_count * 0.08) + (buttons_count * 0.02))
+
+        # 5. Historical Failure Risk (0.0 to 0.1)
+        historical_failure_risk = 0.1 if route_info.get("has_previous_failures", False) else 0.0
+
+        total_risk = business_criticality + mutation_risk + security_risk + complexity + historical_failure_risk
+        return min(1.0, round(total_risk, 2))
 
     def generate_plan(self) -> TestPlanModel:
         routes = self.app_model.get("routes", {})

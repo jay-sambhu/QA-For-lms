@@ -71,4 +71,26 @@ class DefectVerificationEngine:
         with open(self.output_file, "w", encoding="utf-8") as f:
             json.dump(dump_data, f, indent=2)
 
+        # Generate Evidence Manifest
+        manifest_path = os.path.join(self.results_dir, f"evidence_manifest_{self.run_id}.json")
+        manifest_entries = []
+        for d in defects_list:
+            manifest_entries.append({
+                "defect_id": d.defect_id,
+                "fingerprint": d.fingerprint,
+                "title": d.title,
+                "affected_url": d.affected_url,
+                "severity": d.severity.value if hasattr(d.severity, "value") else str(d.severity),
+                "verification_status": d.verification_status.value if hasattr(d.verification_status, "value") else str(d.verification_status),
+                "reproduction_count": d.occurrence_count,
+                "confidence_score": d.confidence_score,
+                "evidence_sources": [
+                    "screenshot" if d.evidence.get("raw", {}).get("screenshot") else None,
+                    "console_error" if d.evidence.get("raw", {}).get("evidence", {}).get("console_errors") else None,
+                    "http_error" if d.evidence.get("raw", {}).get("evidence", {}).get("http_errors") else None,
+                ],
+            })
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            json.dump({"manifest": manifest_entries, "generated_at": now}, f, indent=2)
+
         return defects_list
