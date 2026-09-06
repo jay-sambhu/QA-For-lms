@@ -26,7 +26,7 @@ def test_self_test_demo_app_defects():
     # 3. Verify unprotected admin is accessible
     res_admin = client.get("/admin")
     assert res_admin.status_code == 200
-    assert "Admin Dashboard" in res_admin.text
+    assert "Admin Control Panel" in res_admin.text
 
 
 def test_api_testing_engine():

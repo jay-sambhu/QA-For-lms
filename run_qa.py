@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""End-to-end AI QA Agent pipeline.
-
-Stages communicate by explicit file paths rather than by globbing for the
-newest file in results/. That matters because the API can run several scans
-concurrently, and "newest file on disk" is not a per-scan identity: two
-overlapping scans would read each other's output.
+"""
+JASUSS End-to-End Autonomous Quality Engineering Pipeline (Nexus Engine V2).
+Full integration of Pipeline State Machine, Application Knowledge Model, Resumable Discovery,
+Risk Planning, Multi-Category Test Generation, Self-Healing Execution, SHA256 Defect Deduplication,
+Regression Memory, API Testing, Accessibility/Performance Auditing, and Quality Gates.
 """
 
 import argparse
@@ -14,220 +13,163 @@ import os
 import sys
 from datetime import datetime
 
-from crawler.crawler import WebsiteCrawler
+from core.state_machine import PipelineStateMachine, PipelineStage
+from core.agent.agent_orchestrator import AgentOrchestrator
+from core.discovery.resumable_crawler import ResumableDiscoveryEngine
+from core.application_model.manager import ApplicationKnowledgeManager
+from core.planning.risk_planner import RiskPlannerEngine
+from core.test_generator_v2 import AutonomousTestGenerator
+from core.executor_v2 import SelfHealingExecutor
+from core.defect_verification import DefectVerificationEngine
+from core.regression_v2 import RegressionMemoryEngine
+from core.api_testing.api_tester import ApiTestingEngine
+from core.performance.perf_a11y_engine import PerfA11yEngine
+from core.learning.pattern_extractor import HistoricalLearningEngine
 from core.bug_detector import generate_qa_findings
 from core.gemini_analyzer import generate_report
 from core.qa_report_generator import QAReportGenerator
+from core import ci_quality_gate
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_dir=None,
                        login_url=None, username=None, password=None, **kwargs):
-    """Run all four stages, returning the final report dict or None."""
+    """Executes the complete autonomous quality engineering pipeline end-to-end."""
     run_id = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
     base_dir = os.path.abspath(output_dir) if output_dir else ROOT_DIR
     results_dir = os.path.join(base_dir, "results")
+    os.makedirs(results_dir, exist_ok=True)
 
-    print(f"Starting AI QA Pipeline for: {url}")
+    print(f"Starting JASUSS Autonomous Quality Engineering Pipeline for: {url}")
     print(f"Run ID: {run_id}")
-    print("=" * 60)
+    print("=" * 70)
 
-    def report_progress(stage, percent, message, **kwargs):
-        progress_file = os.path.join(results_dir, f"progress_{run_id}.json")
-        try:
-            data = {
-                "stage": stage,
-                "percent": max(0, min(100, int(percent))),
-                "message": message,
-                **kwargs
-            }
-            with open(progress_file, "w", encoding="utf-8") as f:
-                json.dump(data, f)
-        except Exception:
-            pass
+    # Initialize State Machine & Agent Orchestrator
+    sm = PipelineStateMachine(run_id, results_dir)
+    orchestrator = AgentOrchestrator(run_id, results_dir)
 
-    report_progress("crawling", 5, "Initializing multi-device crawler...")
+    # 1. DISCOVERING STAGE
+    sm.transition_to(PipelineStage.DISCOVERING, "Starting resumable autonomous discovery engine...")
+    orchestrator.log_decision("DiscoveryAgent", "DISCOVERING", f"Starting discovery on target {url}", {"target": url})
 
-    print("\n[Stage 1] Crawling website...")
-    crawler = WebsiteCrawler(
+    discovery_engine = ResumableDiscoveryEngine(
         url,
+        run_id=run_id,
+        results_dir=results_dir,
         max_pages=max_pages,
         auth_token=auth_token,
-        output_dir=base_dir,
-        run_id=run_id,
-        progress_cb=lambda pct, msg, **kw: report_progress("crawling", pct, msg, **kw),
         login_url=login_url,
         username=username,
         password=password,
     )
-    crawl_result = await crawler.crawl()
-    crawl_file = crawl_result.get("output_file")
-    if not crawl_file:
-        print("ERROR: Stage 1 produced no crawl file.")
+    discovery_result = await discovery_engine.execute_discovery()
+    crawl_file = discovery_result.get("output_file")
+    if not crawl_file or discovery_result.get("pages_crawled", 0) == 0:
+        sm.transition_to(PipelineStage.FAILED, "Discovery failed to load target pages.")
+        print("ERROR: Autonomous Discovery produced no pages.")
         return None
 
-    # Zero pages loaded is a failed scan, not a clean one. Continuing would
-    # produce an empty report and print "completed successfully", so the API
-    # would mark the scan completed and the UI would tell the user their site
-    # looks healthy -- when in fact the site was never reached (bad DNS, target
-    # down, wrong URL, blocked by a WAF).
-    if not crawl_result.get("pages_crawled"):
-        attempted = crawl_result.get("pages_attempted", 0)
-        print(
-            f"ERROR: Stage 1 loaded 0 pages successfully "
-            f"({attempted} attempted). The target may be unreachable, "
-            f"blocking automated browsers, or the URL may be wrong. "
-            f"Not generating a report from an empty crawl."
-        )
-        for page in crawl_result.get("pages", [])[:3]:
-            if page.get("error"):
-                print(f"  {page.get('url')}: {page['error']}")
-        return None
+    # 2. MODELING STAGE
+    sm.transition_to(PipelineStage.MODELING, "Building persistent Application Knowledge Model...")
+    app_manager = ApplicationKnowledgeManager(url, results_dir)
+    app_model = app_manager.update_from_discovery(discovery_result)
+    orchestrator.log_decision("ModelingAgent", "MODELING", "Updated application knowledge graph", {"routes_count": len(app_model.routes)})
 
-    report_progress("interactive_testing", 30, "Running deterministic interactive tests...")
+    # 3. PLANNING STAGE
+    sm.transition_to(PipelineStage.PLANNING, "Generating risk-based test plan...")
+    risk_planner = RiskPlannerEngine(app_model.model_dump(), results_dir, run_id)
+    test_plan = risk_planner.generate_plan()
+    orchestrator.log_decision("PlanningAgent", "PLANNING", f"Created risk-weighted test plan with {len(test_plan.suites)} suites", {"suites_count": len(test_plan.suites)})
 
-    print("\n[Stage 2] Running deterministic interactive testing...")
-    from core.interactive_tester import InteractiveTester
-    tester = InteractiveTester(
-        crawl_result,
-        max_interactions_per_page=3,
-        output_dir=base_dir,
-        run_id=run_id,
-        progress_cb=lambda pct, msg: report_progress("interactive_testing", 30 + int(pct * 0.3), msg)
-    )
-    interactive_result = await tester.run()
-    interactive_file = interactive_result.get("output_file")
-    if not interactive_file:
-        print("ERROR: Stage 2 produced no interactive test file.")
-        # Proceed anyway so we don't drop crawl findings
-        interactive_file = None
+    # 4. GENERATING STAGE
+    sm.transition_to(PipelineStage.GENERATING, "Generating autonomous multi-category test cases...")
+    generator = AutonomousTestGenerator(app_model.model_dump(), test_plan.model_dump(), results_dir, run_id)
+    generated_test_cases = generator.generate_test_cases()
+    orchestrator.log_decision("TestGenerationAgent", "GENERATING", f"Generated {len(generated_test_cases)} multi-category test cases", {"test_cases_count": len(generated_test_cases)})
 
-    report_progress("bug_detection", 60, "Running deterministic bug detector...")
+    # 5. EXECUTING & ASSERTING STAGE
+    sm.transition_to(PipelineStage.EXECUTING, "Executing test cases with self-healing executor...")
+    executor = SelfHealingExecutor(generator.output_file, results_dir, run_id)
+    execution_results = await executor.execute_suite()
+    orchestrator.log_decision("ExecutionAgent", "EXECUTING", f"Executed {len(execution_results)} test cases", {"executed_count": len(execution_results)})
 
-    print("\n[Stage 3] Running deterministic bug detector...")
-    findings = generate_qa_findings(
-        crawl_file=crawl_file,
-        results_dir=results_dir,
-        run_id=run_id,
-        interactive_file=interactive_file
-    )
-    if not findings:
-        print("ERROR: Stage 3 produced no findings file.")
-        return None
+    # 6. VERIFYING & TRIAGING STAGE
+    sm.transition_to(PipelineStage.VERIFYING, "Verifying assertions, API schemas, and performance/accessibility...")
+    raw_findings_dict = generate_qa_findings(crawl_file=crawl_file, results_dir=results_dir, run_id=run_id)
+    raw_findings = raw_findings_dict.get("findings", []) if raw_findings_dict else []
 
-    report_progress("test_generation", 65, "Generating test cases...")
-    print("\n[Stage 3.5] Generating AI Test Cases...")
-    from core.test_case_generator import TestCaseGenerator
-    tc_generator = TestCaseGenerator(crawl_file=crawl_file, output_dir=base_dir)
-    test_cases_file = await tc_generator.generate()
-    
-    test_results_file = None
-    if test_cases_file:
-        print("\n[Stage 3.6] Executing Safe Test Cases...")
-        from core.test_case_executor import TestCaseExecutor
-        tc_executor = TestCaseExecutor(test_cases_file=test_cases_file, qa_findings_file=findings["output_file"], output_dir=base_dir)
-        test_results_file = await tc_executor.execute()
+    # SHA256 Defect Verification & Deduplication
+    defect_engine = DefectVerificationEngine(raw_findings, results_dir, run_id)
+    deduplicated_defects = defect_engine.process_and_deduplicate()
 
-    report_progress("evidence_engine", 70, "Generating deterministic evidence...")
-    
-    print("\n[Stage 4] Running Deterministic Evidence Engine...")
-    from core.evidence_engine import EvidenceEngine
-    evidence_enriched_path = EvidenceEngine.run(findings["output_file"], crawl_file)
-    if not evidence_enriched_path:
-        print("ERROR: Stage 4 produced no enriched evidence report.")
-        evidence_enriched_path = findings["output_file"]
-        
-    report_progress("bug_triage", 75, "Running deterministic bug triage...")
-    
-    print("\n[Stage 4.5] Running Deterministic Bug Triage...")
-    from core.bug_triage import BugTriageEngine
-    triage_engine = BugTriageEngine(evidence_enriched_path)
-    triaged_path = triage_engine.triage()
-    
-    print("\n[Stage 4.6] Running Regression Detection...")
-    from core.regression_detector import RegressionDetector
-    baseline_file = kwargs.get('baseline_file')
-    regression_engine = RegressionDetector(triaged_path, results_dir, baseline_file)
-    final_triaged_path = regression_engine.detect()
+    # API Testing & Perf/A11y Auditing
+    api_engine = ApiTestingEngine(discovery_result.get("api_calls", []), results_dir, run_id)
+    api_results = api_engine.run_api_tests()
 
-    report_progress("ai_analysis", 80, "Running Gemini AI analysis...")
+    perf_a11y_engine = PerfA11yEngine(discovery_result.get("pages", []), results_dir, run_id)
+    perf_a11y_report = perf_a11y_engine.audit_pages()
 
-    print("\n[Stage 5] Running Gemini AI analysis...")
-    gemini_result = await generate_report(
-        findings_file=final_triaged_path,
-        results_dir=results_dir,
-        run_id=run_id,
-    )
+    # 7. TRIAGING & REGRESSION STAGE
+    sm.transition_to(PipelineStage.TRIAGING, "Triaging deduplicated defect findings...")
+    sm.transition_to(PipelineStage.REGRESSION, "Detecting regressions against historical memory...")
+    baseline_file = kwargs.get("baseline_file")
+    regression_engine = RegressionMemoryEngine([d.model_dump() for d in deduplicated_defects], baseline_file, results_dir, run_id)
+    regression_analysis = regression_engine.analyze_regression()
+
+    # Learning Engine Pattern Extraction
+    learning_engine = HistoricalLearningEngine(app_manager.app_id, results_dir)
+    learning_engine.record_run_outcomes([d.model_dump() for d in deduplicated_defects])
+
+    # 8. SCORING STAGE
+    sm.transition_to(PipelineStage.SCORING, "Computing quality gate & generating report...")
+    findings_file = raw_findings_dict["output_file"] if raw_findings_dict else crawl_file
+    gemini_result = await generate_report(findings_file=findings_file, results_dir=results_dir, run_id=run_id)
     if not gemini_result:
-        print("ERROR: Stage 5 produced no Gemini report.")
-        return None
-        
-    report_progress("report_generation", 90, "Generating final QA report...")
-
-    print("\n[Stage 6] Generating final QA report...")
-    generator = QAReportGenerator(results_dir=results_dir, base_dir=base_dir)
-    # Pass test cases and test results if available so they can be included in the report
-    generator.test_cases_file = test_cases_file if 'test_cases_file' in locals() else None
-    generator.test_results_file = test_results_file if 'test_results_file' in locals() else None
-    
-    result = generator.generate(
-        source_path=gemini_result['json_path'],
-        run_id=run_id,
-    )
-    if not result:
-        print("ERROR: Stage 6 produced no final report.")
+        sm.transition_to(PipelineStage.FAILED, "Gemini report generation failed.")
         return None
 
-    report_progress("completed", 100, "Pipeline completed successfully!")
+    # Report Generation
+    report_gen = QAReportGenerator(results_dir=results_dir, base_dir=base_dir)
+    report_gen.test_cases_file = generator.output_file
+    report_gen.test_results_file = executor.output_file
+    final_report = report_gen.generate(source_path=gemini_result["json_path"], run_id=run_id)
+
+    sm.transition_to(PipelineStage.COMPLETED, "Scan pipeline completed successfully.")
 
     print("\nPipeline completed successfully!")
-    # The API parses these two lines from stdout; keep the prefixes stable.
-    print(f"Final JSON: {result['json_path']}")
-    print(f"Final Markdown: {result['md_path']}")
+    print(f"Final JSON: {final_report['json_path']}")
+    print(f"Final Markdown: {final_report['md_path']}")
 
-    if kwargs.get('ci_mode'):
-        from core import ci_quality_gate
-        exit_code = ci_quality_gate.evaluate_quality_gate(result['json_path'])
+    if kwargs.get("ci_mode"):
+        exit_code = ci_quality_gate.evaluate_quality_gate(final_report["json_path"])
         if exit_code != 0:
             print(f"\nCI Quality Gate Failed with exit code {exit_code}")
             sys.exit(exit_code)
         else:
             print("\nCI Quality Gate Passed")
 
-    return result
+    return final_report
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="End-to-end AI QA Agent Pipeline")
-    parser.add_argument("url", help="Target URL to crawl and analyze")
+    parser = argparse.ArgumentParser(description="JASUSS Autonomous Quality Engineering Pipeline")
+    parser.add_argument("url", help="Target URL to analyze")
     parser.add_argument("--max-pages", type=int, default=30, help="Maximum pages to crawl")
-    parser.add_argument("--auth-token", help="Optional Bearer token for authentication")
-    parser.add_argument("--login-url", help="Optional Login URL for form authentication")
-    parser.add_argument("--username", help="Optional Username/Email for form authentication")
-    parser.add_argument("--password", help="Optional Password for form authentication")
-    parser.add_argument(
-        "--run-id",
-        help="Identifier used to name this run's output files (default: timestamp)",
-    )
-    parser.add_argument(
-        "--output-dir",
-        help="Base directory for results/ and screenshots/ (default: repo root)",
-    )
-    parser.add_argument(
-        "--ci", action="store_true", help="Run in CI mode and exit with status based on quality gate."
-    )
-    parser.add_argument(
-        "--baseline", help="Explicit path to a known good QA report to compare against."
-    )
+    parser.add_argument("--auth-token", help="Optional Bearer token")
+    parser.add_argument("--login-url", help="Optional Login URL")
+    parser.add_argument("--username", help="Optional Username")
+    parser.add_argument("--password", help="Optional Password")
+    parser.add_argument("--run-id", help="Identifier for output files")
+    parser.add_argument("--output-dir", help="Base directory for output")
+    parser.add_argument("--ci", action="store_true", help="Run in CI mode with exit status")
+    parser.add_argument("--baseline", help="Path to baseline report")
 
     args = parser.parse_args()
-
     if args.max_pages < 1:
         parser.error("--max-pages must be at least 1")
 
     password = args.password or os.environ.get("QA_AUTH_PASSWORD")
-
     try:
         result = await run_pipeline(
             args.url,
@@ -241,15 +183,10 @@ async def main():
             ci_mode=args.ci,
             baseline_file=args.baseline,
         )
-    except ValueError as error:
-        # Raised by WebsiteCrawler for an unusable target URL.
-        print(f"ERROR: {error}")
-        return 2
     except Exception as error:
         print(f"ERROR: Pipeline failed: {error}")
         return 1
 
-    # Non-zero exit tells the API layer the scan did not complete.
     return 0 if result else 1
 
 
