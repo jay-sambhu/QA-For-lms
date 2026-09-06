@@ -1,0 +1,33 @@
+ 
+ -------------- celery@192.168.1.65 v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Linux-7.1.13-200.fc44.x86_64-x86_64-with-glibc2.43 2026-09-06 14:22:29
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         qa_worker:0x7ff615eb4ad0
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/0
+- *** --- * --- .> concurrency: 4 (prefork)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> qa_queue         exchange=qa_queue(direct) key=qa_queue
+                
+
+[tasks]
+  . worker.tasks.process_query
+
+[2026-09-06 14:22:30,286: ERROR/MainProcess] consumer: Cannot connect to redis://localhost:6379/0: Error 111 connecting to localhost:6379. Connection refused..
+Trying again in 2.00 seconds... (1/100)
+
+[2026-09-06 14:22:32,295: ERROR/MainProcess] consumer: Cannot connect to redis://localhost:6379/0: Error 111 connecting to localhost:6379. Connection refused..
+Trying again in 4.00 seconds... (2/100)
+
+[2026-09-06 14:22:36,304: ERROR/MainProcess] consumer: Cannot connect to redis://localhost:6379/0: Error 111 connecting to localhost:6379. Connection refused..
+Trying again in 6.00 seconds... (3/100)
+
+[2026-09-06 14:22:42,338: ERROR/MainProcess] consumer: Cannot connect to redis://localhost:6379/0: Error 111 connecting to localhost:6379. Connection refused..
+Trying again in 8.00 seconds... (4/100)
+
+
+Restarting celery worker (/home/devxgamer/.local/lib/python3.14/site-packages/celery/__main__.py -A worker.celery_app worker --loglevel=info -Q qa_queue)
