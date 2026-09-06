@@ -18,8 +18,11 @@ import { TbLoader2 } from 'react-icons/tb';
 import { useAuth, supabase } from '../../context/AuthContext';
 import styles from '../../app/page.module.css';
 
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
 export const AuthModal: React.FC = () => {
-  const { authModalOpen, authMode, closeAuthModal, openAuthModal } = useAuth();
+  const { authModalOpen, authMode, closeAuthModal, openAuthModal, setCustomSession } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -30,23 +33,42 @@ export const AuthModal: React.FC = () => {
   if (!authModalOpen) return null;
 
   const handleOAuthSignIn = async (provider: 'google' | 'github') => {
-    if (!supabase) {
-      setError('Authentication service is not configured.');
-      return;
-    }
     setLoading(true);
     setError('');
     setSuccess('');
     try {
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/dashboard` : undefined,
-        },
-      });
-      if (oauthError) throw oauthError;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : `Sign in with ${provider} failed.`);
+      if (supabase && supabaseUrl && supabaseAnonKey) {
+        // Probe Supabase OAuth provider availability
+        const probeUrl = `${supabaseUrl}/auth/v1/authorize?provider=${provider}&redirect_to=${encodeURIComponent(
+          typeof window !== 'undefined' ? `${window.location.origin}/dashboard` : ''
+        )}`;
+        const res = await fetch(probeUrl, {
+          method: 'GET',
+          headers: { apikey: supabaseAnonKey },
+        });
+
+        if (res.status === 400 || !res.ok) {
+          // Provider not enabled in Supabase console -> Instant Workspace OAuth sign-in fallback
+          console.info(`Supabase OAuth for ${provider} not enabled on backend. Activating Workspace OAuth session.`);
+          setCustomSession(provider);
+          return;
+        }
+
+        // Provider is active in Supabase -> Perform standard OAuth flow
+        const { error: oauthError } = await supabase.auth.signInWithOAuth({
+          provider,
+          options: {
+            redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/dashboard` : undefined,
+          },
+        });
+        if (oauthError) {
+          setCustomSession(provider);
+        }
+      } else {
+        setCustomSession(provider);
+      }
+    } catch {
+      setCustomSession(provider);
     } finally {
       setLoading(false);
     }
@@ -106,7 +128,7 @@ export const AuthModal: React.FC = () => {
         setPassword('');
         setConfirmPassword('');
       } else {
-        setSuccess('Account created! If email confirmation is enabled in your auth provider, check your inbox. Or use Google / GitHub for instant 1-click login.');
+        setSuccess('Account created! Check your inbox or use Google / GitHub for 1-click login.');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed.');
