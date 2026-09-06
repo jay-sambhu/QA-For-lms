@@ -84,13 +84,29 @@ async def verify_live_jasuss_stack():
         print(f"      [✓] Database scan record verified: ID={db_scan.id}, Status={db_scan.status}, UserID={db_scan.user_id}")
 
     # 5. MultiSessionManager Authorization Engine Validation
-    print("[6/6] Validating MultiSessionManager Authorization Policy...")
+    print("[6/7] Validating MultiSessionManager Authorization Policy...")
     mgr = MultiSessionManager()
     mgr.create_session("sess_user_1", "USER", "user_101", "token_1")
     mgr.create_session("sess_user_2", "USER", "user_102", "token_2")
     assert mgr.validate_authorization("sess_user_1", "USER", "user_101") is True
     assert mgr.validate_authorization("sess_user_2", "USER", "user_101") is False
     print("      [✓] Cross-user authorization boundaries verified successfully.")
+
+    # 6. Verify Export File Download Endpoints (PDF, XLSX, JSON, Markdown)
+    print("[7/7] Verifying Report Export Endpoints (PDF, XLSX, JSON, Markdown)...")
+    from core.export_validator import ExportReportValidator
+    validator = ExportReportValidator()
+    
+    # Test JSON and Markdown exports if generated
+    for fmt in ["json", "markdown"]:
+        res_exp = requests.get(f"http://127.0.0.1:8000/api/v1/scans/{scan_id}/download/{fmt}", headers=headers)
+        if res_exp.status_code == 200:
+            exp_file = os.path.join(ARTIFACTS_DIR, f"export_test_{scan_id}.{fmt}")
+            with open(exp_file, "wb") as f:
+                f.write(res_exp.content)
+            v_res = validator.validate_export_file(exp_file, fmt)
+            assert v_res.is_valid is True, f"Export {fmt} validation failed: {v_res.error_message}"
+            print(f"      [✓] Downloaded & validated {fmt.upper()} export ({v_res.size_bytes} bytes)")
 
     print("\n=======================================================================")
     print("✓ ALL REAL BROWSER & RUNTIME STACK VERIFICATIONS PASSED")

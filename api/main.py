@@ -580,10 +580,10 @@ async def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require
     Sets explicit Content-Disposition and media_type headers with canonical filenames.
     """
     file_type_norm = file_type.lower().strip(".")
-    if file_type_norm not in ("json", "md", "markdown"):
+    if file_type_norm not in ("json", "md", "markdown", "pdf", "xlsx", "excel"):
         raise HTTPException(
             status_code=400,
-            detail="Invalid file type. Supported formats: 'json', 'md', 'markdown'"
+            detail="Invalid file type. Supported formats: 'json', 'md', 'markdown', 'pdf', 'xlsx'"
         )
 
     scan = get_scan(str(scan_id))
@@ -594,12 +594,31 @@ async def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require
     if scan.get("status") != "completed":
         raise HTTPException(status_code=400, detail="Scan is not completed")
 
+    user_dir = os.path.join(ROOT_DIR, "user_data", user_id_val)
     if file_type_norm == "json":
         stored_path = scan.get("json_path")
         canonical_ext = "json"
-    else:
+    elif file_type_norm in ("md", "markdown"):
         stored_path = scan.get("report_path") or scan.get("md_path")
         canonical_ext = "md"
+    elif file_type_norm == "pdf":
+        candidates = [
+            scan.get("pdf_path"),
+            os.path.join("user_data", user_id_val, f"final_qa_report_{scan_id}.pdf"),
+            os.path.join("user_data", user_id_val, f"qa-report-{scan_id}.pdf"),
+            os.path.join("results", f"qa-report-{scan_id}.pdf"),
+        ]
+        stored_path = next((c for c in candidates if c and os.path.isfile(os.path.join(ROOT_DIR, c) if not os.path.isabs(c) else c)), None)
+        canonical_ext = "pdf"
+    elif file_type_norm in ("xlsx", "excel"):
+        candidates = [
+            scan.get("xlsx_path"),
+            os.path.join("user_data", user_id_val, f"final_qa_report_{scan_id}.xlsx"),
+            os.path.join("user_data", user_id_val, f"qa-report-{scan_id}.xlsx"),
+            os.path.join("results", f"qa-report-{scan_id}.xlsx"),
+        ]
+        stored_path = next((c for c in candidates if c and os.path.isfile(os.path.join(ROOT_DIR, c) if not os.path.isabs(c) else c)), None)
+        canonical_ext = "xlsx"
 
     if not stored_path:
         raise HTTPException(status_code=404, detail="Report file path not found")

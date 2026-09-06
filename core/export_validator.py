@@ -63,4 +63,13 @@ class ExportReportValidator:
             except Exception as e:
                 return ExportFileValidationResult(file_path, fmt, False, size_bytes, f"PDF byte read failure: {str(e)}")
 
+        elif fmt in ("xlsx", "excel"):
+            try:
+                with open(file_path, "rb") as f:
+                    header = f.read(4)
+                if header != b"PK\x03\x04":
+                    return ExportFileValidationResult(file_path, fmt, False, size_bytes, "Invalid XLSX magic header bytes")
+            except Exception as e:
+                return ExportFileValidationResult(file_path, fmt, False, size_bytes, f"XLSX byte read failure: {str(e)}")
+
         return ExportFileValidationResult(file_path, fmt, True, size_bytes)

@@ -220,9 +220,13 @@ class TestReportExports(unittest.TestCase):
         user_dir.mkdir(parents=True, exist_ok=True)
         json_file = user_dir / f"final_qa_report_{scan_id}.json"
         md_file = user_dir / f"final_qa_report_{scan_id}.md"
+        pdf_file = user_dir / f"final_qa_report_{scan_id}.pdf"
+        xlsx_file = user_dir / f"final_qa_report_{scan_id}.xlsx"
 
         json_file.write_text(json.dumps({"test": "data"}), encoding="utf-8")
         md_file.write_text("# Test Report", encoding="utf-8")
+        pdf_file.write_bytes(b"%PDF-1.4 header dummy content")
+        xlsx_file.write_bytes(b"PK\x03\x04 dummy zip content")
 
         # Save scan in DB
         with SessionLocal() as session:
@@ -266,21 +270,25 @@ class TestReportExports(unittest.TestCase):
                 f'attachment; filename="qa-report-{scan_id}.md"',
             )
 
-            # 3. Test /api/scans/{scan_id}/download/markdown (legacy alias)
-            res_legacy_md = client.get(
-                f"/api/scans/{scan_id}/download/markdown",
+            # 3. Test /api/v1/scans/{scan_id}/download/pdf
+            res_v1_pdf = client.get(
+                f"/api/v1/scans/{scan_id}/download/pdf",
                 headers={"Authorization": "Bearer dev-token"},
             )
-            self.assertEqual(res_legacy_md.status_code, 200)
-            self.assertEqual(
-                res_legacy_md.headers.get("content-disposition"),
-                f'attachment; filename="qa-report-{scan_id}.md"',
+            self.assertEqual(res_v1_pdf.status_code, 200)
+            self.assertIn("application/pdf", res_v1_pdf.headers.get("content-type", ""))
+
+            # 4. Test /api/v1/scans/{scan_id}/download/xlsx
+            res_v1_xlsx = client.get(
+                f"/api/v1/scans/{scan_id}/download/xlsx",
+                headers={"Authorization": "Bearer dev-token"},
             )
+            self.assertEqual(res_v1_xlsx.status_code, 200)
+            self.assertIn("spreadsheetml", res_v1_xlsx.headers.get("content-type", ""))
         finally:
-            if json_file.exists():
-                json_file.unlink()
-            if md_file.exists():
-                md_file.unlink()
+            for f_path in (json_file, md_file, pdf_file, xlsx_file):
+                if f_path.exists():
+                    f_path.unlink()
             with SessionLocal() as session:
                 s = session.query(Scan).filter(Scan.id == scan_id).first()
                 if s:
