@@ -1,21 +1,11 @@
-# JASUSS Phase 20 Deep Stateful Exploration Engine Master Report
+# Phase 20 — Deep Stateful Exploration & Intelligent QA Coverage Engine
 
-## Executive Summary
-This document presents the **Deep Stateful Exploration Architecture & Implementation** delivered in JASUSS Phase 20.
+## Overview
+Phase 20 of JASUSS transforms the platform from a page crawler into a state-aware, intelligent quality engineering engine.
 
----
-
-## 1. System Transformation Highlights
-
-1. **State Graph Exploration**: Transitioned from linear URL crawling to stateful graph nodes (`ApplicationStateModel`) and transition edges (`StateTransitionModel`).
-2. **Interactive Control Discovery**: Expanded DOM discovery to extract buttons, submit inputs, dropdown selects, SPA tab switchers, and client-side modal triggers.
-3. **Semantic Form Value Generation**: Built semantic form field analyzer supplying boundary values (`100`, `-100`, `OFF50`, `404`, `999`, `invalid-email`, `""`).
-4. **Console Error Noise Filter**: Implemented `_classify_console_error` in `core/bug_detector.py` to suppress sub-resource 404 console noise, dropping false positive counts dramatically.
-
----
-
-## 2. Quantitative Benchmark Targets & Status
-
-- **Unit Test Pass Rate**: 100.0% (194 / 194 PASSED).
-- **Autonomy Rate**: 100.0% across all challenge applications.
-- **Evidence Completeness**: 100.0% (Backed by Playwright screenshots, DOM, console logs, and HAR traces).
+## Core Components
+1. **Application & State Model** (`core/schemas/application_model.py`): Models application states, DOM fingerprints, session state, local storage, and transition graphs.
+2. **Interactive Controls Discovery** (`crawler/crawler.py`): Detects buttons, submit inputs, ARIA clickable controls, and dynamic event listeners.
+3. **Form Intelligence Engine** (`core/test_generator_v2.py`): Analyzes form field semantics, required attributes, min/max rules, and produces boundary data variations.
+4. **Console Noise Filter** (`core/bug_detector.py`): Classifies 404 image/favicon resources as `RESOURCE_ERROR` to eliminate console noise false positives.
+5. **Coverage Model** (`core/coverage.py`): Tracks page, interaction, state, and form field coverage metrics.
