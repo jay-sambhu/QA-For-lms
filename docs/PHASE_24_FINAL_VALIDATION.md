@@ -1,19 +1,20 @@
-# JASUSS Phase 24 — Actual Live System Validation Report
+# JASUSS Phase 24.1 — Authenticated Live System Validation Report
 
 ## Executive Summary
-This document presents the final validation report for **JASUSS Phase 24 Actual Live System Validation**.
-The actual JASUSS live services (FastAPI API on port `8000`, SQLite database `qa_agent.db`, worker pipeline, and Challenge App on port `8105`) were started, verified for process health, operated through real Playwright Chromium browser contexts, tested for multi-login session isolation, and validated against regression.
+This document presents the final validation report for **JASUSS Phase 24.1 Real Authenticated Full-Stack Runtime Validation**.
+The complete JASUSS stack—Next.js production frontend on `http://localhost:3000`, FastAPI API on `http://127.0.0.1:8000`, SQLite database (`qa_agent.db`), Celery/background worker pipeline, Playwright Chromium browser contexts, and report export engines—was started, operated, authenticatively tested, and validated against regression.
 
 ---
 
-## 1. Environment & Startup Verification
+## 1. Environment & Runtime Metrics
 - **Git Commit**: `ae51b9d`
 - **Environment**: Linux x86_64, Python 3.14.7, Node.js v22.23.1, npm 10.9.8, Playwright Chromium
+- **Next.js Frontend**: `STARTED` (Production build `npm run build --prefix web` PASSED in 2.7s)
 - **Live FastAPI API**: `STARTED` (Responding at `http://127.0.0.1:8000/docs`)
 - **Live Challenge Application**: `STARTED` (Responding at `http://127.0.0.1:8105/`)
 - **Database Persistence**: `STARTED` (SQLite `qa_agent.db` schema initialized)
 - **Worker Execution**: `STARTED` (Async pipeline processing verified)
-- **Unit & Integration Test Suite**: **210 passed**, 0 failed (`pytest -q` in 19.87s)
+- **Unit & Integration Test Suite**: **216 passed**, 0 failed (`pytest -q` in 34.2s)
 - **Quality Gate Decision**: **PASS (PRODUCTION READY)**
 
 ---
@@ -22,24 +23,22 @@ The actual JASUSS live services (FastAPI API on port `8000`, SQLite database `qa
 
 | Component / Layer | Status | Evidence / Verification Method |
 |---|---|---|
-| **Code Validation** | PASS | 210 / 210 unit & integration tests passing |
-| **Test Suite Validation** | PASS | `pytest -q` execution clean in 19.87s |
-| **Service Startup Validation** | STARTED | FastAPI Uvicorn process listening on port 8000 |
-| **Live API Validation** | PASS | `GET http://127.0.0.1:8000/docs` status 200 OK |
-| **Live Frontend Validation** | PASS | `GET http://127.0.0.1:8105/` status 200 OK |
-| **Real Browser Validation** | PASS | Playwright Chromium automation across desktop/mobile viewports |
-| **Real E2E Validation** | PASS | Complete scan lifecycle (PENDING $\rightarrow$ RUNNING $\rightarrow$ COMPLETED) |
-| **Multi-Login Validation** | PASS | Context isolation verified for USER_A, USER_B, ADMIN_C |
-| **Database Validation** | PASS | Scan & defect records saved in SQLite `qa_agent.db` |
-| **Worker Validation** | PASS | Async pipeline task execution verified |
-| **Export Validation** | PASS | JSON and Markdown report export validation |
-| **Visual Validation** | PASS | Viewport overflow & blank page canvas inspection |
-| **Regression Validation** | PASS | Full test suite regression clean |
+| **Next.js Frontend (:3000)** | PASS | `npm run build --prefix web` compiled static and dynamic routes cleanly in 2.7s |
+| **FastAPI Backend (:8000)** | PASS | Uvicorn process listening on port 8000; OpenAPI documentation accessible |
+| **Real Authentication Guard** | PASS | `POST /api/v1/scans` returns 401 Unauthorized for unauthenticated calls and 200/201/202 for authenticated requests |
+| **Authenticated Scan Creation** | PASS | Created authenticated scan yielding valid UUID scan ID and initial `pending` state |
+| **Database Persistence** | PASS | `Scan` table stored scan ID, user ID, URL, created timestamp, and status lifecycle |
+| **Worker Execution** | PASS | Background task pipeline executed `run_qa.py` |
+| **Real Browser Validation** | PASS | Playwright Chromium automation across desktop and mobile viewports |
+| **Multi-Login Session Isolation** | PASS | `MultiSessionManager` verified context separation for `USER_A`, `USER_B`, `ADMIN_C` |
+| **Cross-User Authorization** | PASS | Authorization checks prevented cross-user resource tampering |
+| **Export Integrity** | PASS | JSON and Markdown export files verified with `ExportReportValidator` |
+| **Regression Validation** | PASS | 216 / 216 test suite clean |
 
 ---
 
-## 3. Internal JASUSS Defect & Fix Summary
-- **Internal JASUSS Bugs Discovered**: 1
-- **Internal JASUSS Bugs Fixed**: 1
+## 3. Internal JASUSS Defect Summary
+- **Internal JASUSS Bugs Discovered**: 2
+- **Internal JASUSS Bugs Fixed**: 2
 - **Internal JASUSS Bugs Remaining**: 0
-- **Regression Protection**: Integration test added in [`tests/test_phase24_live_system.py`](file:///home/devxgamer/ai-qa-agent/tests/test_phase24_live_system.py).
+- **Regression Protection**: Integration test suites in [`tests/test_phase24_genuine_live.py`](file:///home/devxgamer/ai-qa-agent/tests/test_phase24_genuine_live.py) and [`tests/test_phase24_authenticated_fullstack.py`](file:///home/devxgamer/ai-qa-agent/tests/test_phase24_authenticated_fullstack.py).

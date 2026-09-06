@@ -25,7 +25,14 @@ class TestRealRedisCeleryIntegration(unittest.TestCase):
         cls.redis_server = fakeredis.TcpFakeServer(("127.0.0.1", cls.redis_port))
         cls.server_thread = threading.Thread(target=cls.redis_server.serve_forever, daemon=True)
         cls.server_thread.start()
-        time.sleep(0.2)
+        
+        import socket
+        for _ in range(20):
+            try:
+                with socket.create_connection(("127.0.0.1", cls.redis_port), timeout=0.1):
+                    break
+            except Exception:
+                time.sleep(0.1)
 
         # Configure Celery app with real Redis TCP broker/backend
         cls.redis_url = f"redis://127.0.0.1:{cls.redis_port}/0"
