@@ -45,10 +45,20 @@ load_dotenv(dotenv_path=os.path.join(ROOT_DIR, ".env"))
 # token" apart from "Supabase is down".
 logger = logging.getLogger("ai_qa_agent.api")
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(
     title="JASUSS API",
     description="Automated Web Quality Assurance & Regression Platform (Powered by Nexus)",
     version="2.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Register Domain Routers
