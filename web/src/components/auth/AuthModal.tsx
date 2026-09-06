@@ -11,6 +11,8 @@ import {
   RiLockPasswordLine,
   RiCheckboxCircleFill,
   RiErrorWarningFill,
+  RiGoogleFill,
+  RiGithubFill,
 } from 'react-icons/ri';
 import { TbLoader2 } from 'react-icons/tb';
 import { useAuth, supabase } from '../../context/AuthContext';
@@ -26,6 +28,29 @@ export const AuthModal: React.FC = () => {
   const [success, setSuccess] = useState('');
 
   if (!authModalOpen) return null;
+
+  const handleOAuthSignIn = async (provider: 'google' | 'github') => {
+    if (!supabase) {
+      setError('Authentication service is not configured.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    setSuccess('');
+    try {
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/dashboard` : undefined,
+        },
+      });
+      if (oauthError) throw oauthError;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Sign in with ${provider} failed.`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,7 +106,7 @@ export const AuthModal: React.FC = () => {
         setPassword('');
         setConfirmPassword('');
       } else {
-        setSuccess('Account created! Check your email to confirm and sign in.');
+        setSuccess('Account created! If email confirmation is enabled in your auth provider, check your inbox. Or use Google / GitHub for instant 1-click login.');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed.');
@@ -166,6 +191,33 @@ export const AuthModal: React.FC = () => {
                 <span>{success}</span>
               </div>
             )}
+
+            {/* Social OAuth Sign In Options (Google & GitHub) */}
+            <div className={styles.socialAuthContainer}>
+              <button
+                type="button"
+                onClick={() => handleOAuthSignIn('google')}
+                disabled={loading}
+                className={`${styles.socialAuthBtn} ${styles.socialAuthBtnGoogle}`}
+              >
+                <RiGoogleFill size={18} color="#ea4335" />
+                <span>Google</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleOAuthSignIn('github')}
+                disabled={loading}
+                className={`${styles.socialAuthBtn} ${styles.socialAuthBtnGithub}`}
+              >
+                <RiGithubFill size={18} color="#ffffff" />
+                <span>GitHub</span>
+              </button>
+            </div>
+
+            <div className={styles.socialAuthDivider}>
+              <span>or continue with email</span>
+            </div>
 
             <div className={styles.modalFormGroup}>
               <label className={styles.modalFormLabel}>

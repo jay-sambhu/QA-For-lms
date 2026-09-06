@@ -1522,6 +1522,67 @@
   cursor: not-allowed;
 }
 
+.socialAuthDivider {
+  display: flex;
+  align-items: center;
+  margin: 12px 0 8px 0;
+  color: #64748b;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.socialAuthDivider::before,
+.socialAuthDivider::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.socialAuthDivider span {
+  padding: 0 10px;
+}
+
+.socialAuthContainer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.socialAuthBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: #e2e8f0;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.socialAuthBtn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.socialAuthBtnGoogle:hover {
+  border-color: rgba(234, 67, 53, 0.4);
+  background: rgba(234, 67, 53, 0.1);
+}
+
+.socialAuthBtnGithub:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.15);
+}
+
 /* -------------------------------------------------------------
  * TESTING METHODS & CAPABILITIES SHOWCASE SECTION
  * ------------------------------------------------------------- */
