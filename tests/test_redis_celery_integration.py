@@ -20,9 +20,9 @@ class TestRealRedisCeleryIntegration(unittest.TestCase):
         # Initialize in-memory SQLite schema
         Base.metadata.create_all(bind=engine)
 
-        # Start real TCP Redis server on port 6389 to avoid port conflicts
-        cls.redis_port = 6389
-        cls.redis_server = fakeredis.TcpFakeServer(("127.0.0.1", cls.redis_port))
+        # Start real TCP Redis server on an available ephemeral port to avoid port conflicts
+        cls.redis_server = fakeredis.TcpFakeServer(("127.0.0.1", 0))
+        cls.redis_port = cls.redis_server.server_address[1]
         cls.server_thread = threading.Thread(target=cls.redis_server.serve_forever, daemon=True)
         cls.server_thread.start()
         
