@@ -44,8 +44,14 @@ class TestCaseExecutor:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             context = await browser.new_context(ignore_https_errors=True)
-            # Dismiss dialogs
-            context.on("dialog", lambda dialog: asyncio.create_task(dialog.dismiss()))
+            async def handle_dialog(dialog):
+                try:
+                    res = dialog.dismiss()
+                    if asyncio.iscoroutine(res):
+                        await res
+                except Exception:
+                    pass
+            context.on("dialog", lambda dialog: asyncio.create_task(handle_dialog(dialog)))
             page = await context.new_page()
 
             for tc in test_cases:

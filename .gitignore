@@ -22,6 +22,9 @@ results/
 reports/
 screenshots/
 user_data/
+scripts/*.log
+scripts/.jasuss_pids
+scratch/downloads/
 *.har
 *.zip
 dist/

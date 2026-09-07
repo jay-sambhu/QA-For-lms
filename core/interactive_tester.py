@@ -233,9 +233,17 @@ class InteractiveTester:
                         def on_console(msg, m=monitor):
                             m.record_console(msg, page_url)
 
-                        page.on("response", on_response)
-                        page.on("requestfailed", on_request_failure)
-                        page.on("console", on_console)
+                        def _safe_add_listener(evt, fn):
+                            try:
+                                res = page.on(evt, fn)
+                                if asyncio.iscoroutine(res):
+                                    res.close()
+                            except Exception:
+                                pass
+
+                        _safe_add_listener("response", on_response)
+                        _safe_add_listener("requestfailed", on_request_failure)
+                        _safe_add_listener("console", on_console)
                         
                         before_url = page.url
                         interaction_failed = False
@@ -331,9 +339,17 @@ class InteractiveTester:
                         })
                         
                         # Cleanup listeners
-                        page.remove_listener("response", on_response)
-                        page.remove_listener("requestfailed", on_request_failure)
-                        page.remove_listener("console", on_console)
+                        def _safe_remove_listener(evt, fn):
+                            try:
+                                res = page.remove_listener(evt, fn)
+                                if asyncio.iscoroutine(res):
+                                    res.close()
+                            except Exception:
+                                pass
+
+                        _safe_remove_listener("response", on_response)
+                        _safe_remove_listener("requestfailed", on_request_failure)
+                        _safe_remove_listener("console", on_console)
                         
                         # Return to original page if we navigated away
                         if page.url != page_url:

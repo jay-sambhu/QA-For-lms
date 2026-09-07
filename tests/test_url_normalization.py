@@ -72,7 +72,7 @@ def test_url_normalization():
     print(f"Results: {passed} passed, {failed} failed out of {len(test_cases)} tests")
     print("=" * 80)
     
-    return failed == 0
+    assert failed == 0, f"{failed} URL normalization test cases failed"
 
 
 def test_visited_set_deduplication():
@@ -100,12 +100,7 @@ def test_visited_set_deduplication():
     print(f"\nVisited set size: {len(crawler.visited)}")
     print(f"Visited set contents: {crawler.visited}")
     
-    if len(crawler.visited) == 1:
-        print("\n✓ PASS: All equivalent URLs resulted in a single entry in visited set")
-        return True
-    else:
-        print("\n✗ FAIL: Equivalent URLs were not deduplicated")
-        return False
+    assert len(crawler.visited) == 1, "Equivalent URLs were not deduplicated in visited set"
 
 
 def test_queue_deduplication():
@@ -137,12 +132,7 @@ def test_queue_deduplication():
     print(f"\nQueue size: {len(crawler.queue)}")
     print(f"Queue contents: {crawler.queue}")
     
-    if len(crawler.queue) == 1:
-        print("\n✓ PASS: Equivalent URLs were not added to queue twice")
-        return True
-    else:
-        print("\n✗ FAIL: Equivalent URLs were added to queue multiple times")
-        return False
+    assert len(crawler.queue) == 1, "Equivalent URLs were added to queue multiple times"
 
 
 def main():
