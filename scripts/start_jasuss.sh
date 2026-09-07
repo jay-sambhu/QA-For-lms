@@ -32,7 +32,7 @@ rm -f "$PID_FILE"
 
 # 1. Start FastAPI Backend on port 8000
 echo -e "${C_CYAN}[1/3] Starting FastAPI Backend on http://127.0.0.1:8000...${C_RESET}"
-nohup python3 -m uvicorn api.main:app --host 127.0.0.1 --port 8000 > "$ROOT_DIR/scripts/backend.log" 2>&1 &
+nohup setsid python3 -m uvicorn api.main:app --host 127.0.0.1 --port 8000 > "$ROOT_DIR/scripts/backend.log" 2>&1 &
 BACKEND_PID=$!
 disown $BACKEND_PID 2>/dev/null || true
 echo "BACKEND_PID=$BACKEND_PID" >> "$PID_FILE"
@@ -57,7 +57,7 @@ fi
 
 # 2. Start Celery Worker
 echo -e "${C_CYAN}[2/3] Starting Celery Worker...${C_RESET}"
-nohup python3 -m celery -A worker.celery_app worker --loglevel=info -Q qa_queue > "$ROOT_DIR/scripts/worker.log" 2>&1 &
+nohup setsid python3 -m celery -A worker.celery_app worker --loglevel=info -Q qa_queue > "$ROOT_DIR/scripts/worker.log" 2>&1 &
 WORKER_PID=$!
 disown $WORKER_PID 2>/dev/null || true
 echo "WORKER_PID=$WORKER_PID" >> "$PID_FILE"
@@ -65,7 +65,7 @@ echo -e "${C_GREEN}[✓] Celery Worker started (PID: $WORKER_PID)${C_RESET}"
 
 # 3. Start Next.js Frontend on port 3000
 echo -e "${C_CYAN}[3/3] Starting Next.js Web Frontend on http://127.0.0.1:3000...${C_RESET}"
-nohup npm run dev --prefix web > "$ROOT_DIR/scripts/frontend.log" 2>&1 &
+nohup setsid npm run dev --prefix web > "$ROOT_DIR/scripts/frontend.log" 2>&1 &
 FRONTEND_PID=$!
 disown $FRONTEND_PID 2>/dev/null || true
 echo "FRONTEND_PID=$FRONTEND_PID" >> "$PID_FILE"
