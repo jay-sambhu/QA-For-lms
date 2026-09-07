@@ -29,7 +29,118 @@ export const AuthModal: React.FC = () => {
 
   if (!authModalOpen) return null;
 
-  const handleOAuthSignIn = async (provider: 'google' | 'github') => {
+  const handleGoogleSignIn = async () => {
+    if (!supabase) {
+      setError('Authentication service is not configured.');
+      return;
+    }
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      setError('Google Client ID is not configured. Set NEXT_PUBLIC_GOOGLE_CLIENT_ID in your .env.local file.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      // Use Google Identity Services (GIS) popup flow
+      const google = (window as unknown as Record<string, unknown>).google as {
+        accounts: {
+          oauth2: {
+            initCodeClient: (config: {
+              client_id: string;
+              scope: string;
+              ux_mode: string;
+              callback: (response: { code?: string; error?: string }) => void;
+            }) => { requestCode: () => void };
+          };
+          id: {
+            initialize: (config: {
+              client_id: string;
+              callback: (response: { credential?: string; error?: string }) => void;
+            }) => void;
+            prompt: (notification?: (n: { isNotDisplayed: () => boolean; isSkippedMoment: () => boolean }) => void) => void;
+          };
+        };
+      };
+
+      if (!google?.accounts?.id) {
+        setError('Google Sign-In SDK not loaded. Please refresh the page and try again.');
+        setLoading(false);
+        return;
+      }
+
+      // Use One Tap / popup to get an ID token, then pass it to Supabase
+      google.accounts.id.initialize({
+        client_id: clientId,
+        callback: async (response: { credential?: string; error?: string }) => {
+          if (response.error || !response.credential) {
+            setError('Google sign-in was cancelled or failed.');
+            setLoading(false);
+            return;
+          }
+
+          try {
+            const { error: supabaseError } = await supabase!.auth.signInWithIdToken({
+              provider: 'google',
+              token: response.credential,
+            });
+
+            if (supabaseError) {
+              setError(`Google authentication failed: ${supabaseError.message}`);
+            } else {
+              closeAuthModal();
+              setEmail('');
+              setPassword('');
+            }
+          } catch (err) {
+            setError(err instanceof Error ? err.message : 'Google sign-in failed.');
+          } finally {
+            setLoading(false);
+          }
+        },
+      });
+
+      google.accounts.id.prompt((notification) => {
+        // If One Tap is not displayed (e.g. user dismissed it before), fall back to a popup
+        if (notification?.isNotDisplayed() || notification?.isSkippedMoment()) {
+          // Fall back to the OAuth2 code flow via popup
+          const codeClient = google.accounts.oauth2.initCodeClient({
+            client_id: clientId,
+            scope: 'email profile openid',
+            ux_mode: 'popup',
+            callback: async (codeResponse: { code?: string; error?: string }) => {
+              if (codeResponse.error || !codeResponse.code) {
+                setError('Google sign-in was cancelled.');
+                setLoading(false);
+                return;
+              }
+              // For the code flow, we need to exchange the code server-side.
+              // Instead, let's use the redirect-based signInWithOAuth as ultimate fallback.
+              const { error: oauthError } = await supabase!.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                  redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : undefined,
+                },
+              });
+              if (oauthError) {
+                setError('Google login redirect failed. Please ensure Google is configured in your Supabase dashboard as a fallback.');
+              }
+              setLoading(false);
+            },
+          });
+          codeClient.requestCode();
+        }
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Google sign-in request failed.');
+      setLoading(false);
+    }
+  };
+
+  const handleGitHubSignIn = async () => {
     if (!supabase) {
       setError('Authentication service is not configured.');
       return;
@@ -38,20 +149,18 @@ export const AuthModal: React.FC = () => {
     setError('');
     setSuccess('');
     try {
-      const providerDisplayName = provider === 'google' ? 'Google' : 'GitHub';
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider,
+        provider: 'github',
         options: {
-          redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/dashboard` : undefined,
+          redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : undefined,
         },
       });
 
       if (oauthError) {
-        setError(`${providerDisplayName} login is currently unavailable or unconfigured in Supabase console.`);
+        setError('GitHub login is currently unavailable or unconfigured in Supabase console.');
       }
     } catch (err) {
-      const providerDisplayName = provider === 'google' ? 'Google' : 'GitHub';
-      setError(err instanceof Error ? err.message : `${providerDisplayName} login request failed.`);
+      setError(err instanceof Error ? err.message : 'GitHub login request failed.');
     } finally {
       setLoading(false);
     }
@@ -201,7 +310,7 @@ export const AuthModal: React.FC = () => {
             <div className={styles.socialAuthContainer}>
               <button
                 type="button"
-                onClick={() => handleOAuthSignIn('google')}
+                onClick={handleGoogleSignIn}
                 disabled={loading}
                 className={`${styles.socialAuthBtn} ${styles.socialAuthBtnGoogle}`}
               >
@@ -211,7 +320,7 @@ export const AuthModal: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => handleOAuthSignIn('github')}
+                onClick={handleGitHubSignIn}
                 disabled={loading}
                 className={`${styles.socialAuthBtn} ${styles.socialAuthBtnGithub}`}
               >

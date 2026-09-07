@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "../context/AuthContext";
 import { NavBar } from "../components/layout/NavBar";
@@ -30,6 +31,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+      <head>
+        <Script
+          src="https://accounts.google.com/gsi/client"
+          strategy="beforeInteractive"
+        />
+      </head>
       <body>
         <AuthProvider>
           <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
