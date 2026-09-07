@@ -23,7 +23,6 @@ interface AuthContextType {
   closeProfileModal: () => void;
   signOut: () => Promise<void>;
   refreshPlan: () => Promise<void>;
-  setCustomSession: (provider: 'google' | 'github') => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -40,7 +39,6 @@ const AuthContext = createContext<AuthContextType>({
   closeProfileModal: () => {},
   signOut: async () => {},
   refreshPlan: async () => {},
-  setCustomSession: () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -86,18 +84,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (!supabase) {
-      if (typeof window !== 'undefined') {
-        const stored = localStorage.getItem('jasuss_session');
-        if (stored) {
-          try {
-            const parsed = JSON.parse(stored);
-            if (parsed && parsed.access_token) {
-              setSession(parsed);
-              fetchUserSubscription(parsed.access_token, parsed);
-            }
-          } catch {}
-        }
-      }
       setSessionLoaded(true);
       return;
     }
@@ -108,17 +94,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!error && data.session) {
           setSession(data.session);
           fetchUserSubscription(data.session.access_token, data.session);
-        } else if (typeof window !== 'undefined') {
-          const stored = localStorage.getItem('jasuss_session');
-          if (stored) {
-            try {
-              const parsed = JSON.parse(stored);
-              if (parsed && parsed.access_token) {
-                setSession(parsed);
-                fetchUserSubscription(parsed.access_token, parsed);
-              }
-            } catch {}
-          }
         }
       })
       .finally(() => {
@@ -176,37 +151,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const setCustomSession = (provider: 'google' | 'github') => {
-    const mockSession = {
-      access_token: `dev-oauth-token-${provider}-${Date.now()}`,
-      token_type: 'bearer',
-      expires_in: 3600,
-      refresh_token: `mock-refresh-${provider}`,
-      user: {
-        id: `oauth-user-${provider}-${Date.now()}`,
-        aud: 'authenticated',
-        role: 'authenticated',
-        email: `user@${provider}.com`,
-        email_confirmed_at: new Date().toISOString(),
-        phone: '',
-        confirmed_at: new Date().toISOString(),
-        last_sign_in_at: new Date().toISOString(),
-        app_metadata: { provider, providers: [provider] },
-        user_metadata: { full_name: `${provider.toUpperCase()} User`, avatar_url: '' },
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-    } as unknown as Session;
-
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('jasuss_session', JSON.stringify(mockSession));
-    }
-    setSession(mockSession);
-    setUserPlan('free');
-    setUserRole('user');
-    closeAuthModal();
-  };
-
   return (
     <AuthContext.Provider
       value={{
@@ -223,7 +167,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         closeProfileModal,
         signOut,
         refreshPlan,
-        setCustomSession,
       }}
     >
       {children}

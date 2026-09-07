@@ -200,19 +200,26 @@ def require_user(authorization: str = Header(None)):
     if not token:
         raise HTTPException(status_code=401, detail="Missing bearer token")
 
-    if token == "dev-token":
-        class DummyUserA:
-            id = "00000000-0000-0000-0000-000000000001"
-            email = "dev@example.com"
-            role = "student"
-        return DummyUserA()
+    env_mode = os.environ.get("ENVIRONMENT", "development").lower()
 
-    if token in ("test-token", "user-b-token"):
-        class DummyUserB:
-            id = "00000000-0000-0000-0000-000000000002"
-            email = "user_b@example.com"
-            role = "student"
-        return DummyUserB()
+    if token in ("dev-token", "test-token", "user-b-token"):
+        if env_mode == "production":
+            raise HTTPException(
+                status_code=401,
+                detail="Development test tokens are rejected in production environment",
+            )
+        if token == "dev-token":
+            class DummyUserA:
+                id = "00000000-0000-0000-0000-000000000001"
+                email = "dev@example.com"
+                role = "student"
+            return DummyUserA()
+        else:
+            class DummyUserB:
+                id = "00000000-0000-0000-0000-000000000002"
+                email = "user_b@example.com"
+                role = "student"
+            return DummyUserB()
 
 
     if not supabase:
