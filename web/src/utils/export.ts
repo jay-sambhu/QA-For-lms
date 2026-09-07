@@ -488,9 +488,26 @@ export const downloadPDF = (results: any, scanId: string | null = '') => {
     doc.text(`Page ${i} of ${totalPages}`, 196, 292, { align: 'right' });
   }
 
-  const safeScanId = scanId && scanId !== 'N/A' ? scanId : (data.target || 'scan').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  const safeScanId = (scanId && scanId !== 'N/A' ? scanId : (data.target || 'scan')).toString().replace(/[^a-z0-9-]/gi, '_').toLowerCase();
   const safeFilename = `qa-report-${safeScanId}.pdf`;
-  doc.save(safeFilename);
+  
+  try {
+    const pdfBlob = doc.output('blob');
+    const typedBlob = new Blob([pdfBlob], { type: 'application/pdf' });
+    const downloadUrl = window.URL.createObjectURL(typedBlob);
+    const anchor = document.createElement('a');
+    anchor.href = downloadUrl;
+    anchor.download = safeFilename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    setTimeout(() => {
+      window.URL.revokeObjectURL(downloadUrl);
+    }, 1000);
+  } catch (error) {
+    // Fallback if Blob generation fails in older browsers
+    doc.save(safeFilename);
+  }
 };
 
 /**
@@ -719,7 +736,7 @@ export const downloadExcel = (results: any, scanId: string | null = '') => {
     XLSX.utils.book_append_sheet(wb, cdWs, 'Device Responsiveness');
   }
 
-  const safeScanId = scanId && scanId !== 'N/A' ? scanId : (data.target || 'scan').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  const safeScanId = (scanId && scanId !== 'N/A' ? scanId : (data.target || 'scan')).toString().replace(/[^a-z0-9-]/gi, '_').toLowerCase();
   const safeFilename = `qa-report-${safeScanId}.xlsx`;
 
   try {

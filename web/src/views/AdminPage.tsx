@@ -11,6 +11,7 @@ import { TenantTable } from '../components/admin/TenantTable';
 import { PipelineInspector } from '../components/admin/PipelineInspector';
 import { SystemTelemetry } from '../components/admin/SystemTelemetry';
 import { AIProviderConfig } from '../components/admin/AIProviderConfig';
+import { ApiKeyManager } from '../components/admin/ApiKeyManager';
 import styles from '../app/page.module.css';
 
 export const AdminPage: React.FC = () => {
@@ -132,6 +133,9 @@ export const AdminPage: React.FC = () => {
 
       {/* Multi-AI Provider & Engine Setup */}
       <AIProviderConfig />
+
+      {/* Gemini API Key Manager */}
+      <ApiKeyManager />
 
       {/* Host System Telemetry */}
       <SystemTelemetry system={system} />

@@ -1,5 +1,6 @@
 from sqlalchemy import Column, String, Text, DateTime, Boolean, Integer, ForeignKey, Index, func
 from sqlalchemy.orm import declarative_base, relationship
+from uuid import uuid4
 
 Base = declarative_base()
 
@@ -64,3 +65,13 @@ class PaymentTransaction(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="transactions")
+
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    key_value = Column(String, nullable=False, unique=True)
+    status = Column(String, nullable=False, server_default="active")  # 'active', 'rate_limited', 'exhausted'
+    service = Column(String, nullable=False, server_default="gemini") # e.g. 'gemini'
+    rate_limit_reset_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

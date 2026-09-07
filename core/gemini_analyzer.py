@@ -60,15 +60,78 @@ class GeminiQAAnalyzer:
     """Analyze grouped candidates while keeping deterministic evidence authoritative."""
 
     def __init__(self, api_key=None, model_client=None, model_name="gemini-3-flash-preview"):
-        # Load the .env sitting next to this module rather than one relative to
-        # the current working directory, so the key is found no matter where
-        # the pipeline is invoked from.
-        load_dotenv(dotenv_path=MODULE_DIR / ".env")
-        from config import settings
-        # Use the unified gemini_key property which prefers GEMINI_API_KEY over GOOGLE_API_KEY.
-        self.api_key = api_key if api_key is not None else settings.gemini_key
         self.model_client = model_client
         self.model_name = model_name
+        self.api_key = api_key
+        
+        if self.api_key is None:
+            self._load_active_key()
+
+    def _load_active_key(self):
+        try:
+            from db import SessionLocal
+            from models import ApiKey
+            from datetime import datetime, timezone
+            
+            with SessionLocal() as db:
+                # Reset rate_limited keys that have expired
+                expired_keys = db.query(ApiKey).filter(
+                    ApiKey.status == "rate_limited",
+                    ApiKey.rate_limit_reset_at <= datetime.now(timezone.utc)
+                ).all()
+                for key in expired_keys:
+                    key.status = "active"
+                    key.rate_limit_reset_at = None
+                if expired_keys:
+                    db.commit()
+
+                # Get first active gemini key
+                active_key = db.query(ApiKey).filter(
+                    ApiKey.service == "gemini",
+                    ApiKey.status == "active"
+                ).first()
+                
+                if active_key:
+                    self.api_key = active_key.key_value
+                else:
+                    self._fallback_to_env()
+        except Exception as e:
+            self._fallback_to_env()
+
+    def _fallback_to_env(self):
+        load_dotenv(dotenv_path=MODULE_DIR / ".env")
+        from config import settings
+        self.api_key = settings.gemini_key
+
+    def _rotate_key(self):
+        if not self.api_key:
+            return False
+            
+        try:
+            from db import SessionLocal
+            from models import ApiKey
+            from datetime import datetime, timezone, timedelta
+            
+            with SessionLocal() as db:
+                # Mark current key as rate limited for 1 hour
+                current = db.query(ApiKey).filter(ApiKey.key_value == self.api_key).first()
+                if current:
+                    current.status = "rate_limited"
+                    current.rate_limit_reset_at = datetime.now(timezone.utc) + timedelta(hours=1)
+                    db.commit()
+                
+                # Fetch next active key
+                next_key = db.query(ApiKey).filter(
+                    ApiKey.service == "gemini",
+                    ApiKey.status == "active"
+                ).first()
+                
+                if next_key:
+                    self.api_key = next_key.key_value
+                    return True
+                return False
+        except Exception:
+            return False
 
     @staticmethod
     def find_latest_findings(results_dir="results"):
@@ -219,7 +282,7 @@ class GeminiQAAnalyzer:
             + json.dumps(triage, indent=2, ensure_ascii=False)
         )
 
-    async def _call_model(self, prompt):
+    async def _call_model(self, prompt, retries=0):
         if self.model_client is not None:
             if hasattr(self.model_client, "ainvoke"):
                 response = await self.model_client.ainvoke(prompt)
@@ -269,12 +332,23 @@ class GeminiQAAnalyzer:
                     detail = error.read().decode("utf-8", "replace")[:500]
                 except Exception:
                     pass
+                
+                if error.code == 429:
+                    raise RuntimeError(f"HTTP_429_RATE_LIMIT: {detail}") from None
+
                 raise RuntimeError(
                     f"Gemini API returned HTTP {error.code}: {detail}"
                 ) from None
 
         try:
             response_data = await asyncio.to_thread(fetch)
+        except RuntimeError as e:
+            if "HTTP_429_RATE_LIMIT" in str(e):
+                rotated = await asyncio.to_thread(self._rotate_key)
+                if rotated and retries < 2:
+                    return await self._call_model(prompt, retries=retries + 1)
+                raise RuntimeError("Gemini quota limit reached across all available keys.") from None
+            raise
         except Exception as error:
             # Redact before re-raising: the message ends up in the report.
             raise RuntimeError(

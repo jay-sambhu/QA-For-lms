@@ -107,24 +107,25 @@ class ScanAuthPayload(BaseModel):
         if not host:
             raise ValueError("login_url must include a valid hostname")
 
-        BLOCKED_HOSTS = {
-            "169.254.169.254",
-            "metadata.google.internal",
-            "metadata.google",
-        }
-        if host in BLOCKED_HOSTS:
-            raise ValueError("login_url targets a reserved address")
+        if os.environ.get("ALLOW_LOCAL_TARGETS", "").lower() != "true":
+            BLOCKED_HOSTS = {
+                "169.254.169.254",
+                "metadata.google.internal",
+                "metadata.google",
+            }
+            if host in BLOCKED_HOSTS:
+                raise ValueError("login_url targets a reserved address")
 
-        try:
-            addr = ipaddress.ip_address(host)
-            if addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved:
-                raise ValueError("login_url targets a private or reserved address")
-        except ValueError as ip_err:
-            if "targets a" in str(ip_err):
-                raise
-            BLOCKED_PREFIXES = ("localhost", "local", "internal", "intranet")
-            if any(host == p or host.endswith("." + p) for p in BLOCKED_PREFIXES):
-                raise ValueError("login_url targets a reserved hostname")
+            try:
+                addr = ipaddress.ip_address(host)
+                if addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved:
+                    raise ValueError("login_url targets a private or reserved address")
+            except ValueError as ip_err:
+                if "targets a" in str(ip_err):
+                    raise
+                BLOCKED_PREFIXES = ("localhost", "local", "internal", "intranet")
+                if any(host == p or host.endswith("." + p) for p in BLOCKED_PREFIXES):
+                    raise ValueError("login_url targets a reserved hostname")
 
         return value
 
@@ -151,27 +152,28 @@ class ScanRequest(BaseModel):
         if not host:
             raise ValueError("url must include a valid hostname")
 
-        # Block cloud metadata endpoints by hostname.
-        BLOCKED_HOSTS = {
-            "169.254.169.254",  # AWS / Azure / GCP IMDS
-            "metadata.google.internal",
-            "metadata.google",
-        }
-        if host in BLOCKED_HOSTS:
-            raise ValueError("url targets a reserved address")
+        if os.environ.get("ALLOW_LOCAL_TARGETS", "").lower() != "true":
+            # Block cloud metadata endpoints by hostname.
+            BLOCKED_HOSTS = {
+                "169.254.169.254",  # AWS / Azure / GCP IMDS
+                "metadata.google.internal",
+                "metadata.google",
+            }
+            if host in BLOCKED_HOSTS:
+                raise ValueError("url targets a reserved address")
 
-        # Block loopback, private, and link-local IPs.
-        try:
-            addr = ipaddress.ip_address(host)
-            if addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved:
-                raise ValueError("url targets a private or reserved address")
-        except ValueError as ip_err:
-            if "targets a" in str(ip_err):
-                raise
-            # host is a hostname, not an IP — additional hostname checks.
-            BLOCKED_PREFIXES = ("localhost", "local", "internal", "intranet")
-            if any(host == p or host.endswith("." + p) for p in BLOCKED_PREFIXES):
-                raise ValueError("url targets a reserved hostname")
+            # Block loopback, private, and link-local IPs.
+            try:
+                addr = ipaddress.ip_address(host)
+                if addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved:
+                    raise ValueError("url targets a private or reserved address")
+            except ValueError as ip_err:
+                if "targets a" in str(ip_err):
+                    raise
+                # host is a hostname, not an IP — additional hostname checks.
+                BLOCKED_PREFIXES = ("localhost", "local", "internal", "intranet")
+                if any(host == p or host.endswith("." + p) for p in BLOCKED_PREFIXES):
+                    raise ValueError("url targets a reserved hostname")
 
         return value
 

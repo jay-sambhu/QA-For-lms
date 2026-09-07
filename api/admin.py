@@ -9,7 +9,7 @@ import os
 import psutil
 
 from db import SessionLocal
-from models import User, Scan, Subscription, PaymentTransaction
+from models import User, Scan, Subscription, PaymentTransaction, ApiKey
 from core.ai_config import (
     get_ai_providers_state,
     update_ai_provider_config,
@@ -197,3 +197,55 @@ async def test_ai_provider(
         "provider": provider_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@admin_router.get("/api-keys")
+async def list_api_keys() -> Dict[str, Any]:
+    """List all API keys."""
+    with SessionLocal() as db:
+        keys = db.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
+        return {
+            "api_keys": [
+                {
+                    "id": k.id,
+                    "key_value": k.key_value[:10] + "..." + k.key_value[-4:] if len(k.key_value) > 15 else "***",
+                    "status": k.status,
+                    "service": k.service,
+                    "rate_limit_reset_at": k.rate_limit_reset_at.isoformat() if k.rate_limit_reset_at else None,
+                    "created_at": k.created_at.isoformat() if k.created_at else None,
+                }
+                for k in keys
+            ]
+        }
+
+@admin_router.post("/api-keys")
+async def add_api_key(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Add a new API key."""
+    key_value = payload.get("key_value")
+    service = payload.get("service", "gemini")
+    if not key_value:
+        raise HTTPException(status_code=400, detail="key_value is required")
+
+    with SessionLocal() as db:
+        existing = db.query(ApiKey).filter(ApiKey.key_value == key_value).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="API Key already exists")
+        
+        new_key = ApiKey(key_value=key_value, service=service, status="active")
+        db.add(new_key)
+        db.commit()
+        db.refresh(new_key)
+        
+        return {"message": "API key added successfully", "id": new_key.id}
+
+@admin_router.delete("/api-keys/{key_id}")
+async def delete_api_key(key_id: str) -> Dict[str, Any]:
+    """Delete an API key."""
+    with SessionLocal() as db:
+        key = db.query(ApiKey).filter(ApiKey.id == key_id).first()
+        if not key:
+            raise HTTPException(status_code=404, detail="API Key not found")
+        
+        db.delete(key)
+        db.commit()
+        return {"message": "API key deleted successfully"}
