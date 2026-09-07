@@ -359,14 +359,32 @@ def run_qa_pipeline(
         sub_env["QA_AUTH_PASSWORD"] = password
 
     try:
-        result = subprocess.run(
+        process = subprocess.Popen(
             cmd,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
             cwd=ROOT_DIR,
-            timeout=PIPELINE_TIMEOUT_SECONDS,
             env=sub_env,
         )
+        
+        stdout_lines = []
+        # Display every action log in the console, but hide secret credentials
+        for line in process.stdout:
+            stdout_lines.append(line)
+            if password and password in line:
+                safe_line = line.replace(password, "[REDACTED_PASSWORD]")
+                sys.stdout.write(safe_line)
+            else:
+                sys.stdout.write(line)
+            sys.stdout.flush()
+
+        process.wait(timeout=PIPELINE_TIMEOUT_SECONDS)
+        
+        result_returncode = process.returncode
+        result_stdout = "".join(stdout_lines)
+        result_stderr = ""  # Already merged into stdout
+        
     except subprocess.TimeoutExpired:
         update_scan(scan_id, "failed")
         logger.error(
@@ -385,13 +403,13 @@ def run_qa_pipeline(
     #   Final Markdown: <path>
     json_path = None
     md_path = None
-    for line in result.stdout.splitlines():
+    for line in result_stdout.splitlines():
         if line.startswith("Final JSON:"):
             json_path = line.split(":", 1)[1].strip()
         elif line.startswith("Final Markdown:"):
             md_path = line.split(":", 1)[1].strip()
 
-    if json_path and md_path and result.returncode == 0:
+    if json_path and md_path and result_returncode == 0:
         update_scan(
             scan_id,
             "completed",
@@ -401,11 +419,10 @@ def run_qa_pipeline(
     else:
         update_scan(scan_id, "failed")
         logger.error(
-            "Scan %s failed. Return code: %s\nStdout tail:\n%s\nStderr tail:\n%s",
+            "Scan %s failed. Return code: %s\nStdout tail:\n%s",
             scan_id,
-            result.returncode,
-            result.stdout[-2000:],
-            result.stderr[-2000:],
+            result_returncode,
+            result_stdout[-2000:],
         )
 
 
