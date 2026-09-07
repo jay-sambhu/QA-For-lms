@@ -135,7 +135,7 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onSubmit, loading, error }) 
             className={styles.authCheckbox}
           />
           <span className={styles.authToggleText}>
-            <TbShieldLock size={17} color="#a855f7" /> Requires Authenticated Portal Login?
+            <TbShieldLock size={17} color="#a855f7" /> Provide Auto-Login Credentials (Optional)
           </span>
         </label>
       </div>
@@ -150,18 +150,6 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onSubmit, loading, error }) 
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.25 }}
           >
-            <div className={styles.authFieldGroup}>
-              <label className={styles.authFieldLabel}>
-                <RiKey2Line size={14} /> Login URL
-              </label>
-              <input
-                type="url"
-                placeholder="https://example.com/login"
-                value={loginUrl}
-                onChange={(e) => setLoginUrl(e.target.value)}
-                className={styles.authInput}
-              />
-            </div>
 
             <div className={styles.authFieldGroup}>
               <label className={styles.authFieldLabel}>

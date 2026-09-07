@@ -33,5 +33,10 @@ celery_app.conf.update(
     task_soft_time_limit=1700,         # soft limit for graceful shutdown
     worker_prefetch_multiplier=1,      # avoid task hoarding
     task_acks_late=True,               # ensure tasks are re‑queued on failure
+    
+    # Prevent delay() from hanging indefinitely if Redis is down
+    broker_connection_retry_on_startup=False,
+    broker_connection_max_retries=1,
+    broker_connection_timeout=2.0,
 )
 

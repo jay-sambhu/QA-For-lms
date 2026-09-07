@@ -163,20 +163,41 @@ class WebsiteCrawler:
             and self._base_host(url) == self.base_host
         )
 
-    async def perform_login(self, page, dev_name: str) -> dict:
+    async def perform_login(self, page, dev_name: str, auto_detect: bool = False) -> dict:
         """
-        Executes automated form login if login_url is provided.
+        Executes automated form login if login_url is provided, or if auto_detect is True.
         Returns a dict with {'success': bool, 'error': Optional[str], 'status': str}.
         """
-        if not self.login_url:
-            return {"success": True, "status": "no_auth"}
+        if not auto_detect:
+            if not self.login_url:
+                return {"success": True, "status": "no_auth"}
 
-        print(f"[{dev_name}] Performing automated login at: {self.login_url}")
-        try:
-            res = await page.goto(self.login_url, wait_until="domcontentloaded", timeout=20000)
-            await page.wait_for_timeout(1000)
-        except Exception as e:
-            return {"success": False, "error": f"Failed to load login page: {str(e)}", "status": "errored"}
+            print(f"[{dev_name}] Performing automated login at: {self.login_url}")
+            try:
+                res = await page.goto(self.login_url, wait_until="domcontentloaded", timeout=20000)
+                await page.wait_for_timeout(1000)
+            except Exception as e:
+                return {"success": False, "error": f"Failed to load login page: {str(e)}", "status": "errored"}
+
+        # Detect password field to determine if this is a login form
+        password_input = None
+        if self.password:
+            for sel in [
+                "input[type='password']",
+                "input[name*='pass' i]",
+                "input[id*='pass' i]",
+                "input[placeholder*='pass' i]",
+            ]:
+                try:
+                    el = await page.query_selector(sel)
+                    if el and await el.is_visible():
+                        password_input = el
+                        break
+                except Exception:
+                    continue
+
+        if auto_detect and not password_input:
+            return {"success": True, "status": "no_login_form_detected"}
 
         # Fill username / email
         username_input = None
@@ -208,22 +229,7 @@ class WebsiteCrawler:
                     pass
 
         # Fill password
-        password_input = None
-        if self.password:
-            for sel in [
-                "input[type='password']",
-                "input[name*='pass' i]",
-                "input[id*='pass' i]",
-                "input[placeholder*='pass' i]",
-            ]:
-                try:
-                    el = await page.query_selector(sel)
-                    if el and await el.is_visible():
-                        password_input = el
-                        break
-                except Exception:
-                    continue
-            if password_input:
+        if password_input:
                 try:
                     await password_input.fill(self.password)
                 except Exception:
@@ -369,8 +375,12 @@ class WebsiteCrawler:
                                     "duration_ms": 1500,
                                     "source_page": self.login_url,
                                     "expected_result": "User authenticated successfully and session initialized.",
-                                    "actual_result": "Authenticated successfully into application context.",
+                                    "actual_result": "User logged in.",
                                 })
+                
+                # Dictionary to track if a device has successfully auto-logged in
+                auto_logged_in_devices = {}
+
 
                 while self.queue and len(self.visited) < self.max_pages:
 
@@ -422,6 +432,14 @@ class WebsiteCrawler:
                             )
 
                             await page.wait_for_timeout(1500)
+
+                            # Auto-detect login if enabled and not already logged in
+                            if not self.login_url and self.username and self.password and not auto_logged_in_devices.get(dev_name):
+                                login_res = await self.perform_login(page, dev_name, auto_detect=True)
+                                if login_res.get("success") and login_res.get("status") != "no_login_form_detected":
+                                    print(f"[{dev_name}] Auto-login successful on {url}")
+                                    auto_logged_in_devices[dev_name] = True
+                                    await page.wait_for_timeout(2000)
 
                             status = response.status if response else None
                             title = await page.title()
