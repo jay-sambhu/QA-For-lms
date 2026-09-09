@@ -8,11 +8,6 @@ import {
   RiCloseLine,
   RiShieldUserLine,
   RiLogoutBoxRLine,
-  RiMailLine,
-  RiKey2Line,
-  RiSettings4Line,
-  RiCheckboxCircleFill,
-  RiSparklingLine,
 } from 'react-icons/ri';
 import { TbCreditCard, TbDeviceDesktop, TbBell, TbCopy, TbCheck } from 'react-icons/tb';
 import { useAuth } from '../../context/AuthContext';

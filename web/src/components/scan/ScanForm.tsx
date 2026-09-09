@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   RiGlobalLine,
   RiLockPasswordLine,
-  RiKey2Line,
   RiUser3Line,
   RiEyeLine,
   RiEyeOffLine,
@@ -33,7 +32,7 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onSubmit, loading, error }) 
   const [url, setUrl] = useState('');
   const [maxPages, setMaxPages] = useState('10');
   const [requiresAuth, setRequiresAuth] = useState(false);
-  const [loginUrl, setLoginUrl] = useState('');
+  const [loginUrl, _setLoginUrl] = useState('');
   const [authUsername, setAuthUsername] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
