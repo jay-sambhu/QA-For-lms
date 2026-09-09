@@ -20,6 +20,7 @@ def setup_test_db():
     yield
 
 
+@patch.dict(os.environ, {"ALLOW_LOCAL_TARGETS": "false"})
 def test_auth_payload_ssrf_and_secret_redaction():
     # Valid login payload
     valid_req = ScanRequest(

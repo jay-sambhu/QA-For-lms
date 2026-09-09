@@ -38,5 +38,10 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=False,
     broker_connection_max_retries=1,
     broker_connection_timeout=2.0,
+    
+    # Also prevent the result backend from retrying indefinitely
+    redis_retry_on_timeout=False,
+    redis_socket_timeout=2.0,
+    result_backend_max_retries=1,
 )
 

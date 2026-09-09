@@ -129,6 +129,7 @@ class TestApiScanEnqueue(unittest.TestCase):
         )
 
 
+    @patch.dict(os.environ, {"ALLOW_LOCAL_TARGETS": "false"})
     def test_create_scan_ssrf_validation_rejects_invalid_url(self):
         """Test API endpoint validates URLs and blocks private/reserved IPs."""
         payload = {
