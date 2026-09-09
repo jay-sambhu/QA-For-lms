@@ -47,7 +47,7 @@ export interface CanonicalExportData {
     needs_manual_review: number;
     informational: number;
     duplicates: number;
-    regression: { new: number; fixed: number; unchanged: number; worsened: number; improved: number };
+    regression: { 'new': number; fixed: number; unchanged: number; worsened: number; improved: number };
   };
   findings: Array<any>;
   testCases: Array<any>;
@@ -58,6 +58,7 @@ export interface CanonicalExportData {
   };
   isDegraded: boolean;
   degradedCount: number;
+  triageDetails?: Array<any>;
 }
 
 /**
@@ -106,7 +107,7 @@ export const extractCanonicalExportData = (results: any, scanId: string | null =
         needs_manual_review: 0,
         informational: 0,
         duplicates: 0,
-        regression: { new: 0, fixed: 0, unchanged: 0, worsened: 0, improved: 0 },
+        regression: { 'new': 0, fixed: 0, unchanged: 0, worsened: 0, improved: 0 },
       },
       findings: [],
       testCases: [],
@@ -228,7 +229,7 @@ export const extractCanonicalExportData = (results: any, scanId: string | null =
       informational: informational,
       duplicates: duplicates,
       regression: {
-        new: reg.new ?? 0,
+        'new': reg.new ?? 0,
         fixed: reg.fixed ?? 0,
         unchanged: reg.unchanged ?? 0,
         worsened: reg.worsened ?? 0,
