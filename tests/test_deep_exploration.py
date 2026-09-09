@@ -1,8 +1,7 @@
 """
 Unit tests for Phase 20 Deep Stateful Exploration, Application State Model, and Console Error Filtering.
 """
-import pytest
-from core.schemas.application_model import ApplicationStateModel, StateTransitionModel
+from core.schemas.application_model import ApplicationStateModel
 from core.bug_detector import QAFindingClassifier
 
 

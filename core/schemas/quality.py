@@ -1,7 +1,7 @@
 """
 Strongly typed Pydantic models for Quality Gates and Scoring.
 """
-from typing import Dict, List, Optional, Any
+from typing import List
 from enum import Enum
 from pydantic import BaseModel, Field
 

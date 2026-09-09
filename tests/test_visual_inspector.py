@@ -1,7 +1,6 @@
 """
 Unit tests for JASUSS RealBrowserVisualInspector.
 """
-import pytest
 from core.visual_inspector import RealBrowserVisualInspector
 
 

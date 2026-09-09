@@ -1,14 +1,12 @@
 import os
 import unittest
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 
 from alembic.config import Config
 from alembic import command
 
-from models import Base, User, Scan
+from models import User, Scan
 from db import get_db_session, SessionLocal, engine, db_url
 
 

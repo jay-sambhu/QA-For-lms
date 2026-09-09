@@ -4,7 +4,7 @@ Autonomous Accessibility & Lightweight Performance Engine (Phase 11).
 import json
 import os
 from typing import Dict, List, Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class PerformanceMetricsModel(BaseModel):

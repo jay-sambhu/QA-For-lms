@@ -8,7 +8,6 @@ Regression Memory, API Testing, Accessibility/Performance Auditing, and Quality 
 
 import argparse
 import asyncio
-import json
 import os
 import sys
 from datetime import datetime

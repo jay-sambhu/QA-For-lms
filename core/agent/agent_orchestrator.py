@@ -4,7 +4,7 @@ Modular Agent Orchestrator & Safety Layer for JASUSS (Phase 12).
 import json
 import os
 import re
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from pydantic import BaseModel, Field
 
 

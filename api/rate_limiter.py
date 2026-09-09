@@ -5,7 +5,7 @@ import redis
 try:
     from config import settings
 except ImportError:
-    from ..config import settings
+    pass
 
 
 # Initialize Redis client (singleton)

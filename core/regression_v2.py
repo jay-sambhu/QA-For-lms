@@ -5,7 +5,7 @@ import json
 import os
 from typing import Dict, List, Optional, Any
 
-from core.schemas.regression import RegressionAnalysisModel, FlakyMetricModel, RegressionStatus
+from core.schemas.regression import RegressionAnalysisModel
 
 
 class RegressionMemoryEngine:

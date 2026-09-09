@@ -2,10 +2,7 @@
 Unit tests for JASUSS Pydantic Schemas.
 """
 from core.schemas.discovery import DiscoveryResultModel, PageModel, ElementModel
-from core.schemas.application_model import ApplicationKnowledgeModel, WorkflowModel
 from core.schemas.test_case import TestCaseModel, TestCategory, TestPriority
-from core.schemas.execution_result import TestExecutionResultModel, TestResultStatus
-from core.schemas.defect import DefectModel, DefectSeverity
 from core.schemas.quality import QualityGateResultModel, OverallQualityStatus
 
 

@@ -2,9 +2,6 @@
 Phase 21 Multi-Login & Session Isolation Verification Suite.
 Validates multi-session authentication, role boundary isolation, and privilege escalation prevention.
 """
-import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock
 
 
 def test_multi_session_role_isolation():

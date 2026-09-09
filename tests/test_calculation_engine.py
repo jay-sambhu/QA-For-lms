@@ -7,16 +7,12 @@ grade boundaries, duration handling, zero-data edge cases, and large datasets.
 """
 
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 from calculation_engine import (
     CalculationEngine,
-    CanonicalQAMetrics,
-    CrawlMetrics,
     FindingMetrics,
-    InteractiveMetrics,
-    QualityScore,
     TestCaseMetrics,
 )
 from qa_report_generator import QAReportGenerator

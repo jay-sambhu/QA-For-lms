@@ -1,5 +1,4 @@
-from test import TestCase, generate_random_vector, fill_redis_with_vectors
-import struct
+from test import TestCase, fill_redis_with_vectors
 import redis.exceptions
 
 class VRANDMEMBERTest(TestCase):

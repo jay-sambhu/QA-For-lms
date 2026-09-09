@@ -5,8 +5,8 @@ Defects:
 2. Search page has horizontal overflow (+5000px) (UI)
 3. Create form accepts negative price -100 without validation error (Validation)
 """
-from fastapi import FastAPI, Form, Request, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import FastAPI, Form, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 app = FastAPI(title="Challenge CRUD App")
 

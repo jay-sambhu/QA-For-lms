@@ -1,7 +1,7 @@
 """
 Strongly typed Pydantic models for Regression & Flakiness Memory.
 """
-from typing import Dict, List, Optional, Any
+from typing import List, Optional
 from enum import Enum
 from pydantic import BaseModel, Field
 

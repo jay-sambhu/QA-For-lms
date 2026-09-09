@@ -4,11 +4,10 @@ Persistent Application Knowledge Model Manager for JASUSS.
 import json
 import os
 import time
-from typing import Dict, List, Optional, Any
+from typing import Dict, Any
 from urllib.parse import urlparse
 
 from core.schemas.application_model import ApplicationKnowledgeModel, WorkflowModel, StateTransitionModel
-from core.schemas.discovery import DiscoveryResultModel, PageModel
 
 
 class ApplicationKnowledgeManager:

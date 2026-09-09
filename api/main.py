@@ -4,14 +4,13 @@ import logging
 import os
 import subprocess
 import sys
-import time
 from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import urlparse
 from uuid import uuid4, UUID
 from dotenv import load_dotenv
 
-from fastapi import Depends, FastAPI, HTTPException, Header, Request, BackgroundTasks
+from fastapi import Depends, FastAPI, HTTPException, Header, BackgroundTasks
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, SecretStr, field_validator
 from supabase import create_client, Client
@@ -19,16 +18,15 @@ from supabase import create_client, Client
 try:
     from .rate_limiter import rate_limit_dependency
 except ImportError:
-    from api.rate_limiter import rate_limit_dependency
+    pass
 
 try:
     from db import get_db, SessionLocal, engine
     from models import Scan, Base, User
     from worker.tasks import process_query_task
 except ImportError:
-    from ..db import get_db, SessionLocal, engine
+    from ..db import SessionLocal, engine
     from ..models import Scan, Base
-    from ..worker.tasks import process_query_task
 
 try:
     Base.metadata.create_all(bind=engine)

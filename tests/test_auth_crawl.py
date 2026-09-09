@@ -10,8 +10,6 @@ from models import Scan, Base
 from db import SessionLocal, engine
 from crawler.crawler import WebsiteCrawler
 from qa_report_generator import QAReportGenerator
-from calculation_engine import CalculationEngine
-from security.redactor import SecretRedactor
 
 
 @pytest.fixture(autouse=True)

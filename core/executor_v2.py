@@ -3,11 +3,10 @@ Self-Healing Autonomous Test Case Executor (V2 Engine).
 Resolves element locators through a stable hierarchy: Accessibility Role -> Label -> Test ID -> Semantic Text -> CSS/XPath.
 Handles controlled recovery when locators drift and records healing audit records.
 """
-import asyncio
 import json
 import os
 import time
-from typing import Dict, List, Optional, Any
+from typing import List, Optional, Any
 
 from core.oracle.assertion_engine import AssertionEngine
 from core.schemas.execution_result import TestExecutionResultModel, TestResultStatus, HealingRecordModel, AssertionResultModel

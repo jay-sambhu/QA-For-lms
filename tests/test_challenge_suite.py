@@ -3,10 +3,9 @@ Unit and Integration Tests for Phase 19 Autonomous QA Challenge Suite & Scoring 
 """
 import os
 import tempfile
-import pytest
 
-from benchmarks.autonomous.defect_registry import get_ground_truth_defects, HIDDEN_DEFECT_REGISTRY
-from benchmarks.autonomous.challenge_registry import get_all_challenge_configs, CHALLENGE_APPS
+from benchmarks.autonomous.defect_registry import get_ground_truth_defects
+from benchmarks.autonomous.challenge_registry import get_all_challenge_configs
 from benchmarks.autonomous.scoring import evaluate_scan_against_ground_truth
 from benchmarks.autonomous.report_generator import generate_challenge_suite_report
 

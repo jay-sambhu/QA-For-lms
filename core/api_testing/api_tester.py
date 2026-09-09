@@ -4,7 +4,7 @@ Autonomous API Testing & Schema Contract Verification Engine (Phase 10).
 import json
 import os
 from typing import Dict, List, Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class ApiTestCaseModel(BaseModel):

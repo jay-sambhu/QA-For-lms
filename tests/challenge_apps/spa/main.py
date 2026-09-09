@@ -6,7 +6,7 @@ Defects:
 3. Settings view contains unconstrained element causing layout overflow (UI Overflow)
 """
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 
 app = FastAPI(title="Challenge SPA App")
 

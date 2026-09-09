@@ -5,11 +5,11 @@ Extends base crawler capabilities with checkpointing, dynamic route mapping, and
 import json
 import os
 import time
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional, Any
 
 from crawler.crawler import WebsiteCrawler
 from core.discovery.route_normalizer import extract_route_template
-from core.schemas.discovery import DiscoveryResultModel, PageModel, ElementModel, ApiEndpointModel, FormModel
+from core.schemas.discovery import ElementModel, FormModel
 
 
 class ResumableDiscoveryEngine:

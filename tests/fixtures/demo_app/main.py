@@ -2,8 +2,8 @@
 Full QA Benchmark Application with Intentional Seeded Defects (Phase 18).
 """
 import time
-from fastapi import FastAPI, HTTPException, Response, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 
 app = FastAPI(title="JASUSS Phase 18 Comprehensive QA Benchmark App")
 

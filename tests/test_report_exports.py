@@ -8,14 +8,10 @@ maintain 100% mathematical consistency without calculation drift, NaN/Infinity, 
 
 import json
 import unittest
-from datetime import datetime
 from pathlib import Path
 
 from calculation_engine import (
     CalculationEngine,
-    CanonicalQAMetrics,
-    FindingMetrics,
-    TestCaseMetrics,
 )
 from qa_report_generator import QAReportGenerator
 
@@ -205,7 +201,6 @@ class TestReportExports(unittest.TestCase):
 
     def test_download_endpoints_naming_and_headers(self):
         """Verify that download endpoints return canonical Content-Disposition and media_types."""
-        import tempfile
         from fastapi.testclient import TestClient
         from api.main import app, ROOT_DIR
         from db import SessionLocal

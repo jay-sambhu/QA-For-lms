@@ -3,7 +3,6 @@ Unit tests for JASUSS ExportReportValidator.
 """
 import os
 import tempfile
-import pytest
 from core.export_validator import ExportReportValidator
 
 

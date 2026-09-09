@@ -4,7 +4,7 @@ Outputs detailed JSON and Markdown evaluation scorecards.
 """
 import os
 import json
-from typing import List, Dict, Any
+from typing import List, Dict
 from benchmarks.autonomous.scoring import EvaluationScorecard
 
 

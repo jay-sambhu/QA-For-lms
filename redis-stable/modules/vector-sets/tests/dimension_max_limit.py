@@ -1,5 +1,4 @@
 from test import TestCase, generate_random_vector
-import struct
 import redis.exceptions
 
 MAX_DIM = 65536

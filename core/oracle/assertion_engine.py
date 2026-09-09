@@ -1,7 +1,7 @@
 """
 Autonomous Multi-Source Assertion Engine and Oracle Layer for JASUSS.
 """
-from typing import Any, Dict, List, Optional
+from typing import List
 from core.schemas.execution_result import AssertionResultModel, TestResultStatus
 
 

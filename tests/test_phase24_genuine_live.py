@@ -6,10 +6,8 @@ import os
 import sys
 import time
 import requests
-import pytest
 import subprocess
 from core.multi_session_manager import MultiSessionManager
-from core.visual_inspector import RealBrowserVisualInspector
 from core.export_validator import ExportReportValidator
 
 

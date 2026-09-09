@@ -3,8 +3,8 @@ Objective Metric Scoring Engine for Phase 19 Autonomous QA Benchmarks.
 Calculates Precision, Recall, F1, Autonomy Rate, Evidence Completeness, and Release Gate status.
 """
 from typing import Dict, List, Any
-from dataclasses import dataclass, asdict
-from benchmarks.autonomous.defect_registry import GroundTruthDefect, get_ground_truth_defects
+from dataclasses import dataclass
+from benchmarks.autonomous.defect_registry import get_ground_truth_defects
 
 
 @dataclass

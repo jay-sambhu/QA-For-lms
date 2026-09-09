@@ -1,7 +1,6 @@
 """
 Unit tests for JASUSS MultiSessionManager.
 """
-import pytest
 from core.multi_session_manager import MultiSessionManager
 
 

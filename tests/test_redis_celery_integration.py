@@ -1,15 +1,13 @@
-import os
-import sys
 import time
 import threading
 import unittest
 import fakeredis
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from worker.celery_app import celery_app
 from worker.tasks import process_query_task
-from models import Scan, Base
-from db import SessionLocal, engine
+from models import Base
+from db import engine
 
 
 class TestRealRedisCeleryIntegration(unittest.TestCase):

@@ -5,7 +5,7 @@ import json
 import os
 import time
 from typing import Dict, List, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class FailurePatternModel(BaseModel):

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from itertools import combinations, chain
-from enum import Enum, auto
+from enum import auto
 
 
 LINUX = 'linux'

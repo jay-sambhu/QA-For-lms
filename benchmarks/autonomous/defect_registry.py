@@ -3,7 +3,7 @@ Ground Truth Hidden Defect Registry for JASUSS Challenge Applications.
 IMPORTANT: This module is strictly used by the evaluation scoring pipeline.
 It is NEVER exposed to the JASUSS agent during scan execution.
 """
-from typing import Dict, List, Any
+from typing import Dict, List
 from dataclasses import dataclass
 
 

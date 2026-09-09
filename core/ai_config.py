@@ -5,7 +5,7 @@ Supports Google Gemini, OpenAI, Anthropic Claude, DeepSeek, and Local LLM endpoi
 
 import os
 from typing import Dict, Any, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 class AIProviderMeta(BaseModel):
     id: str

@@ -2,9 +2,6 @@
 Phase 21 SPA Deep State Transitions & Multi-Step Form Wizard Integration Tests.
 Validates client-side SPA route transitions, dynamic button triggers, and multi-step wizard state persistence.
 """
-import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock
 from core.schemas.application_model import ApplicationStateModel, StateTransitionModel
 from core.test_generator_v2 import AutonomousTestGenerator
 

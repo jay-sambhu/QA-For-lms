@@ -4,7 +4,6 @@ Generates detailed, observable test cases across Functional, Auth, Authorization
 """
 import json
 import os
-import time
 from typing import Dict, List, Any
 
 from core.schemas.test_case import TestCaseModel, TestCategory, TestPriority, TestStepModel

@@ -1,5 +1,4 @@
 from test import TestCase, generate_random_vector
-import struct
 
 class VRANDMEMBERPingPongRegressionTest(TestCase):
     def getname(self):

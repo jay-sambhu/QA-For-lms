@@ -3,8 +3,6 @@ JASUSS Phase 23 Autonomous Real-Browser System Validation Suite.
 Executes live Playwright Chromium browser interactions, multi-session auth context isolation, real-browser visual inspection, and export report verification.
 """
 import os
-import json
-import pytest
 from core.multi_session_manager import MultiSessionManager
 from core.visual_inspector import RealBrowserVisualInspector
 from core.export_validator import ExportReportValidator

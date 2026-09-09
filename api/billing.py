@@ -2,9 +2,9 @@
 Billing & Subscription API Endpoints for JASUSS Suite (Powered by Nexus)
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Header
+from fastapi import APIRouter, HTTPException, Request, Header
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
+from typing import Optional, Any
 from datetime import datetime, timezone
 import uuid
 import logging

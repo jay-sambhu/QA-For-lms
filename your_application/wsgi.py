@@ -1,5 +1,4 @@
 import os
-import sys
 
 # Fail-safe launcher for Render default 'gunicorn your_application.wsgi' command.
 # Replaces gunicorn process with Uvicorn running FastAPI api.main:app.

@@ -8,7 +8,6 @@ QA report in JSON and Markdown formats for human QA testers.
 
 import json
 import os
-import re
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path

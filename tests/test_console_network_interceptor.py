@@ -1,7 +1,6 @@
 """
 Integration tests for JASUSS Console & Network Error Interceptor Engine.
 """
-import pytest
 from core.bug_detector import QAFindingClassifier
 
 

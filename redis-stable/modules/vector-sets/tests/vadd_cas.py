@@ -2,7 +2,6 @@ from test import TestCase, generate_random_vector
 import threading
 import struct
 import math
-import time
 import random
 from typing import List, Dict
 
