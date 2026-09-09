@@ -39,6 +39,7 @@ class TestInteractiveTester(unittest.TestCase):
         mock_pw_context = AsyncMock()
         mock_browser = AsyncMock()
         mock_context = AsyncMock()
+        mock_context.on = MagicMock()
         mock_page = AsyncMock()
         
         mock_playwright.return_value.__aenter__.return_value = mock_pw_context
@@ -115,6 +116,7 @@ class TestInteractiveTester(unittest.TestCase):
         mock_pw_context = AsyncMock()
         mock_browser = AsyncMock()
         mock_context = AsyncMock()
+        mock_context.on = MagicMock()
         mock_page = AsyncMock()
         
         mock_playwright.return_value.__aenter__.return_value = mock_pw_context

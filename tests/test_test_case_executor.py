@@ -42,6 +42,7 @@ class TestTestCaseExecutor(unittest.IsolatedAsyncioTestCase):
         mock_p = AsyncMock()
         mock_browser = AsyncMock()
         mock_context = AsyncMock()
+        mock_context.on = MagicMock()
         mock_page = AsyncMock()
         mock_locator = AsyncMock()
         
@@ -78,6 +79,7 @@ class TestTestCaseExecutor(unittest.IsolatedAsyncioTestCase):
         mock_p = AsyncMock()
         mock_browser = AsyncMock()
         mock_context = AsyncMock()
+        mock_context.on = MagicMock()
         mock_page = AsyncMock()
         mock_locator = AsyncMock()
         
