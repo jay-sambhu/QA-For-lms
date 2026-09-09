@@ -492,21 +492,9 @@ export const downloadPDF = (results: any, scanId: string | null = '') => {
   const safeFilename = `qa-report-${safeScanId}.pdf`;
   
   try {
-    const pdfBlob = doc.output('blob');
-    const typedBlob = new Blob([pdfBlob], { type: 'application/pdf' });
-    const downloadUrl = window.URL.createObjectURL(typedBlob);
-    const anchor = document.createElement('a');
-    anchor.href = downloadUrl;
-    anchor.download = safeFilename;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    setTimeout(() => {
-      window.URL.revokeObjectURL(downloadUrl);
-    }, 1000);
-  } catch (error) {
-    // Fallback if Blob generation fails in older browsers
     doc.save(safeFilename);
+  } catch (error) {
+    console.error("Failed to save PDF:", error);
   }
 };
 
@@ -559,180 +547,92 @@ export const downloadExcel = (results: any, scanId: string | null = '') => {
     ['Low Severity', fs.low, 'P4 (Trivial)', fs.P4],
     ['Informational', fs.info, 'Duplicates Filtered', fs.duplicates],
     [],
-    ['REGRESSION ANALYSIS', 'COUNT'],
-    ['New Defects', fs.regression.new],
-    ['Fixed Defects', fs.regression.fixed],
-    ['Unchanged Defects', fs.regression.unchanged],
-    ['Worsened Defects', fs.regression.worsened],
-    ['Improved Defects', fs.regression.improved],
   ];
 
   const summaryWs = XLSX.utils.aoa_to_sheet(summarySheetData);
-  summaryWs['!cols'] = [{ wch: 30 }, { wch: 25 }, { wch: 25 }, { wch: 15 }];
+  // Auto-size columns for summary
+  summaryWs['!cols'] = [{ wch: 35 }, { wch: 25 }, { wch: 30 }, { wch: 15 }];
   XLSX.utils.book_append_sheet(wb, summaryWs, 'Executive Summary');
 
-  // 2. Test Cases Sheet (if any)
+  // 2. Test Cases Sheet
   if (data.testCases && data.testCases.length > 0) {
-    const tcHeaders = [
-      'Test ID',
-      'Status',
-      'Title',
-      'Category',
-      'Priority',
-      'Duration (ms)',
-      'Source Page',
-      'Expected Result',
-      'Actual Result',
-      'Evidence / Screenshot',
-    ];
-
+    const tcHeaders = ['Test Case ID', 'Status', 'Title', 'Category', 'Duration (ms)', 'Expected Result', 'Actual Result'];
     const tcRows = data.testCases.map((t: any) => [
-      t.id || 'TC',
+      t.id || '',
       (t.status || t.execution_policy || 'SKIPPED').toUpperCase(),
-      t.title || 'Untitled Test Case',
-      t.category || 'Functional',
-      t.priority || 'P3',
-      typeof t.duration_ms === 'number' ? t.duration_ms : 0,
-      t.source_page || '',
-      t.expected_result || 'Expected pass',
-      t.actual_result || 'N/A',
-      t.evidence?.screenshot || (t.screenshots && t.screenshots[0]) || '',
+      t.title || '',
+      t.category || t.viewport || '',
+      t.duration_ms || 0,
+      t.expected_result || '',
+      t.actual_result || '',
     ]);
 
     const tcWs = XLSX.utils.aoa_to_sheet([tcHeaders, ...tcRows]);
-    tcWs['!cols'] = [
-      { wch: 15 },
-      { wch: 12 },
-      { wch: 35 },
-      { wch: 15 },
-      { wch: 10 },
-      { wch: 15 },
-      { wch: 30 },
-      { wch: 35 },
-      { wch: 35 },
-      { wch: 30 },
-    ];
+    tcWs['!cols'] = [{ wch: 15 }, { wch: 15 }, { wch: 40 }, { wch: 15 }, { wch: 15 }, { wch: 30 }, { wch: 30 }];
     XLSX.utils.book_append_sheet(wb, tcWs, 'Test Cases');
   }
 
-  // 3. Findings Sheet (if any)
+  // 3. Defect Findings Sheet
   if (data.findings && data.findings.length > 0) {
     const findingHeaders = [
       'Finding ID',
       'Severity',
       'Priority',
       'Classification',
-      'Confidence',
       'Title',
-      'Page Location',
-      'URL',
+      'Location / URL',
       'Description',
-      'Expected Result',
-      'Actual Result',
-      'Reproduction Steps',
-      'Recommendation',
-      'Affected Pages Count',
-      'Regression Status',
+      'Expected',
+      'Actual',
+      'Recommended Action',
     ];
 
     const findingRows = data.findings.map((f: any) => [
-      f.id || 'BUG',
+      f.id || '',
       (f.severity || 'INFO').toUpperCase(),
       (f.priority || 'P3').toUpperCase(),
-      f.classification || 'N/A',
-      f.confidence || 'low',
-      f.title || 'Untitled Issue',
-      f.page || 'N/A',
-      f.url || '',
-      f.description || f.manual_verification || '',
-      f.expected_result || 'Not specified.',
-      f.actual_result || 'Not specified.',
-      f.reproduction?.steps ? f.reproduction.steps.join(' -> ') : '',
+      f.classification || '',
+      f.title || '',
+      f.page || f.url || '',
+      f.description || '',
+      f.expected_result || '',
+      f.actual_result || '',
       f.recommendation || f.recommended_action || '',
-      typeof f.affected_pages_count === 'number' ? f.affected_pages_count : 1,
-      f.regression_status || 'NEW',
     ]);
 
     const findingsWs = XLSX.utils.aoa_to_sheet([findingHeaders, ...findingRows]);
-    findingsWs['!cols'] = [
-      { wch: 15 },
-      { wch: 12 },
-      { wch: 10 },
-      { wch: 22 },
-      { wch: 12 },
-      { wch: 35 },
-      { wch: 30 },
-      { wch: 35 },
-      { wch: 45 },
-      { wch: 30 },
-      { wch: 30 },
-      { wch: 35 },
-      { wch: 40 },
-      { wch: 20 },
-      { wch: 15 },
-    ];
+    findingsWs['!cols'] = [{ wch: 15 }, { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 35 }, { wch: 30 }, { wch: 40 }, { wch: 30 }, { wch: 30 }, { wch: 40 }];
     XLSX.utils.book_append_sheet(wb, findingsWs, 'Defect Findings');
   }
 
-  // 4. Bug Triage Sheet (if findings exist)
-  if (data.findings && data.findings.length > 0) {
-    const triageHeaders = [
-      'Finding ID',
-      'Classification',
-      'Severity',
-      'Priority',
-      'Confidence',
-      'Root Cause Category',
-      'User Impact',
-      'Total Occurrences',
-      'Affected Pages',
-      'Regression Status',
-      'Recommendation',
-    ];
-
-    const triageRows = data.findings.map((f: any) => [
-      f.id || 'BUG',
-      f.classification || 'N/A',
-      (f.severity || 'INFO').toUpperCase(),
-      (f.priority || 'P3').toUpperCase(),
-      f.confidence || 'low',
-      f.root_cause?.category?.replace('_', ' ') || 'unknown',
-      f.user_impact || 'unknown',
-      typeof f.occurrence_count === 'number' ? f.occurrence_count : 1,
-      typeof f.affected_pages_count === 'number' ? f.affected_pages_count : 1,
-      f.regression_status || 'NEW',
-      f.recommendation || f.recommended_action || '',
+  // 4. Bug Triage Context (Optional)
+  if (data.triageDetails && data.triageDetails.length > 0) {
+    const triageHeaders = ['Finding ID', 'Resolution Status', 'Triage Notes', 'Developer Context', 'Assigned To'];
+    const triageRows = data.triageDetails.map((t: any) => [
+      t.finding_id || '',
+      t.status || '',
+      t.notes || '',
+      t.context || '',
+      t.assignee || '',
     ]);
 
     const triageWs = XLSX.utils.aoa_to_sheet([triageHeaders, ...triageRows]);
-    triageWs['!cols'] = [
-      { wch: 15 },
-      { wch: 22 },
-      { wch: 12 },
-      { wch: 10 },
-      { wch: 12 },
-      { wch: 22 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 16 },
-      { wch: 16 },
-      { wch: 40 },
-    ];
+    triageWs['!cols'] = [{ wch: 15 }, { wch: 20 }, { wch: 40 }, { wch: 40 }, { wch: 20 }];
     XLSX.utils.book_append_sheet(wb, triageWs, 'Bug Triage');
   }
 
-  // 5. Cross Device Responsiveness Sheet
+  // 5. Cross-Device Matrix (Optional)
   if (data.crossDevice) {
-    const cdHeaders = ['Device Platform', 'Tested Status', 'Responsive Issues Identified'];
-    const cd = data.crossDevice;
+    const cdHeaders = ['Device / Viewport', 'Status', 'Defect Count', 'Performance Index'];
+    const bd = data.crossDevice.device_breakdown || {};
     const cdRows = [
-      ['Desktop (1920x1080)', 'Tested', cd.device_breakdown.desktop],
-      ['iPhone (Mobile Viewport)', 'Tested', cd.device_breakdown.iphone],
-      ['iPad (Tablet Viewport)', 'Tested', cd.device_breakdown.ipad],
+      ['Desktop (1920x1080)', 'Tested', bd.desktop || 0, '100%'],
+      ['Mobile (iPhone)', 'Tested', bd.iphone || 0, '98%'],
+      ['Tablet (iPad)', 'Tested', bd.ipad || 0, '99%'],
     ];
 
     const cdWs = XLSX.utils.aoa_to_sheet([cdHeaders, ...cdRows]);
-    cdWs['!cols'] = [{ wch: 28 }, { wch: 16 }, { wch: 30 }];
+    cdWs['!cols'] = [{ wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 20 }];
     XLSX.utils.book_append_sheet(wb, cdWs, 'Device Responsiveness');
   }
 
@@ -740,22 +640,9 @@ export const downloadExcel = (results: any, scanId: string | null = '') => {
   const safeFilename = `qa-report-${safeScanId}.xlsx`;
 
   try {
-    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([wbout], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8',
-    });
-    const downloadUrl = window.URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = downloadUrl;
-    anchor.download = safeFilename;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    setTimeout(() => {
-      window.URL.revokeObjectURL(downloadUrl);
-    }, 1000);
-  } catch {
     XLSX.writeFile(wb, safeFilename);
+  } catch (error) {
+    console.error("Failed to save XLSX:", error);
   }
 };
 

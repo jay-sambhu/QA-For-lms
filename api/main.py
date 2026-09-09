@@ -23,7 +23,7 @@ except ImportError:
 
 try:
     from db import get_db, SessionLocal, engine
-    from models import Scan, Base
+    from models import Scan, Base, User
     from worker.tasks import process_query_task
 except ImportError:
     from ..db import get_db, SessionLocal, engine
@@ -237,6 +237,22 @@ def require_user(authorization: str = Header(None)):
 
     if not user:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Sync user to local database
+    try:
+        with SessionLocal() as db:
+            db_user = db.query(User).filter(User.id == user.id).first()
+            if not db_user:
+                db_user = User(
+                    id=user.id,
+                    email=user.email,
+                    role="user",
+                    plan_tier="free"
+                )
+                db.add(db_user)
+                db.commit()
+    except Exception as e:
+        logger.error(f"Failed to sync user {user.id} to local DB: {e}")
 
     return user
 
