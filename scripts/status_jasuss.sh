@@ -62,4 +62,13 @@ else
     echo -e "${C_RED}[✕] Database (qa_agent.db):    MISSING${C_RESET}"
 fi
 
+# Check Supabase Auth Configuration
+if [ -f "$ROOT_DIR/scripts/verify_auth_config.py" ]; then
+    if python3 "$ROOT_DIR/scripts/verify_auth_config.py" >/dev/null 2>&1; then
+        echo -e "${C_GREEN}[✓] Supabase Auth & Domains:   CONFIGURED & OPERATIONAL${C_RESET}"
+    else
+        echo -e "${C_RED}[✕] Supabase Auth & Domains:   CONFIGURATION MISMATCH (Run scripts/verify_auth_config.py)${C_RESET}"
+    fi
+fi
+
 echo -e "${C_CYAN}=======================================================================${C_RESET}"

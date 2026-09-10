@@ -49,10 +49,36 @@ def test_cors_vercel_origin_allowed(client):
     response = client.options(
         "/api/health",
         headers={
-            "Origin": "https://web-two-flame-39.vercewl.app",
+            "Origin": "https://web-two-flame-39.vercel.app",
             "Access-Control-Request-Method": "GET",
         },
     )
     assert response.status_code == 200
     assert response.headers.get("access-control-allow-origin") == "https://web-two-flame-39.vercel.app"
     assert response.headers.get("access-control-allow-credentials") == "true"
+
+def test_cors_vercel_preview_pattern_allowed(client):
+    """Verify that dynamic preview deployments matching web-*.vercel.app receive CORS approval."""
+    preview_origin = "https://web-preview-feature-jay-sambhus-projects.vercel.app"
+    response = client.options(
+        "/api/health",
+        headers={
+            "Origin": preview_origin,
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == preview_origin
+    assert response.headers.get("access-control-allow-credentials") == "true"
+
+def test_cors_untrusted_vercel_origin_rejected(client):
+    """Verify that unrelated Vercel origins not belonging to this project are rejected."""
+    untrusted_origin = "https://some-other-persons-app.vercel.app"
+    response = client.options(
+        "/api/health",
+        headers={
+            "Origin": untrusted_origin,
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.headers.get("access-control-allow-origin") is None
