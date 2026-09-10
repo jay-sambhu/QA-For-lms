@@ -34,3 +34,7 @@ node_modules/
 .next/
 web/.next/
 web/node_modules/
+
+# Local Redis Build Artifacts
+redis-stable/
+redis-stable.tar.gz
