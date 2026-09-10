@@ -49,7 +49,7 @@ def test_cors_vercel_origin_allowed(client):
     response = client.options(
         "/api/health",
         headers={
-            "Origin": "https://web-two-flame-39.vercel.app",
+            "Origin": "https://web-two-flame-39.vercewl.app",
             "Access-Control-Request-Method": "GET",
         },
     )
