@@ -2,10 +2,6 @@ import os
 import time
 from fastapi import HTTPException, Request, Depends
 import redis
-try:
-    from config import settings
-except ImportError:
-    pass
 
 
 # Initialize Redis client (singleton)

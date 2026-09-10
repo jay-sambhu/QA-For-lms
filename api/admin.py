@@ -2,7 +2,7 @@
 Admin Dashboard & Platform Telemetry API Endpoints for JASUSS Suite (Powered by Nexus)
 """
 
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Depends, Header
 from typing import Dict, Any
 from datetime import datetime, timezone
 import os
@@ -16,7 +16,39 @@ from core.ai_config import (
     AI_PROVIDERS_REGISTRY,
 )
 
-admin_router = APIRouter(prefix="/api/v1/admin", tags=["Admin & System Telemetry"])
+
+def require_admin(authorization: str = Header(None)):
+    """
+    Admin-only auth dependency.
+    Verifies the bearer token via Supabase and confirms the user has an admin role.
+    """
+    # Import here to avoid circular import (admin.py is imported by main.py)
+    try:
+        from api.main import require_user
+    except ImportError:
+        from main import require_user
+
+    user = require_user(authorization)
+
+    # Derive role from Supabase user metadata or local DB field
+    role = (
+        getattr(user, "role", None)
+        or (getattr(user, "user_metadata", None) or {}).get("role")
+        or "user"
+    )
+    if str(role).lower() != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required",
+        )
+    return user
+
+
+admin_router = APIRouter(
+    prefix="/api/v1/admin",
+    tags=["Admin & System Telemetry"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 @admin_router.get("/metrics")

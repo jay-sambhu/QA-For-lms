@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   RiGlobalLine,
   RiLockPasswordLine,
-  RiKey2Line,
   RiUser3Line,
   RiEyeLine,
   RiEyeOffLine,

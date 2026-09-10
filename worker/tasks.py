@@ -9,7 +9,6 @@ if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 
 try:
-    from config import settings
     from worker.celery_app import celery_app
 except ImportError:
     from .celery_app import celery_app

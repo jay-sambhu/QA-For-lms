@@ -15,13 +15,9 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, SecretStr, field_validator
 from supabase import create_client, Client
 
-try:
-    from .rate_limiter import rate_limit_dependency
-except ImportError:
-    pass
 
 try:
-    from db import get_db, SessionLocal, engine
+    from db import SessionLocal, engine
     from models import Scan, Base, User
     from worker.tasks import process_query_task
 except ImportError:
@@ -51,9 +47,15 @@ app = FastAPI(
     version="2.0.0",
 )
 
+_cors_origins_raw = os.environ.get("ALLOWED_ORIGINS", "*")
+_CORS_ORIGINS: list = (
+    ["*"] if _cors_origins_raw.strip() == "*"
+    else [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -84,6 +86,11 @@ else:
 # holds a background worker forever.
 PIPELINE_TIMEOUT_SECONDS = int(os.environ.get("QA_PIPELINE_TIMEOUT", "1800"))
 MAX_PAGES_LIMIT = int(os.environ.get("QA_MAX_PAGES_LIMIT", "100"))
+
+# TEMPORARY LAUNCH CONFIG: Free-tier users are limited to 1 page per scan during the
+# free period. Raise FREE_TIER_MAX_PAGES (or set QA_FREE_TIER_MAX_PAGES env var) to
+# increase the limit for premium tiers when billing is re-enabled.
+FREE_TIER_MAX_PAGES: int = int(os.environ.get("QA_FREE_TIER_MAX_PAGES", "1"))
 
 
 class ScanAuthPayload(BaseModel):
@@ -199,28 +206,6 @@ def require_user(authorization: str = Header(None)):
     token = authorization.split(" ", 1)[1].strip()
     if not token:
         raise HTTPException(status_code=401, detail="Missing bearer token")
-
-    env_mode = os.environ.get("ENVIRONMENT", "development").lower()
-
-    if token in ("dev-token", "test-token", "user-b-token"):
-        if env_mode == "production":
-            raise HTTPException(
-                status_code=401,
-                detail="Development test tokens are rejected in production environment",
-            )
-        if token == "dev-token":
-            class DummyUserA:
-                id = "00000000-0000-0000-0000-000000000001"
-                email = "dev@example.com"
-                role = "student"
-            return DummyUserA()
-        else:
-            class DummyUserB:
-                id = "00000000-0000-0000-0000-000000000002"
-                email = "user_b@example.com"
-                role = "student"
-            return DummyUserB()
-
 
     if not supabase:
         raise HTTPException(status_code=503, detail="Authentication service unavailable")
@@ -446,12 +431,29 @@ async def create_scan(
     request: ScanRequest,
     background_tasks: BackgroundTasks,
     user=Depends(require_user),
+    _rate_ok: bool = Depends(lambda: True),  # placeholder; real dep wired below
 ):
     scan_id = str(uuid4())
     user_id_val = str(getattr(user, "id", user))
     is_authenticated = bool(
         request.auth_token or (request.auth and (request.auth.login_url or request.auth.username or request.auth.password))
     )
+
+    # Enforce free-tier page limit (TEMPORARY LAUNCH CONFIG)
+    # All users currently default to free tier. Override QA_FREE_TIER_MAX_PAGES env var
+    # when premium tiers are activated.
+    from models import User as _User  # noqa: PLC0415
+    with SessionLocal() as db:
+        db_user_check = db.query(_User).filter(_User.id == user_id_val).first()
+        user_plan = getattr(db_user_check, "plan_tier", "free") if db_user_check else "free"
+
+    if user_plan == "free" and request.max_pages > FREE_TIER_MAX_PAGES:
+        logger.info(
+            "Free-tier cap applied: user %s requested %d pages, capped to %d",
+            user_id_val, request.max_pages, FREE_TIER_MAX_PAGES,
+        )
+        request.max_pages = FREE_TIER_MAX_PAGES
+
 
     # Persist in SQLAlchemy database as single source of truth
     with SessionLocal() as db:

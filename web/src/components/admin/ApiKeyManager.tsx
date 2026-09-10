@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { RiKey2Line, RiAddLine, RiDeleteBinLine, RiRefreshLine } from 'react-icons/ri';
 import styles from '../../app/page.module.css';
 
