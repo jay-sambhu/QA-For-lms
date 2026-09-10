@@ -1,48 +1,114 @@
 import os
+import tempfile
 import unittest
 import uuid
-from sqlalchemy import text
+from sqlalchemy import text, create_engine
+from sqlalchemy.orm import sessionmaker, scoped_session
 
 from alembic.config import Config
 from alembic import command
 
 from models import User, Scan
-from db import get_db_session, SessionLocal, engine, db_url
+import db
+
+
+def SessionLocal():
+    return db.SessionLocal()
+
+
+def get_db_session():
+    return db.get_db_session()
 
 
 class TestAlembicMigrations(unittest.TestCase):
     """Test Alembic migration upgrade and downgrade lifecycle."""
 
-    def setUp(self):
-        self.alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "..", "alembic.ini"))
+    @classmethod
+    def setUpClass(cls):
+        cls.temp_file = tempfile.NamedTemporaryFile(suffix="_alembic_test.db", delete=False)
+        cls.temp_file.close()
+        cls.test_db_url = f"sqlite:///{cls.temp_file.name}"
+        cls.alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "..", "alembic.ini"))
+        cls.alembic_cfg.set_main_option("sqlalchemy.url", cls.test_db_url)
+        cls.engine = create_engine(cls.test_db_url, connect_args={"check_same_thread": False})
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.engine.dispose()
+        if os.path.exists(cls.temp_file.name):
+            try:
+                os.remove(cls.temp_file.name)
+            except OSError:
+                pass
 
     def test_alembic_upgrade_and_downgrade(self):
         """Verify upgrade to head, downgrade to base, and upgrade back to head."""
-        # 1. Downgrade to base
-        command.downgrade(self.alembic_cfg, "base")
-        
-        with engine.connect() as conn:
-            # Table scans should not exist or be empty
-            if db_url.startswith("sqlite"):
-                res = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='scans'")).fetchall()
-                self.assertEqual(len(res), 0)
-
-        # 2. Upgrade to head
+        # 1. Upgrade fresh isolated database to head
         command.upgrade(self.alembic_cfg, "head")
+        with self.engine.connect() as conn:
+            res = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='scans'")).fetchall()
+            self.assertEqual(len(res), 1)
 
-        with engine.connect() as conn:
-            if db_url.startswith("sqlite"):
-                res = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='scans'")).fetchall()
-                self.assertEqual(len(res), 1)
+        # 2. Downgrade to base
+        command.downgrade(self.alembic_cfg, "base")
+        with self.engine.connect() as conn:
+            res = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='scans'")).fetchall()
+            self.assertEqual(len(res), 0)
+
+        # 3. Upgrade back to head
+        command.upgrade(self.alembic_cfg, "head")
+        with self.engine.connect() as conn:
+            res = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='scans'")).fetchall()
+            self.assertEqual(len(res), 1)
 
 
 class TestDatabaseUnifiedCRUD(unittest.TestCase):
     """Test unified SQLAlchemy database operations and transaction safety."""
 
+    @classmethod
+    def setUpClass(cls):
+        cls.temp_file = tempfile.NamedTemporaryFile(suffix="_crud_test.db", delete=False)
+        cls.temp_file.close()
+        cls.test_db_url = f"sqlite:///{cls.temp_file.name}"
+        cls.alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "..", "alembic.ini"))
+        cls.alembic_cfg.set_main_option("sqlalchemy.url", cls.test_db_url)
+
+        # Upgrade isolated database to head
+        command.upgrade(cls.alembic_cfg, "head")
+
+        cls.engine = create_engine(cls.test_db_url, connect_args={"check_same_thread": False})
+        cls.session_factory = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=cls.engine))
+
+        cls.orig_engine = db.engine
+        cls.orig_session = db.SessionLocal
+        cls.orig_db_url = db.db_url
+
+        db.engine = cls.engine
+        db.SessionLocal = cls.session_factory
+        db.db_url = cls.test_db_url
+
+        import api.main
+        cls.orig_api_session = api.main.SessionLocal
+        api.main.SessionLocal = cls.session_factory
+
+    @classmethod
+    def tearDownClass(cls):
+        import api.main
+        api.main.SessionLocal = cls.orig_api_session
+
+        db.engine = cls.orig_engine
+        db.SessionLocal = cls.orig_session
+        db.db_url = cls.orig_db_url
+
+        cls.session_factory.remove()
+        cls.engine.dispose()
+        if os.path.exists(cls.temp_file.name):
+            try:
+                os.remove(cls.temp_file.name)
+            except OSError:
+                pass
+
     def setUp(self):
-        # Ensure schema is up to date
-        alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "..", "alembic.ini"))
-        command.upgrade(alembic_cfg, "head")
         self.user_id = str(uuid.uuid4())
         self.scan_id = str(uuid.uuid4())
 
