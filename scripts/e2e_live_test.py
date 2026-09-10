@@ -224,15 +224,16 @@ with sync_playwright() as p:
 
     # Inspect Celery worker log to confirm async pickup
     time.sleep(2.0)
-    worker_log_path = "/home/devxgamer/.gemini/antigravity-ide/brain/ad11a9a9-d64d-44a2-8f62-39f0ac8ce1d8/.system_generated/tasks/task-5363.log"
+    worker_log_path = os.environ.get("CELERY_WORKER_LOG", os.path.join(ROOT_DIR, "scripts", "worker.log"))
     worker_picked_up = False
-    with open(worker_log_path, "r", encoding="utf-8") as f:
-        log_content = f.read()
-        if "Received task: worker.tasks.process_query" in log_content:
-            worker_picked_up = True
-            print("  Celery worker log: Found 'Received task: worker.tasks.process_query'!")
-        else:
-            print("  Waiting for worker pickup...")
+    if os.path.exists(worker_log_path):
+        with open(worker_log_path, "r", encoding="utf-8", errors="ignore") as f:
+            log_content = f.read()
+            if "Received task: worker.tasks.process_query" in log_content:
+                worker_picked_up = True
+                print("  Celery worker log: Found 'Received task: worker.tasks.process_query'!")
+            else:
+                print("  Waiting for worker pickup...")
 
     # Poll until scan completes
     print("  Waiting for scan pipeline to reach 'completed' status...")
@@ -256,7 +257,7 @@ with sync_playwright() as p:
     # Verify free-tier 1-page cap in the generated report
     with SessionLocal() as db:
         s = db.query(Scan).filter(Scan.id == scan_id).first()
-        report_file = os.path.join("/home/devxgamer/ai-qa-agent", s.json_path)
+        report_file = os.path.join(ROOT_DIR, s.json_path)
         with open(report_file, "r") as rf:
             rep_data = json.load(rf)
             pages_crawled = rep_data.get("report_metadata", {}).get("pages_crawled", 1)
@@ -444,7 +445,7 @@ with sync_playwright() as p:
     page.goto(f"{BASE_URL}/admin", wait_until="networkidle")
     time.sleep(2.5)
     page.wait_for_selector("h2:has-text('JASUSS Admin & Cluster Telemetry')", timeout=10000)
-    screenshot_path = "/home/devxgamer/ai-qa-agent/admin_console_live.png"
+    screenshot_path = os.path.join(ROOT_DIR, "admin_console_live.png")
     page.screenshot(path=screenshot_path)
     print(f"  Admin console loaded successfully in UI! Screenshot saved to {screenshot_path}")
 
@@ -533,6 +534,6 @@ with sync_playwright() as p:
 
 print("\n=== E2E LIVE SYSTEM TEST SUMMARY ===")
 print(json.dumps(results, indent=2))
-with open("/home/devxgamer/ai-qa-agent/scripts/e2e_results.json", "w") as f:
+with open(os.path.join(ROOT_DIR, "scripts", "e2e_results.json"), "w") as f:
     json.dump(results, f, indent=2)
 print("Saved full results to scripts/e2e_results.json")
