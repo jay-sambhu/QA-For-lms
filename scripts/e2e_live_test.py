@@ -157,8 +157,8 @@ with sync_playwright() as p:
     # 2.2 Logout
     page.click("button[class*='userBadge']")
     page.wait_for_selector("div[class*='modalCard']")
-    # Click Sign Out button
-    page.click("button:has-text('Sign Out')")
+    # Click Log Out button
+    page.click("button:has-text('Log Out')")
     time.sleep(1.0)
     # Confirm user badge is gone and Sign In button is visible
     assert page.query_selector("button[class*='userBadge']") is None
@@ -274,6 +274,48 @@ with sync_playwright() as p:
         "free_tier_cap_enforced": True,
     }
 
+    # 4.2 Submit a second scan and cancel it mid-run
+    print("\n  --- Testing Mid-Run Scan Cancellation ---")
+    storage_state = page.evaluate("() => JSON.parse(window.localStorage.getItem(Object.keys(window.localStorage).find(k => k.includes('-auth-token')) || '{}'))")
+    jwt_token = storage_state.get("access_token")
+    auth_headers = {"Authorization": f"Bearer {jwt_token}"}
+    
+    cancel_target = "https://example.com/cancel-test"
+    res_start = requests.post(
+        f"{API_URL}/api/v1/scans",
+        json={"url": cancel_target, "max_pages": 1},
+        headers=auth_headers,
+    )
+    assert res_start.status_code == 200, f"Failed to start second scan: {res_start.text}"
+    cancel_scan_id = res_start.json()["scan_id"]
+    print(f"  Second scan enqueued: {cancel_scan_id}")
+
+    time.sleep(0.5)
+    # Issue cancellation
+    res_cancel = requests.post(f"{API_URL}/api/v1/scans/{cancel_scan_id}/cancel", headers=auth_headers)
+    print(f"  Cancel API response: HTTP {res_cancel.status_code}, {res_cancel.json()}")
+    assert res_cancel.status_code == 200
+    assert res_cancel.json().get("status") == "cancelled"
+
+    # Verify in DB that status is 'cancelled'
+    with SessionLocal() as db:
+        c_scan = db.query(Scan).filter(Scan.id == cancel_scan_id).first()
+        print(f"  DB state immediately after cancel: status={c_scan.status}")
+        assert c_scan.status == "cancelled"
+
+    # Wait a few seconds to confirm it stays cancelled and Celery does not complete it
+    time.sleep(3.0)
+    with SessionLocal() as db:
+        c_scan_later = db.query(Scan).filter(Scan.id == cancel_scan_id).first()
+        print(f"  DB state 3s later: status={c_scan_later.status}")
+        assert c_scan_later.status == "cancelled"
+
+    results["step4_scan_cancel"] = {
+        "status": "PASS",
+        "scan_id": cancel_scan_id,
+        "cancelled_verified": True,
+    }
+
     # -------------------------------------------------------------------------
     # STEP 5: REPORT EXPORTS VALIDATION (PDF, Excel, JSON, Markdown)
     # -------------------------------------------------------------------------
@@ -367,10 +409,7 @@ with sync_playwright() as p:
             admin_row.role = "admin"
             admin_row.plan_tier = "enterprise"
         db.commit()
-    print("  Promoted account to role='admin' in users table.")
-
     # 6.4 Verify admin API access works with admin user
-    # Note: require_admin checks role from local DB or metadata
     res_admin_ok = requests.get(f"{API_URL}/api/v1/admin/metrics", headers={"Authorization": f"Bearer {admin_token}"})
     print(f"  Admin user GET /api/v1/admin/metrics: HTTP {res_admin_ok.status_code}")
     assert res_admin_ok.status_code == 200, f"Expected 200 for admin user, got {res_admin_ok.status_code}"
@@ -379,11 +418,41 @@ with sync_playwright() as p:
     assert "financial_metrics" in admin_data
     print(f"  Admin telemetry: Total Scans={admin_data['platform_overview'].get('total_scans')}, MRR={admin_data['financial_metrics'].get('mrr_usd')}")
 
+    # 6.5 Admin UI Login and Admin Console Walkthrough
+    print("  Logging in as admin user in the UI to verify Admin Console...")
+    page.goto(f"{BASE_URL}/dashboard", wait_until="networkidle")
+    user_badge = page.query_selector("button[class*='userBadge']")
+    if user_badge:
+        user_badge.click()
+        page.wait_for_selector("div[class*='modalCard']")
+        page.click("button:has-text('Log Out')")
+        time.sleep(1.0)
+
+    # Sign in as admin user through the UI
+    page.click("header button:has-text('Sign In')")
+    page.wait_for_selector("div[class*='modalCard']")
+    page.click("button[class*='modalTab']:has-text('Sign In')")
+    page.fill("div[class*='modalCard'] input[type='email']", admin_email)
+    page.fill("div[class*='modalCard'] input[type='password']", admin_password)
+    page.click("button[class*='modalSubmitBtn']")
+    page.wait_for_selector("button[class*='userBadge']", timeout=8000)
+    print("  Admin user successfully authenticated through UI modal!")
+
+    # Navigate to /admin in browser
+    page.goto(f"{BASE_URL}/admin", wait_until="networkidle")
+    time.sleep(2.5)
+    page.wait_for_selector("h2:has-text('JASUSS Admin & Cluster Telemetry')", timeout=10000)
+    screenshot_path = "/home/devxgamer/ai-qa-agent/admin_console_live.png"
+    page.screenshot(path=screenshot_path)
+    print(f"  Admin console loaded successfully in UI! Screenshot saved to {screenshot_path}")
+
     results["step6_admin_access"] = {
         "status": "PASS",
         "free_user_403": True,
         "free_user_ui_blocked": True,
         "admin_api_200": True,
+        "admin_ui_loaded": True,
+        "admin_screenshot": screenshot_path,
         "total_scans": admin_data["platform_overview"].get("total_scans"),
     }
 
