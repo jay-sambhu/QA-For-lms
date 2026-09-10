@@ -13,13 +13,27 @@ export default function AuthCallbackPage() {
       return;
     }
 
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        router.replace("/dashboard");
+      }
+    });
+
     supabase.auth.getSession().then(({ data, error }) => {
       if (!error && data.session) {
         router.replace("/dashboard");
       } else {
-        router.replace("/");
+        // Allow brief grace period for hash fragment token exchange
+        const timer = setTimeout(() => {
+          router.replace("/");
+        }, 1500);
+        return () => clearTimeout(timer);
       }
     });
+
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
   }, [router]);
 
   return (
