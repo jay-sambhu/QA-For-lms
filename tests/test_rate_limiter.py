@@ -20,9 +20,11 @@ def test_rate_limiter_triggers_429_on_rapid_requests():
     orig_limit = rl.STANDARD_LIMIT
     rl.STANDARD_LIMIT = 2
     rl._memory_store.clear()
+    if rl.redis_client:
+        rl.redis_client.delete("rl:token:valid_token_rl")
 
     try:
-        with patch("worker.tasks.process_query_task.delay"):
+        with patch("worker.tasks.process_query_task.apply_async"):
             # Request 1: OK
             r1 = client.post(
                 "/api/v1/scans",
@@ -50,3 +52,5 @@ def test_rate_limiter_triggers_429_on_rapid_requests():
     finally:
         rl.STANDARD_LIMIT = orig_limit
         rl._memory_store.clear()
+        if rl.redis_client:
+            rl.redis_client.delete("rl:token:valid_token_rl")

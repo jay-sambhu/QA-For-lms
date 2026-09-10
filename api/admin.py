@@ -30,22 +30,28 @@ def require_admin(authorization: str = Header(None)):
 
     user = require_user(authorization)
 
-    # Derive role from local DB field or Supabase user/app metadata
-    role = None
-    try:
-        with SessionLocal() as db:
-            db_user = db.query(User).filter(User.id == str(getattr(user, "id", user))).first()
-            if db_user and db_user.role:
-                role = db_user.role
-    except Exception:
-        pass
+    # Derive role: Admin if local DB role is 'admin', or Supabase metadata is 'admin', or admin email
+    user_meta = getattr(user, "user_metadata", None) or {}
+    app_meta = getattr(user, "app_metadata", None) or {}
+    user_email = getattr(user, "email", "") or ""
 
-    if not role:
-        user_meta = getattr(user, "user_metadata", None) or {}
-        app_meta = getattr(user, "app_metadata", None) or {}
-        role = user_meta.get("role") or app_meta.get("role") or getattr(user, "role", "user")
+    is_admin = (
+        user_meta.get("role") == "admin"
+        or app_meta.get("role") == "admin"
+        or str(getattr(user, "role", "")).lower() == "admin"
+        or user_email.startswith("admin@")
+        or user_email.endswith("@admin.jasuss.io")
+    )
+    if not is_admin:
+        try:
+            with SessionLocal() as db:
+                db_user = db.query(User).filter(User.id == str(getattr(user, "id", user))).first()
+                if db_user and db_user.role == "admin":
+                    is_admin = True
+        except Exception:
+            pass
 
-    if str(role).lower() != "admin":
+    if not is_admin:
         raise HTTPException(
             status_code=403,
             detail="Admin access required",

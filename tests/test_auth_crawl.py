@@ -71,7 +71,7 @@ def test_create_scan_authenticated_persists_is_authenticated_flag_no_password_st
     mock_user.user.user_metadata = {"role": "user"}
     supabase.auth.get_user = MagicMock(return_value=mock_user)
 
-    with patch("api.main.process_query_task.delay") as mock_celery:
+    with patch("api.main.process_query_task.apply_async") as mock_celery:
         response = client.post(
             "/api/v1/scans",
             json={
@@ -103,7 +103,8 @@ def test_create_scan_authenticated_persists_is_authenticated_flag_no_password_st
 
         # Verify Celery task received the transient arguments
         mock_celery.assert_called_once()
-        args = mock_celery.call_args[0]
+        kwargs = mock_celery.call_args[1]
+        args = kwargs.get("args", mock_celery.call_args[0])
         assert args[0] == scan_id  # scan_id
         assert args[2] == "https://example.com"  # url
         assert args[5] == "https://example.com/login"  # login_url

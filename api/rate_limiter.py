@@ -66,7 +66,7 @@ async def rate_limit_dependency(request: Request, user=Depends(lambda: None)):
             pipe.expire(key, BURST_SECONDS)
             _, count, _, _ = pipe.execute()
             used_redis = True
-            if count > limit:
+            if count >= limit:
                 raise HTTPException(status_code=429, detail="Rate limit exceeded. Please try again later.")
         except HTTPException:
             raise
