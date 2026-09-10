@@ -37,7 +37,7 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = db_url
+    url = config.get_main_option("sqlalchemy.url") or os.environ.get("DATABASE_URL") or db_url
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -56,13 +56,20 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = engine
+    from sqlalchemy import create_engine
+    url = config.get_main_option("sqlalchemy.url") or os.environ.get("DATABASE_URL")
+    if url:
+        connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
+        connectable = create_engine(url, connect_args=connect_args, pool_pre_ping=True)
+    else:
+        connectable = engine
 
+    effective_url = url or db_url
     with connectable.connect() as connection:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            render_as_batch=True if db_url.startswith("sqlite") else False,
+            render_as_batch=True if effective_url.startswith("sqlite") else False,
         )
 
         with context.begin_transaction():

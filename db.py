@@ -8,8 +8,7 @@ try:
 except ImportError:
     from .config import settings
 
-# Resolve database URL
-raw_db_url = settings.DATABASE_URL if (settings and settings.DATABASE_URL) else "sqlite:///./qa_agent.db"
+raw_db_url = os.environ.get("DATABASE_URL") or (settings.DATABASE_URL if (settings and settings.DATABASE_URL) else "sqlite:///./qa_agent.db")
 # Normalize legacy postgres:// URI scheme to postgresql:// for SQLAlchemy compatibility
 if raw_db_url.startswith("postgres://"):
     raw_db_url = raw_db_url.replace("postgres://", "postgresql://", 1)
