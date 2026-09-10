@@ -260,8 +260,13 @@ with sync_playwright() as p:
         with open(report_file, "r") as rf:
             rep_data = json.load(rf)
             pages_crawled = rep_data.get("report_metadata", {}).get("pages_crawled", 1)
-            print(f"  Pages crawled in report: {pages_crawled} (requested 5, capped to 1)")
-            assert pages_crawled == 1, f"Expected 1 page crawled due to free-tier cap, got {pages_crawled}"
+            devices_tested = rep_data.get("report_metadata", {}).get("cross_device_metrics", {}).get("devices_tested", 3)
+            crawl_file = os.path.join(os.path.dirname(report_file), f"crawl_{scan_id}.json")
+            with open(crawl_file, "r") as cf:
+                crawl_data = json.load(cf)
+                unique_urls = {p.get("actual_url") for p in crawl_data.get("pages", [])}
+            print(f"  Pages crawled in report: {pages_crawled} across {devices_tested} devices. Unique URLs: {len(unique_urls)} -> {unique_urls}")
+            assert len(unique_urls) == 1, f"Expected 1 unique page crawled due to free-tier cap, got {len(unique_urls)}"
 
     results["step4_free_tier_scan"] = {
         "status": "PASS",
