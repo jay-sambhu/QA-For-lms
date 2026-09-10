@@ -38,3 +38,14 @@ web/node_modules/
 # Local Redis Build Artifacts
 redis-stable/
 redis-stable.tar.gz
+
+# One-off development phase logs / e2e run artifacts (regenerate locally, do not commit)
+docs/PHASE_*.md
+docs/BASELINE.md
+docs/CLEANUP_BASELINE.md
+docs/CODEBASE_CLEANUP_REPORT.md
+docs/FINAL_SYSTEM_VALIDATION.md
+docs/IMPLEMENTATION_PROGRESS.md
+docs/VALIDATION_HISTORY.md
+scripts/e2e_results.json
+admin_console_live.png
