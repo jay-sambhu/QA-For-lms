@@ -61,13 +61,17 @@ _DEFAULT_SAFE_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
+    "https://jasuss.tech",
+    "https://www.jasuss.tech",
+    "https://api.jasuss.tech",
 ]
 _cors_origins_raw = os.environ.get("ALLOWED_ORIGINS", "").strip()
 if _cors_origins_raw:
-    _CORS_ORIGINS: list = (
-        ["*"] if _cors_origins_raw == "*"
-        else [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
-    )
+    if _cors_origins_raw == "*":
+        _CORS_ORIGINS: list = ["*"]
+    else:
+        _custom = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+        _CORS_ORIGINS: list = list(dict.fromkeys(_DEFAULT_SAFE_ORIGINS + _custom))
 else:
     _CORS_ORIGINS: list = _DEFAULT_SAFE_ORIGINS
 

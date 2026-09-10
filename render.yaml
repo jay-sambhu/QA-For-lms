@@ -20,6 +20,8 @@ services:
           property: connectionString
       - key: GEMINI_API_KEY
         sync: false
+      - key: ALLOWED_ORIGINS
+        value: "https://jasuss.tech,https://www.jasuss.tech,https://api.jasuss.tech"
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -48,6 +50,12 @@ services:
           property: connectionString
       - key: GEMINI_API_KEY
         sync: false
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
 
   # 3. Next.js Web UI Frontend
   - type: web
@@ -63,9 +71,13 @@ services:
           type: web
           name: ai-qa-api
           property: hostport
+      - key: NEXT_PUBLIC_APP_URL
+        value: "https://jasuss.tech"
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: NEXT_PUBLIC_GOOGLE_CLIENT_ID
         sync: false
 
   # 4. Redis Queue Broker
