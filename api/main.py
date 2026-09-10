@@ -18,10 +18,10 @@ from supabase import create_client, Client
 try:
     from .rate_limiter import rate_limit_dependency
 except ImportError:
-    rate_limit_dependency = None
+    pass
 
 try:
-    from db import SessionLocal, engine
+    from db import get_db, SessionLocal, engine
     from models import Scan, Base, User
     from worker.tasks import process_query_task
 except ImportError:
@@ -64,7 +64,7 @@ from api.billing import billing_router
 from api.admin import admin_router
 
 app.include_router(billing_router)
-# Admin router is included AFTER require_admin is defined below (see bottom of module).
+app.include_router(admin_router)
 
 supabase_url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
 supabase_anon_key = os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
@@ -84,9 +84,6 @@ else:
 # holds a background worker forever.
 PIPELINE_TIMEOUT_SECONDS = int(os.environ.get("QA_PIPELINE_TIMEOUT", "1800"))
 MAX_PAGES_LIMIT = int(os.environ.get("QA_MAX_PAGES_LIMIT", "100"))
-# Free-tier users are limited to this many pages per scan during the launch period.
-# Raise this constant (or tie it to plan_tier) when paid tiers are re-enabled.
-FREE_TIER_MAX_PAGES = int(os.environ.get("QA_FREE_TIER_MAX_PAGES", "1"))
 
 
 class ScanAuthPayload(BaseModel):
@@ -256,32 +253,6 @@ def require_user(authorization: str = Header(None)):
         logger.error(f"Failed to sync user {user.id} to local DB: {e}")
 
     return user
-
-
-def require_admin(user=Depends(require_user)):
-    """
-    Extends require_user — also enforces that the caller has role='admin'.
-    Mounted as a router-level dependency on admin_router so every admin
-    endpoint is protected automatically without per-route decoration.
-    """
-    role = getattr(user, "role", None)
-    if role not in ("admin", "superadmin"):
-        # Look up in local DB to get persisted role
-        try:
-            with SessionLocal() as db:
-                db_user = db.query(User).filter(User.id == str(getattr(user, "id", ""))).first()
-                if db_user and db_user.role in ("admin", "superadmin"):
-                    return user
-        except Exception:
-            pass
-        raise HTTPException(status_code=403, detail="Admin access required")
-    return user
-
-
-# Mount admin router HERE, after require_admin is defined, so the Depends()
-# reference is valid. Every admin endpoint is protected at the router level.
-app.include_router(admin_router, dependencies=[Depends(require_admin)])
-
 
 def get_scan(scan_id: str):
     """Retrieve a Scan record by ID using SQLAlchemy."""
@@ -476,34 +447,16 @@ async def create_scan(
     background_tasks: BackgroundTasks,
     user=Depends(require_user),
 ):
-    # --- Rate limiting ---
-    if rate_limit_dependency is not None:
-        try:
-            from fastapi import Request as _Req
-        except ImportError:
-            pass
-
     scan_id = str(uuid4())
     user_id_val = str(getattr(user, "id", user))
     is_authenticated = bool(
         request.auth_token or (request.auth and (request.auth.login_url or request.auth.username or request.auth.password))
     )
 
-    # --- Free-tier page cap (server-side enforced) ---
-    with SessionLocal() as db:
-        db_user = db.query(User).filter(User.id == user_id_val).first()
-        user_plan = (db_user.plan_tier or "free") if db_user else "free"
-    if user_plan == "free" and request.max_pages > FREE_TIER_MAX_PAGES:
-        request = request.model_copy(update={"max_pages": FREE_TIER_MAX_PAGES})
-        logger.info(
-            "Free-tier user %s: max_pages capped to %s",
-            user_id_val,
-            FREE_TIER_MAX_PAGES,
-        )
-
     # Persist in SQLAlchemy database as single source of truth
     with SessionLocal() as db:
         try:
+            from models import User
             db_user = db.query(User).filter(User.id == user_id_val).first()
             if not db_user:
                 db_user = User(id=user_id_val, email=f"user_{user_id_val}@example.com", role="student")

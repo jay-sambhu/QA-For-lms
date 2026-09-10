@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { RiKey2Line, RiAddLine, RiDeleteBinLine, RiRefreshLine } from 'react-icons/ri';
 import styles from '../../app/page.module.css';
 
@@ -55,7 +56,7 @@ export const ApiKeyManager: React.FC = () => {
         const data = await res.json();
         setError(data.detail || 'Failed to add API key');
       }
-    } catch (_err) {
+    } catch (err) {
       setError('Network error');
     } finally {
       setLoading(false);

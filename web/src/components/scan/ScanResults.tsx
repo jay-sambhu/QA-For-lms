@@ -10,6 +10,7 @@ import {
   RiErrorWarningFill,
   RiSearchLine,
   RiRefreshLine,
+  RiDownload2Line,
 } from 'react-icons/ri';
 import { FaRegFilePdf } from 'react-icons/fa6';
 import {

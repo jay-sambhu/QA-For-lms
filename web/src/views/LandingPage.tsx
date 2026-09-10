@@ -9,6 +9,7 @@ import {
   RiLockPasswordLine,
   RiCheckDoubleLine,
   RiSpeedUpLine,
+  RiFileDownloadLine,
   RiChromeFill,
 } from 'react-icons/ri';
 import {
@@ -27,7 +28,7 @@ import {
   SiPython,
   SiTypescript,
 } from 'react-icons/si';
-import { HiSparkles } from 'react-icons/hi2';
+import { HiSparkles, HiOutlineCheckCircle } from 'react-icons/hi2';
 import { useAuth } from '../context/AuthContext';
 import styles from '../app/page.module.css';
 
