@@ -214,6 +214,10 @@ export const AuthModal: React.FC = () => {
         password,
       });
       if (signUpError) throw signUpError;
+      if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        setError('An account with this email already exists. Please sign in instead.');
+        return;
+      }
       if (data.session) {
         closeAuthModal();
         setEmail('');

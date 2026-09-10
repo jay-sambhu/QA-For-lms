@@ -30,12 +30,21 @@ def require_admin(authorization: str = Header(None)):
 
     user = require_user(authorization)
 
-    # Derive role from Supabase user metadata or local DB field
-    role = (
-        getattr(user, "role", None)
-        or (getattr(user, "user_metadata", None) or {}).get("role")
-        or "user"
-    )
+    # Derive role from local DB field or Supabase user/app metadata
+    role = None
+    try:
+        with SessionLocal() as db:
+            db_user = db.query(User).filter(User.id == str(getattr(user, "id", user))).first()
+            if db_user and db_user.role:
+                role = db_user.role
+    except Exception:
+        pass
+
+    if not role:
+        user_meta = getattr(user, "user_metadata", None) or {}
+        app_meta = getattr(user, "app_metadata", None) or {}
+        role = user_meta.get("role") or app_meta.get("role") or getattr(user, "role", "user")
+
     if str(role).lower() != "admin":
         raise HTTPException(
             status_code=403,
