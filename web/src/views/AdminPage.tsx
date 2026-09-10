@@ -25,11 +25,15 @@ export const AdminPage: React.FC = () => {
   const fetchAdminData = useCallback(async () => {
     setLoading(true);
     try {
+      const headers: Record<string, string> = {};
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
       const [mRes, uRes, sRes, sysRes] = await Promise.all([
-        fetch('/api/v1/admin/metrics'),
-        fetch('/api/v1/admin/users'),
-        fetch('/api/v1/admin/scans'),
-        fetch('/api/v1/admin/system'),
+        fetch('/api/v1/admin/metrics', { headers }),
+        fetch('/api/v1/admin/users', { headers }),
+        fetch('/api/v1/admin/scans', { headers }),
+        fetch('/api/v1/admin/system', { headers }),
       ]);
       if (mRes.ok) setMetrics(await mRes.json());
       if (uRes.ok) {
@@ -46,7 +50,7 @@ export const AdminPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [session?.access_token]);
 
   useEffect(() => {
     if (userRole === 'admin') {

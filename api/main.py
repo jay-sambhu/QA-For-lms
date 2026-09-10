@@ -283,7 +283,7 @@ def update_scan(
     """Update a Scan's status and optional paths via SQLAlchemy."""
     with SessionLocal() as db:
         db_scan = db.query(Scan).filter(Scan.id == scan_id).first()
-        if not db_scan:
+        if not db_scan or db_scan.status == "cancelled":
             return
         db_scan.status = status
         if status == "completed":
@@ -505,23 +505,29 @@ async def create_scan(
     try:
         from worker.tasks import process_query_task
         if login_url or username or password_raw:
-            process_query_task.delay(
-                scan_id,
-                user_id_val,
-                request.url,
-                request.max_pages,
-                request.auth_token,
-                login_url,
-                username,
-                password_raw,
+            process_query_task.apply_async(
+                args=[
+                    scan_id,
+                    user_id_val,
+                    request.url,
+                    request.max_pages,
+                    request.auth_token,
+                    login_url,
+                    username,
+                    password_raw,
+                ],
+                task_id=scan_id,
             )
         else:
-            process_query_task.delay(
-                scan_id,
-                user_id_val,
-                request.url,
-                request.max_pages,
-                request.auth_token,
+            process_query_task.apply_async(
+                args=[
+                    scan_id,
+                    user_id_val,
+                    request.url,
+                    request.max_pages,
+                    request.auth_token,
+                ],
+                task_id=scan_id,
             )
         enqueued = True
     except Exception as e:
@@ -627,6 +633,12 @@ async def cancel_scan(scan_id: UUID, user=Depends(require_user)):
             scan.status = "cancelled"
             scan.completed_at = datetime.now(timezone.utc)
             db.commit()
+            try:
+                from worker.celery_app import celery_app
+                celery_app.control.revoke(str(scan_id), terminate=True, signal="SIGTERM")
+                logger.info("Revoked Celery task for scan %s", scan_id)
+            except Exception as e:
+                logger.warning("Could not revoke Celery task for scan %s: %s", scan_id, e)
             return {"status": "cancelled", "message": "Scan has been stopped."}
         return {"status": scan.status, "message": f"Scan is already {scan.status}."}
 

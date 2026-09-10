@@ -22,9 +22,11 @@ import {
   TbLoader2,
   TbAdjustments,
 } from 'react-icons/tb';
+import { useAuth } from '../../context/AuthContext';
 import styles from '../../app/page.module.css';
 
 export const AIProviderConfig: React.FC = () => {
+  const { session } = useAuth();
   const [providersData, setProvidersData] = useState<any>(null);
   const [selectedProvider, setSelectedProvider] = useState<string>('gemini');
   const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-flash');
@@ -38,7 +40,11 @@ export const AIProviderConfig: React.FC = () => {
 
   const fetchProviders = async () => {
     try {
-      const res = await fetch('/api/v1/admin/ai-providers');
+      const headers: Record<string, string> = {};
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+      const res = await fetch('/api/v1/admin/ai-providers', { headers });
       if (res.ok) {
         const data = await res.json();
         setProvidersData(data);
@@ -58,7 +64,7 @@ export const AIProviderConfig: React.FC = () => {
 
   useEffect(() => {
     fetchProviders();
-  }, []);
+  }, [session?.access_token]);
 
   const handleProviderSelect = (pId: string) => {
     setSelectedProvider(pId);
@@ -76,9 +82,13 @@ export const AIProviderConfig: React.FC = () => {
     setSaving(true);
     setFeedback(null);
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
       const res = await fetch('/api/v1/admin/ai-providers', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           provider_id: selectedProvider,
           model: selectedModel,
@@ -104,9 +114,13 @@ export const AIProviderConfig: React.FC = () => {
     setTesting(true);
     setFeedback(null);
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
       const res = await fetch('/api/v1/admin/ai-providers/test', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           provider_id: selectedProvider,
           api_key: apiKeyInput || undefined,

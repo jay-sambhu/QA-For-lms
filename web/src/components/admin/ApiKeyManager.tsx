@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { RiKey2Line, RiAddLine, RiDeleteBinLine, RiRefreshLine } from 'react-icons/ri';
+import { useAuth } from '../../context/AuthContext';
 import styles from '../../app/page.module.css';
 
 interface ApiKey {
@@ -12,6 +13,7 @@ interface ApiKey {
 }
 
 export const ApiKeyManager: React.FC = () => {
+  const { session } = useAuth();
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [newKey, setNewKey] = useState('');
   const [loading, setLoading] = useState(false);
@@ -20,7 +22,11 @@ export const ApiKeyManager: React.FC = () => {
   const fetchKeys = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/admin/api-keys');
+      const headers: Record<string, string> = {};
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+      const res = await fetch('/api/v1/admin/api-keys', { headers });
       if (res.ok) {
         const data = await res.json();
         setKeys(data.api_keys || []);
@@ -34,7 +40,7 @@ export const ApiKeyManager: React.FC = () => {
 
   useEffect(() => {
     fetchKeys();
-  }, []);
+  }, [session?.access_token]);
 
   const handleAddKey = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,9 +49,13 @@ export const ApiKeyManager: React.FC = () => {
     setLoading(true);
     
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
       const res = await fetch('/api/v1/admin/api-keys', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ key_value: newKey.trim(), service: 'gemini' }),
       });
       if (res.ok) {
@@ -66,7 +76,11 @@ export const ApiKeyManager: React.FC = () => {
     if (!window.confirm("Are you sure you want to delete this API Key?")) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/v1/admin/api-keys/${id}`, { method: 'DELETE' });
+      const headers: Record<string, string> = {};
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+      const res = await fetch(`/api/v1/admin/api-keys/${id}`, { method: 'DELETE', headers });
       if (res.ok) {
         fetchKeys();
       }
