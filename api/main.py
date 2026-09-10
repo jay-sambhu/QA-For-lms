@@ -25,6 +25,15 @@ except ImportError:
     from ..models import Scan, Base
 
 try:
+    from .rate_limiter import rate_limit_dependency
+except ImportError:
+    try:
+        from rate_limiter import rate_limit_dependency
+    except ImportError:
+        async def rate_limit_dependency():
+            return True
+
+try:
     Base.metadata.create_all(bind=engine)
 except Exception:
     pass
@@ -47,11 +56,20 @@ app = FastAPI(
     version="2.0.0",
 )
 
-_cors_origins_raw = os.environ.get("ALLOWED_ORIGINS", "*")
-_CORS_ORIGINS: list = (
-    ["*"] if _cors_origins_raw.strip() == "*"
-    else [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
-)
+_DEFAULT_SAFE_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+_cors_origins_raw = os.environ.get("ALLOWED_ORIGINS", "").strip()
+if _cors_origins_raw:
+    _CORS_ORIGINS: list = (
+        ["*"] if _cors_origins_raw == "*"
+        else [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+    )
+else:
+    _CORS_ORIGINS: list = _DEFAULT_SAFE_ORIGINS
 
 app.add_middleware(
     CORSMiddleware,
@@ -431,7 +449,7 @@ async def create_scan(
     request: ScanRequest,
     background_tasks: BackgroundTasks,
     user=Depends(require_user),
-    _rate_ok: bool = Depends(lambda: True),  # placeholder; real dep wired below
+    _rate_ok: bool = Depends(rate_limit_dependency),
 ):
     scan_id = str(uuid4())
     user_id_val = str(getattr(user, "id", user))
