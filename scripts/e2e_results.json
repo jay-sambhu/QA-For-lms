@@ -1,0 +1,77 @@
+{
+  "step1_register": {
+    "status": "PASS",
+    "email": "audit_user_58bbf4f5@testjasuss.io",
+    "user_id": "4b8a9db5-b09a-487b-a84a-566b1040360b",
+    "plan_tier": "free",
+    "validations_tested": [
+      "weak_password",
+      "password_mismatch",
+      "duplicate_email"
+    ]
+  },
+  "step2_login_logout": {
+    "status": "PASS",
+    "reload_persistence": true,
+    "logout_cleared": true,
+    "login_restored": true
+  },
+  "step3_rate_limiting": {
+    "status": "PASS",
+    "rate_limited": false
+  },
+  "step4_free_tier_scan": {
+    "status": "PASS",
+    "scan_id": "26ed4ccb-a628-4fdb-b8e7-09e9f0ab0739",
+    "celery_async_picked_up": true,
+    "pipeline_completed": true,
+    "pages_crawled": 3,
+    "free_tier_cap_enforced": true
+  },
+  "step5_reports": {
+    "status": "PASS",
+    "json_valid": true,
+    "markdown_valid": true,
+    "pdf_valid": true,
+    "pdf_pages": 1,
+    "excel_valid": true,
+    "excel_sheets": [
+      "Summary",
+      "Findings"
+    ]
+  },
+  "step6_admin_access": {
+    "status": "PASS",
+    "free_user_403": true,
+    "free_user_ui_blocked": true,
+    "admin_api_200": true,
+    "admin_ui_loaded": true,
+    "admin_screenshot": "/home/devxgamer/ai-qa-agent/admin_console_live.png",
+    "total_scans": 25
+  },
+  "step7_gemini_triage": {
+    "status": "PASS",
+    "gemini_api_key_active": true,
+    "sample_defect_triaged": true,
+    "triaged_severity": "P1"
+  },
+  "step8_cors": {
+    "status": "PASS",
+    "allow_origin": "http://localhost:3000"
+  },
+  "step9_walkthrough": {
+    "status": "PASS",
+    "pages_checked": [
+      "/",
+      "/pricing",
+      "/dashboard"
+    ]
+  },
+  "console_errors": [],
+  "network_errors": [],
+  "step4_scan_cancel": {
+    "status": "PASS",
+    "scan_id": "1bfedad0-3861-4a47-8dbb-7fe4bec4dc9f",
+    "cancelled_verified": true
+  }
+}
