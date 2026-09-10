@@ -27,12 +27,18 @@ export const NavBar: React.FC = () => {
   return (
     <header className={styles.header}>
       <Link href="/" className={styles.logo}>
-        <div className={styles.logoIconWrapper}>
-          <RiShieldFlashFill size={24} color="#ffffff" />
+        <div className={styles.logoIconWrapper} style={{ overflow: 'hidden', padding: 0 }}>
+          <img
+            src="/logo.png"
+            alt="JASUSS.TECH"
+            width={38}
+            height={38}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }}
+          />
         </div>
         <div>
           <span>JASUSS</span>
-          <span className={styles.logoSub}>Powered by Nexus</span>
+          <span className={styles.logoSub}>.TECH</span>
         </div>
       </Link>
 

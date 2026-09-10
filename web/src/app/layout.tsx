@@ -19,9 +19,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "JASUSS — Enterprise Web Quality Assurance & Regression Platform (Powered by Nexus)",
+  title: "JASUSS.TECH — Autonomous Web Quality Assurance & Regression Platform",
   description:
-    "JASUSS: Next-generation automated web quality assurance suite powered by Nexus. End-to-end multi-viewport crawling, synthetic interaction testing, defect triage, and executive compliance audits.",
+    "JASUSS.TECH: Next-generation automated web quality assurance suite powered by Nexus. End-to-end multi-viewport crawling, synthetic interaction testing, defect triage, and executive compliance audits.",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({

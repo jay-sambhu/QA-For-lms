@@ -237,8 +237,14 @@ export const AuthModal: React.FC = () => {
           onClick={(e) => e.stopPropagation()}
         >
           <div className={styles.modalHeader}>
-            <div className={styles.modalLogo}>
-              <RiShieldFlashFill size={22} color="#6366f1" />
+            <div className={styles.modalLogo} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <img
+                src="/logo.png"
+                alt="JASUSS.TECH"
+                width={24}
+                height={24}
+                style={{ borderRadius: '6px', objectFit: 'cover' }}
+              />
               <span>JASUSS Workspace</span>
             </div>
             <button
