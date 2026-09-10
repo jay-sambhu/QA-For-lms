@@ -210,12 +210,10 @@ with sync_playwright() as p:
     # Target multi-page site: https://example.com, request max_pages = 5
     page.fill("input[placeholder*='example.com']", "https://example.com")
     
-    # Try to set max pages to 5
-    max_pages_input = page.query_selector("input[type='number']")
-    if max_pages_input:
-        max_pages_input.fill("5")
+    # Set max pages to 5
+    page.select_option("#max-pages", "5")
 
-    page.click("button[type='submit']:has-text('Launch Autonomous Scan')")
+    page.click("button:has-text('Run QA Scan')")
     print("  Submitted scan for https://example.com (requesting 5 pages)...")
 
     # Wait for navigation to /dashboard/scan/[id]
