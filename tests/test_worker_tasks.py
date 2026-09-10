@@ -118,13 +118,13 @@ class TestApiScanEnqueue(unittest.TestCase):
         self.assertEqual(data["status"], "pending")
         self.assertEqual(data["url"], "https://example.com/lms")
 
-        # Verify Celery delay was called once with exact arguments
+        # Verify Celery delay was called once with exact arguments (capped to 1 by free-tier limit)
         scan_id = data["scan_id"]
         mock_delay.assert_called_once_with(
             scan_id,
             "test-user-uuid-123",
             "https://example.com/lms",
-            15,
+            1,
             "bearer-token-abc"
         )
 

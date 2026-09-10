@@ -61,7 +61,15 @@ def test_auth_payload_ssrf_and_secret_redaction():
 
 def test_create_scan_authenticated_persists_is_authenticated_flag_no_password_stored():
     from fastapi.testclient import TestClient
+    from api.main import supabase
     client = TestClient(app)
+
+    mock_user = MagicMock()
+    mock_user.user.id = "00000000-0000-0000-0000-000000000001"
+    mock_user.user.email = "tester@example.com"
+    mock_user.user.role = "user"
+    mock_user.user.user_metadata = {"role": "user"}
+    supabase.auth.get_user = MagicMock(return_value=mock_user)
 
     with patch("api.main.process_query_task.delay") as mock_celery:
         response = client.post(
@@ -75,7 +83,7 @@ def test_create_scan_authenticated_persists_is_authenticated_flag_no_password_st
                     "password": "PasswordSecret999",
                 },
             },
-            headers={"Authorization": "Bearer dev-token"},
+            headers={"Authorization": "Bearer mocked_user_token"},
         )
 
         assert response.status_code == 200, response.text

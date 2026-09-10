@@ -210,6 +210,16 @@ class TestReportExports(unittest.TestCase):
         scan_id = "11111111-2222-3333-4444-555555555555"
         user_id = "00000000-0000-0000-0000-000000000001"
 
+        from unittest.mock import MagicMock
+        from api.main import supabase
+        mock_user = MagicMock()
+        mock_user.user.id = user_id
+        mock_user.user.email = "dev@example.com"
+        mock_user.user.role = "user"
+        mock_user.user.user_metadata = {"role": "user"}
+        supabase.auth.get_user = MagicMock(return_value=mock_user)
+        auth_headers = {"Authorization": "Bearer mocked_export_token"}
+
         # Create temporary dummy report files
         user_dir = Path(ROOT_DIR) / "user_data" / user_id
         user_dir.mkdir(parents=True, exist_ok=True)
@@ -244,7 +254,7 @@ class TestReportExports(unittest.TestCase):
             # 1. Test /api/v1/scans/{scan_id}/download/json
             res_v1_json = client.get(
                 f"/api/v1/scans/{scan_id}/download/json",
-                headers={"Authorization": "Bearer dev-token"},
+                headers=auth_headers,
             )
             self.assertEqual(res_v1_json.status_code, 200)
             self.assertIn("application/json", res_v1_json.headers.get("content-type", ""))
@@ -256,7 +266,7 @@ class TestReportExports(unittest.TestCase):
             # 2. Test /api/v1/scans/{scan_id}/download/md
             res_v1_md = client.get(
                 f"/api/v1/scans/{scan_id}/download/md",
-                headers={"Authorization": "Bearer dev-token"},
+                headers=auth_headers,
             )
             self.assertEqual(res_v1_md.status_code, 200)
             self.assertIn("text/markdown", res_v1_md.headers.get("content-type", ""))
@@ -268,7 +278,7 @@ class TestReportExports(unittest.TestCase):
             # 3. Test /api/v1/scans/{scan_id}/download/pdf
             res_v1_pdf = client.get(
                 f"/api/v1/scans/{scan_id}/download/pdf",
-                headers={"Authorization": "Bearer dev-token"},
+                headers=auth_headers,
             )
             self.assertEqual(res_v1_pdf.status_code, 200)
             self.assertIn("application/pdf", res_v1_pdf.headers.get("content-type", ""))
@@ -276,7 +286,7 @@ class TestReportExports(unittest.TestCase):
             # 4. Test /api/v1/scans/{scan_id}/download/xlsx
             res_v1_xlsx = client.get(
                 f"/api/v1/scans/{scan_id}/download/xlsx",
-                headers={"Authorization": "Bearer dev-token"},
+                headers=auth_headers,
             )
             self.assertEqual(res_v1_xlsx.status_code, 200)
             self.assertIn("spreadsheetml", res_v1_xlsx.headers.get("content-type", ""))

@@ -16,17 +16,17 @@ from api.main import app
 client = TestClient(app)
 
 
-def test_production_environment_rejects_dev_tokens(monkeypatch):
-    """Verify that setting ENVIRONMENT=production blocks test tokens with 401."""
-    monkeypatch.setenv("ENVIRONMENT", "production")
-    
+def test_production_environment_rejects_dev_tokens():
+    """Verify that arbitrary unverified dev-tokens are rejected with 401."""
+    from api.main import supabase
+    from unittest.mock import MagicMock
+    supabase.auth.get_user = MagicMock(side_effect=Exception("Invalid token"))
+
     response = client.get(
         "/api/v1/scans",
         headers={"Authorization": "Bearer dev-token"}
     )
-    
     assert response.status_code == 401
-    assert "Development test tokens are rejected in production environment" in response.json()["detail"]
 
 
 def test_unauthenticated_request_rejected():
@@ -36,35 +36,59 @@ def test_unauthenticated_request_rejected():
     assert "Missing or invalid Authorization header" in response.json()["detail"]
 
 
-def test_non_production_dev_token_allowed(monkeypatch):
-    """Verify that development environment allows dev-token for local integration testing."""
-    monkeypatch.setenv("ENVIRONMENT", "development")
-    
+def test_non_production_dev_token_allowed():
+    """Verify that authenticated requests with valid Supabase user are allowed."""
+    from api.main import supabase
+    from unittest.mock import MagicMock
+
+    mock_user = MagicMock()
+    mock_user.user.id = "00000000-0000-0000-0000-000000000001"
+    mock_user.user.email = "dev@example.com"
+    mock_user.user.role = "user"
+    mock_user.user.user_metadata = {"role": "user"}
+    supabase.auth.get_user = MagicMock(return_value=mock_user)
+
     response = client.get(
         "/api/v1/scans",
-        headers={"Authorization": "Bearer dev-token"}
+        headers={"Authorization": "Bearer valid_supabase_jwt"}
     )
     assert response.status_code == 200
 
 
-def test_multi_user_scan_isolation(monkeypatch):
+def test_multi_user_scan_isolation():
     """Verify that User A cannot access User B's scans."""
-    monkeypatch.setenv("ENVIRONMENT", "development")
-    
+    from api.main import supabase
+    from unittest.mock import MagicMock, patch
+
+    user_a = MagicMock()
+    user_a.user.id = "00000000-0000-0000-0000-000000000001"
+    user_a.user.email = "user_a@example.com"
+    user_a.user.role = "user"
+    user_a.user.user_metadata = {"role": "user"}
+
+    user_b = MagicMock()
+    user_b.user.id = "00000000-0000-0000-0000-000000000002"
+    user_b.user.email = "user_b@example.com"
+    user_b.user.role = "user"
+    user_b.user.user_metadata = {"role": "user"}
+
     # User A creates a scan
-    create_res = client.post(
-        "/api/v1/scans",
-        json={"url": "https://example.com", "max_pages": 1},
-        headers={"Authorization": "Bearer dev-token"}
-    )
+    supabase.auth.get_user = MagicMock(return_value=user_a)
+    with patch("worker.tasks.process_query_task.delay"):
+        create_res = client.post(
+            "/api/v1/scans",
+            json={"url": "https://example.com", "max_pages": 1},
+            headers={"Authorization": "Bearer token_user_a"}
+        )
     assert create_res.status_code in (200, 201, 202)
     scan_id = create_res.json().get("scan_id") or create_res.json().get("id")
     assert scan_id is not None
 
     # User B attempts to access User A's scan
+    supabase.auth.get_user = MagicMock(return_value=user_b)
     get_res = client.get(
         f"/api/v1/scans/{scan_id}",
-        headers={"Authorization": "Bearer user-b-token"}
+        headers={"Authorization": "Bearer token_user_b"}
     )
     assert get_res.status_code in (403, 404)
 

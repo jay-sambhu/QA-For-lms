@@ -1,10 +1,21 @@
+from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
-from api.main import app
+from api.main import app, supabase
 
 client = TestClient(app)
 
+def _setup_admin_auth():
+    mock_user = MagicMock()
+    mock_user.user.id = "00000000-0000-0000-0000-000000000099"
+    mock_user.user.email = "admin@example.com"
+    mock_user.user.role = "admin"
+    mock_user.user.user_metadata = {"role": "admin"}
+    supabase.auth.get_user = MagicMock(return_value=mock_user)
+    return {"Authorization": "Bearer mocked_admin_token"}
+
 def test_admin_metrics_endpoint():
-    res = client.get("/api/v1/admin/metrics")
+    headers = _setup_admin_auth()
+    res = client.get("/api/v1/admin/metrics", headers=headers)
     assert res.status_code == 200
     data = res.json()
     assert "platform_overview" in data
@@ -14,21 +25,24 @@ def test_admin_metrics_endpoint():
     assert "mrr_usd" in data["financial_metrics"]
 
 def test_admin_users_endpoint():
-    res = client.get("/api/v1/admin/users")
+    headers = _setup_admin_auth()
+    res = client.get("/api/v1/admin/users", headers=headers)
     assert res.status_code == 200
     data = res.json()
     assert "users" in data
     assert "total" in data
 
 def test_admin_scans_endpoint():
-    res = client.get("/api/v1/admin/scans")
+    headers = _setup_admin_auth()
+    res = client.get("/api/v1/admin/scans", headers=headers)
     assert res.status_code == 200
     data = res.json()
     assert "scans" in data
     assert "total" in data
 
 def test_admin_system_endpoint():
-    res = client.get("/api/v1/admin/system")
+    headers = _setup_admin_auth()
+    res = client.get("/api/v1/admin/system", headers=headers)
     assert res.status_code == 200
     data = res.json()
     assert data["cluster_health"] == "operational"
