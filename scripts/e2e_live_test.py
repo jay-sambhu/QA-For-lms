@@ -486,7 +486,9 @@ with sync_playwright() as p:
             }
         ]
     }
-    ai_result = asyncio.run(analyzer.analyze(test_defect_data))
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        ai_result = pool.submit(lambda: asyncio.run(analyzer.analyze(test_defect_data))).result()
     ai_findings = ai_result.get("findings", [])
     print(f"  Live Gemini AI response received! Total triaged: {len(ai_findings)}")
     triaged_severity = None
