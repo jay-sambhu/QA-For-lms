@@ -36,13 +36,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <head>
+      <body>
         <Script
           src="https://accounts.google.com/gsi/client"
-          strategy="beforeInteractive"
+          strategy="afterInteractive"
         />
-      </head>
-      <body>
         <AuthProvider>
           <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
             <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "0 24px", width: "100%", flex: 1, display: "flex", flexDirection: "column" }}>

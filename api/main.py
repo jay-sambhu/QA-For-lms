@@ -64,6 +64,7 @@ _DEFAULT_SAFE_ORIGINS = [
     "https://jasuss.tech",
     "https://www.jasuss.tech",
     "https://api.jasuss.tech",
+    "https://web-two-flame-39.vercel.app",
 ]
 _cors_origins_raw = os.environ.get("ALLOWED_ORIGINS", "").strip()
 if _cors_origins_raw:
@@ -78,6 +79,7 @@ else:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ORIGINS,
+    allow_origin_regex=r"^https:\/\/([a-zA-Z0-9-]+\.)?vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
