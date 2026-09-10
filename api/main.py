@@ -654,11 +654,68 @@ def _get_download_media_type(format_ext: str) -> str:
     return media_types.get(format_ext, "application/octet-stream")
 
 
+def _generate_pdf_from_json(json_path: str, output_path: str):
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        data = {}
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    doc = SimpleDocTemplate(output_path, pagesize=letter)
+    styles = getSampleStyleSheet()
+    story = [
+        Paragraph("<b>Autonomous QA Test Report</b>", styles["Title"]),
+        Spacer(1, 12),
+        Paragraph(f"Target: {data.get('report_metadata', {}).get('target', 'N/A')}", styles["Normal"]),
+        Paragraph(f"Pages Crawled: {data.get('report_metadata', {}).get('pages_crawled', 0)}", styles["Normal"]),
+        Spacer(1, 12),
+        Paragraph(f"<b>Findings ({len(data.get('findings', []))})</b>", styles["Heading2"]),
+    ]
+    for finding in data.get("findings", []):
+        story.append(Paragraph(f"• [{finding.get('severity', 'INFO')}] {finding.get('title', '')}", styles["Normal"]))
+    if not data.get("findings"):
+        story.append(Paragraph("No defects detected. Target web application verified successfully.", styles["Normal"]))
+    doc.build(story)
+
+
+def _generate_xlsx_from_json(json_path: str, output_path: str):
+    import openpyxl
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        data = {}
+    wb = openpyxl.Workbook()
+    ws_summary = wb.active
+    ws_summary.title = "Summary"
+    ws_summary.append(["Target", data.get("report_metadata", {}).get("target", "N/A")])
+    ws_summary.append(["Generated At", data.get("report_metadata", {}).get("generated_at", "")])
+    ws_summary.append(["Pages Crawled", data.get("report_metadata", {}).get("pages_crawled", 0)])
+    ws_summary.append(["Quality Score", data.get("report_metadata", {}).get("quality_score", {}).get("score", 100)])
+    
+    ws_findings = wb.create_sheet(title="Findings")
+    ws_findings.append(["ID", "Title", "Severity", "Priority", "Classification", "URL"])
+    for f in data.get("findings", []):
+        ws_findings.append([
+            f.get("id", ""),
+            f.get("title", ""),
+            f.get("severity", ""),
+            f.get("priority", ""),
+            f.get("classification", ""),
+            f.get("url", ""),
+        ])
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    wb.save(output_path)
+
+
 @app.get("/api/v1/scans/{scan_id}/download/{file_type}")
 @app.get("/api/scans/{scan_id}/download/{file_type}")
 async def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require_user)):
     """
-    Download a completed scan's report artifact in the requested format (json, md/markdown).
+    Download a completed scan's report artifact in the requested format (json, md/markdown, pdf, xlsx).
     Sets explicit Content-Disposition and media_type headers with canonical filenames.
     """
     file_type_norm = file_type.lower().strip(".")
@@ -686,20 +743,34 @@ async def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require
     elif file_type_norm == "pdf":
         candidates = [
             scan.get("pdf_path"),
+            os.path.join("user_data", user_id_val, "results", f"final_qa_report_{scan_id}.pdf"),
             os.path.join("user_data", user_id_val, f"final_qa_report_{scan_id}.pdf"),
             os.path.join("user_data", user_id_val, f"qa-report-{scan_id}.pdf"),
             os.path.join("results", f"qa-report-{scan_id}.pdf"),
         ]
         stored_path = next((c for c in candidates if c and os.path.isfile(os.path.join(ROOT_DIR, c) if not os.path.isabs(c) else c)), None)
+        if not stored_path and scan.get("json_path"):
+            json_resolved = _resolve_report_path(scan.get("json_path"))
+            if json_resolved and os.path.isfile(json_resolved):
+                target_pdf = os.path.join(ROOT_DIR, "user_data", user_id_val, "results", f"final_qa_report_{scan_id}.pdf")
+                _generate_pdf_from_json(json_resolved, target_pdf)
+                stored_path = _relative_to_root(target_pdf)
         canonical_ext = "pdf"
     elif file_type_norm in ("xlsx", "excel"):
         candidates = [
             scan.get("xlsx_path"),
+            os.path.join("user_data", user_id_val, "results", f"final_qa_report_{scan_id}.xlsx"),
             os.path.join("user_data", user_id_val, f"final_qa_report_{scan_id}.xlsx"),
             os.path.join("user_data", user_id_val, f"qa-report-{scan_id}.xlsx"),
             os.path.join("results", f"qa-report-{scan_id}.xlsx"),
         ]
         stored_path = next((c for c in candidates if c and os.path.isfile(os.path.join(ROOT_DIR, c) if not os.path.isabs(c) else c)), None)
+        if not stored_path and scan.get("json_path"):
+            json_resolved = _resolve_report_path(scan.get("json_path"))
+            if json_resolved and os.path.isfile(json_resolved):
+                target_xlsx = os.path.join(ROOT_DIR, "user_data", user_id_val, "results", f"final_qa_report_{scan_id}.xlsx")
+                _generate_xlsx_from_json(json_resolved, target_xlsx)
+                stored_path = _relative_to_root(target_xlsx)
         canonical_ext = "xlsx"
 
     if not stored_path:
