@@ -381,12 +381,11 @@ with sync_playwright() as p:
     assert res_admin_api.status_code == 403, f"Expected 403 for free user on admin API, got {res_admin_api.status_code}"
     assert "Admin access required" in res_admin_api.json().get("detail", "")
 
-    # 6.2 Free user attempts to view /admin route in UI -> redirected to /
+    # 6.2 Free user attempts to view /admin route in UI -> blocked with Administrator Access Restricted
     page.goto(f"{BASE_URL}/admin", wait_until="networkidle")
     time.sleep(1.0)
-    current_path = page.url.replace(BASE_URL, "")
-    print(f"  Free user navigated to /admin -> redirected to: {current_path or '/'}")
-    assert "/admin" not in current_path or current_path == "/", "Free user was not redirected away from /admin!"
+    page.wait_for_selector("h2:has-text('Administrator Access Restricted')", timeout=5000)
+    print("  Free user blocked by UI guard: 'Administrator Access Restricted' displayed!")
 
     # 6.3 Promote a second account to admin via DB
     admin_email = f"admin_{uuid.uuid4().hex[:8]}@testjasuss.io"
