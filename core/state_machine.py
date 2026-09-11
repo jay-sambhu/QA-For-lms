@@ -131,3 +131,25 @@ class PipelineStateMachine:
                 self.progress_cb(stage.value, percent, message)
             except Exception:
                 pass
+
+    def update_progress(self, percent: int, message: str, **metadata):
+        """Updates live progress percent and message without transitioning stage."""
+        timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        try:
+            with open(self.progress_file, "w", encoding="utf-8") as f:
+                json.dump({
+                    "scan_id": self.scan_id,
+                    "stage": self.current_stage.value,
+                    "percent": percent,
+                    "message": message,
+                    "timestamp": timestamp,
+                    **metadata,
+                }, f)
+        except Exception:
+            pass
+
+        if self.progress_cb:
+            try:
+                self.progress_cb(self.current_stage.value, percent, message)
+            except Exception:
+                pass

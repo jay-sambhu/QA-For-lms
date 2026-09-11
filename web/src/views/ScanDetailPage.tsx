@@ -85,6 +85,18 @@ export const ScanDetailPage: React.FC = () => {
           return;
         }
 
+        if (res.status === 401) {
+          setError('Session expired or unauthorized. Please sign in again.');
+          setStatus('error');
+          return;
+        }
+
+        if (res.status === 503) {
+          setError('Authentication service unavailable. Please check your connection.');
+          setStatus('error');
+          return;
+        }
+
         if (!res.ok) return;
 
         const data = await res.json();
@@ -93,23 +105,24 @@ export const ScanDetailPage: React.FC = () => {
         if (data.url) setTargetUrl(data.url);
         setStatus(data.status);
 
+        if (data.progress) {
+          setProgress(data.progress);
+        }
+
         if (data.status === 'completed') {
           if (data.results) setResults(data.results);
           return;
         }
 
         if (data.status === 'failed') {
-          setError('Scan execution failed. The target site may be unreachable or returned an error.');
+          const failureDetail = data.progress?.message || 'Scan execution failed. The target site may be unreachable or returned an error.';
+          setError(failureDetail);
           return;
         }
 
         if (data.status === 'cancelled') {
           setError('Scan was stopped by user.');
           return;
-        }
-
-        if (data.progress) {
-          setProgress(data.progress);
         }
       } catch (err) {
         console.error('Polling error:', err);

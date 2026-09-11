@@ -599,7 +599,7 @@ async def get_scan_status(scan_id: UUID, user=Depends(require_user)):
 
     response = dict(scan)
     
-    if scan.get("status") in ("running", "pending"):
+    if scan.get("status") in ("running", "pending", "failed"):
         user_dir = os.path.join(ROOT_DIR, "user_data", str(scan.get("user_id", "")))
         progress_candidates = [
             os.path.join(user_dir, "results", f"progress_{scan_id}.json"),

@@ -13,11 +13,12 @@ from core.schemas.discovery import ElementModel, FormModel
 
 
 class ResumableDiscoveryEngine:
-    def __init__(self, start_url: str, run_id: str, results_dir: str, max_pages: int = 30, **kwargs):
+    def __init__(self, start_url: str, run_id: str, results_dir: str, max_pages: int = 30, progress_cb: Optional[Any] = None, **kwargs):
         self.start_url = start_url
         self.run_id = run_id
         self.results_dir = results_dir
         self.max_pages = max_pages
+        self.progress_cb = progress_cb
         self.kwargs = kwargs
         self.checkpoint_path = os.path.join(results_dir, f"discovery_checkpoint_{run_id}.json")
 
@@ -49,6 +50,7 @@ class ResumableDiscoveryEngine:
             max_pages=self.max_pages,
             run_id=self.run_id,
             output_dir=os.path.dirname(self.results_dir),
+            progress_cb=self.progress_cb,
             **self.kwargs
         )
         raw_result = await crawler.crawl()

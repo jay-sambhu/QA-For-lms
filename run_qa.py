@@ -61,6 +61,7 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
         login_url=login_url,
         username=username,
         password=password,
+        progress_cb=sm.update_progress,
     )
     discovery_result = await discovery_engine.execute_discovery()
     crawl_file = discovery_result.get("output_file")

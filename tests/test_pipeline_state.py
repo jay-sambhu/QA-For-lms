@@ -56,3 +56,25 @@ def test_pipeline_state_machine_checkpoint_creation():
         sm.transition_to(PipelineStage.DISCOVERING, "Discovery started")
         checkpoint_path = os.path.join(tmp_dir, "checkpoint_test_scan_003.json")
         assert os.path.exists(checkpoint_path)
+
+
+def test_pipeline_state_machine_update_progress():
+    import json
+    calls = []
+    def callback(stage, percent, message):
+        calls.append((stage, percent, message))
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        sm = PipelineStateMachine("test_scan_004", tmp_dir, progress_cb=callback)
+        sm.transition_to(PipelineStage.DISCOVERING, "Discovery initial")
+        sm.update_progress(15, "Crawling page 1/5 [Desktop]", active_device="Desktop")
+
+        progress_path = os.path.join(tmp_dir, "progress_test_scan_004.json")
+        assert os.path.exists(progress_path)
+        with open(progress_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        assert data["percent"] == 15
+        assert data["message"] == "Crawling page 1/5 [Desktop]"
+        assert data["active_device"] == "Desktop"
+        assert len(calls) == 3  # CREATED, DISCOVERING, update_progress
+
