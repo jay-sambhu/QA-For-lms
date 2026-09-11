@@ -92,15 +92,18 @@ from api.admin import admin_router
 app.include_router(billing_router)
 app.include_router(admin_router)
 
-supabase_url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
-supabase_anon_key = os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+_DEFAULT_SUPABASE_URL = "https://xsrcksdtiymswfrlkhtf.supabase.co"
+_DEFAULT_SUPABASE_ANON_KEY = "sb_publishable_ECAbKGVWJpkuAi8JIjd18Q_bxdE5IHa"
+
+supabase_url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL") or _DEFAULT_SUPABASE_URL
+supabase_anon_key = os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY") or _DEFAULT_SUPABASE_ANON_KEY
 supabase_service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
 # Use Service Role Key for backend if available to bypass RLS, otherwise fallback to Anon Key
 supabase_key = supabase_service_key if supabase_service_key else supabase_anon_key
 
 if supabase_url and supabase_key:
-    supabase: Client = create_client(supabase_url, supabase_key)
+    supabase: Client = create_client(supabase_url.strip(), supabase_key.strip())
 else:
     supabase = None
 
