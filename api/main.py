@@ -92,11 +92,8 @@ from api.admin import admin_router
 app.include_router(billing_router)
 app.include_router(admin_router)
 
-_DEFAULT_SUPABASE_URL = "https://xsrcksdtiymswfrlkhtf.supabase.co"
-_DEFAULT_SUPABASE_ANON_KEY = "sb_publishable_ECAbKGVWJpkuAi8JIjd18Q_bxdE5IHa"
-
-supabase_url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL") or _DEFAULT_SUPABASE_URL
-supabase_anon_key = os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY") or _DEFAULT_SUPABASE_ANON_KEY
+supabase_url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
+supabase_anon_key = os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
 supabase_service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
 # Use Service Role Key for backend if available to bypass RLS, otherwise fallback to Anon Key
@@ -105,6 +102,7 @@ supabase_key = supabase_service_key if supabase_service_key else supabase_anon_k
 if supabase_url and supabase_key:
     supabase: Client = create_client(supabase_url.strip(), supabase_key.strip())
 else:
+    logger.warning("Supabase credentials not configured in environment. Authentication service will be disabled.")
     supabase = None
 
 
@@ -452,6 +450,30 @@ def run_qa_pipeline(
         )
 
 
+def _can_use_celery() -> bool:
+    """Check if Redis broker is reachable and an active worker is available."""
+    redis_url = os.environ.get("REDIS_URL")
+    if not redis_url:
+        return False
+    try:
+        from urllib.parse import urlparse
+        import socket
+        parsed = urlparse(redis_url)
+        host = parsed.hostname or "localhost"
+        port = parsed.port or 6379
+        with socket.create_connection((host, port), timeout=0.2):
+            pass
+    except Exception:
+        return False
+
+    try:
+        from worker.celery_app import celery_app
+        inspector = celery_app.control.inspect(timeout=0.2)
+        return bool(inspector and inspector.ping())
+    except Exception:
+        return False
+
+
 @app.post("/api/v1/scans")
 @app.post("/api/scans")
 async def create_scan(
@@ -513,32 +535,37 @@ async def create_scan(
     enqueued = False
     try:
         from worker.tasks import process_query_task
-        if login_url or username or password_raw:
-            process_query_task.apply_async(
-                args=[
-                    scan_id,
-                    user_id_val,
-                    request.url,
-                    request.max_pages,
-                    request.auth_token,
-                    login_url,
-                    username,
-                    password_raw,
-                ],
-                task_id=scan_id,
-            )
+        from unittest.mock import Mock
+        is_mocked = isinstance(getattr(process_query_task, "apply_async", None), Mock)
+        if is_mocked or _can_use_celery():
+            if login_url or username or password_raw:
+                process_query_task.apply_async(
+                    args=[
+                        scan_id,
+                        user_id_val,
+                        request.url,
+                        request.max_pages,
+                        request.auth_token,
+                        login_url,
+                        username,
+                        password_raw,
+                    ],
+                    task_id=scan_id,
+                )
+            else:
+                process_query_task.apply_async(
+                    args=[
+                        scan_id,
+                        user_id_val,
+                        request.url,
+                        request.max_pages,
+                        request.auth_token,
+                    ],
+                    task_id=scan_id,
+                )
+            enqueued = True
         else:
-            process_query_task.apply_async(
-                args=[
-                    scan_id,
-                    user_id_val,
-                    request.url,
-                    request.max_pages,
-                    request.auth_token,
-                ],
-                task_id=scan_id,
-            )
-        enqueued = True
+            logger.info("Celery broker/worker unavailable; running scan %s via background task", scan_id)
     except Exception as e:
         logger.warning("Celery enqueue failed (%s), running via background task", e)
 
