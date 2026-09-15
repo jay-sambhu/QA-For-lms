@@ -98,5 +98,39 @@ class TestCIQualityGate(unittest.TestCase):
         exit_code = ci_quality_gate.evaluate_quality_gate(self.report_path)
         self.assertEqual(exit_code, 0)
 
+    def test_persisted_history_diffing_without_preexisting_regression_status(self):
+        # Create a historical previous report
+        hist_report_path = os.path.join(self.test_dir.name, "final_qa_report_previous.json")
+        prev_report = {
+            "run_id": "run-prev",
+            "report_metadata": {"target": "test", "pages_crawled": 1},
+            "findings": [
+                {"fingerprint": "hash_old", "severity": "low"}
+            ]
+        }
+        with open(hist_report_path, "w", encoding="utf-8") as f:
+            json.dump(prev_report, f)
+
+        # Current report has a new critical finding without regression_status pre-populated
+        curr_report = {
+            "run_id": "run-curr",
+            "report_metadata": {"target": "test", "pages_crawled": 1},
+            "findings": [
+                {"fingerprint": "hash_new_crit", "severity": "critical"}
+            ]
+        }
+        with open(self.report_path, "w", encoding="utf-8") as f:
+            json.dump(curr_report, f)
+
+        # Quality gate should diff against persisted history, detect NEW critical finding, and fail (exit code 1)
+        exit_code = ci_quality_gate.evaluate_quality_gate(self.report_path, history_dir=self.test_dir.name)
+        self.assertEqual(exit_code, 1)
+
+        # Verify that the report was updated with regression_status
+        with open(self.report_path, "r", encoding="utf-8") as f:
+            updated = json.load(f)
+        self.assertEqual(updated["findings"][0]["regression_status"], "NEW")
+
+
 if __name__ == "__main__":
     unittest.main()

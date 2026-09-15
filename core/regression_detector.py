@@ -32,19 +32,21 @@ class RegressionDetector:
         files.sort(key=os.path.getmtime, reverse=True)
         
         for f in files:
-            # Check run_id if it's in the file or just by filename
             if current_run_id and current_run_id in f:
+                continue
+            if os.path.abspath(f) == os.path.abspath(self.current_file):
                 continue
             return f
             
         # Fallback to qa_findings if no final report
         files = glob.glob(os.path.join(self.results_dir, "qa_findings_*.json"))
-        files.sort(reverse=True)
+        files.sort(key=os.path.getmtime, reverse=True)
         for f in files:
             if current_run_id and current_run_id in f:
                 continue
-            if f != self.current_file:
-                return f
+            if os.path.abspath(f) == os.path.abspath(self.current_file):
+                continue
+            return f
                 
         return None
 
@@ -77,6 +79,10 @@ class RegressionDetector:
                     print(f"Failed to read previous report {previous_file}: {e}")
 
         candidates = self.current_data.get('root_cause_candidates', [])
+        is_findings_list = False
+        if not candidates:
+            candidates = self.current_data.get('findings', [])
+            is_findings_list = True
         
         regression_summary = {
             "new": 0,
@@ -89,9 +95,13 @@ class RegressionDetector:
         current_fingerprints = set()
 
         for candidate in candidates:
-            fp = candidate.get('fingerprint')
+            # If item wraps candidate
+            target = candidate.get('candidate', candidate) if isinstance(candidate, dict) else {}
+            fp = target.get('fingerprint')
             if not fp:
                 candidate['regression_status'] = "NEW"
+                if target is not candidate:
+                    target['regression_status'] = "NEW"
                 regression_summary["new"] += 1
                 continue
                 
@@ -101,20 +111,25 @@ class RegressionDetector:
                 prev_candidate = previous_fingerprints[fp]
                 
                 # Check for improved/worsened (could be based on occurrences or severity)
-                curr_occ = candidate.get('occurrences', 0)
+                curr_occ = target.get('occurrences', 0)
                 prev_occ = prev_candidate.get('occurrences', 0)
                 
                 if curr_occ > prev_occ:
-                    candidate['regression_status'] = "WORSENED"
+                    status = "WORSENED"
                     regression_summary["worsened"] += 1
                 elif curr_occ < prev_occ:
-                    candidate['regression_status'] = "IMPROVED"
+                    status = "IMPROVED"
                     regression_summary["improved"] += 1
                 else:
-                    candidate['regression_status'] = "UNCHANGED"
+                    status = "UNCHANGED"
                     regression_summary["unchanged"] += 1
+                candidate['regression_status'] = status
+                if target is not candidate:
+                    target['regression_status'] = status
             else:
                 candidate['regression_status'] = "NEW"
+                if target is not candidate:
+                    target['regression_status'] = "NEW"
                 regression_summary["new"] += 1
 
         # Check for fixed issues (in previous but not current)
@@ -122,10 +137,13 @@ class RegressionDetector:
             if fp not in current_fingerprints:
                 regression_summary["fixed"] += 1
 
-        # We inject the summary into triage_metrics or as a separate block
+        # We inject the summary into triage_metrics and summary
         if 'triage_metrics' not in self.current_data:
             self.current_data['triage_metrics'] = {}
         self.current_data['triage_metrics']['regression_summary'] = regression_summary
+
+        if 'summary' in self.current_data and isinstance(self.current_data['summary'], dict):
+            self.current_data['summary']['regression_summary'] = regression_summary
 
         with open(self.current_file, 'w', encoding='utf-8') as f:
             json.dump(self.current_data, f, indent=2, ensure_ascii=False)

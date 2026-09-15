@@ -8,10 +8,26 @@ Also generates a Markdown summary suitable for GitHub Actions.
 """
 
 import os
+import glob
 import json
 import sys
 
-def evaluate_quality_gate(report_path):
+def find_historical_reports(history_dir, current_report_path=None):
+    """
+    Find persisted historical QA reports in history_dir, sorted by modification time descending.
+    """
+    if not history_dir or not os.path.isdir(history_dir):
+        return []
+    candidates = []
+    for pat in ["final_qa_report_*.json", "qa_findings_*.json"]:
+        candidates.extend(glob.glob(os.path.join(history_dir, pat)))
+    curr_abs = os.path.abspath(current_report_path) if current_report_path else None
+    history = [f for f in candidates if os.path.abspath(f) != curr_abs]
+    history.sort(key=os.path.getmtime, reverse=True)
+    return history
+
+
+def evaluate_quality_gate(report_path, history_dir=None):
     if not os.path.exists(report_path):
         print(f"ERROR: Report file not found at {report_path}")
         return 2
@@ -23,13 +39,39 @@ def evaluate_quality_gate(report_path):
         print(f"ERROR: Failed to load JSON report: {e}")
         return 2
 
+    # Resolve persisted history directory
+    effective_history_dir = history_dir or os.environ.get("QA_HISTORY_DIR") or os.path.dirname(os.path.abspath(report_path))
+    historical_reports = find_historical_reports(effective_history_dir, report_path)
+
+    findings = report.get("findings", [])
+    regression_summary = (
+        report.get("summary", {}).get("regression_summary")
+        or report.get("triage_metrics", {}).get("regression_summary", {})
+        or {}
+    )
+
+    # If regression statuses are absent on findings, evaluate against persisted history
+    has_regression_statuses = any(bool(f.get("regression_status")) for f in findings if isinstance(f, dict))
+    if not has_regression_statuses and findings and historical_reports:
+        from core.regression_detector import RegressionDetector
+        try:
+            detector = RegressionDetector(report_path, effective_history_dir)
+            detector.detect()
+            with open(report_path, 'r', encoding='utf-8') as f:
+                report = json.load(f)
+            findings = report.get("findings", [])
+            regression_summary = (
+                report.get("summary", {}).get("regression_summary")
+                or report.get("triage_metrics", {}).get("regression_summary", {})
+                or {}
+            )
+        except Exception as err:
+            print(f"Warning: Could not run regression detection against history: {err}")
+
     # Load thresholds (defaults: Critical=True, High=True, Medium=False)
     fail_on_critical = os.environ.get("CI_FAIL_ON_NEW_CRITICAL", "true").lower() == "true"
     fail_on_high = os.environ.get("CI_FAIL_ON_NEW_HIGH", "true").lower() == "true"
     fail_on_medium = os.environ.get("CI_FAIL_ON_NEW_MEDIUM", "false").lower() == "true"
-
-    findings = report.get("findings", [])
-    regression_summary = report.get("summary", {}).get("regression_summary", {})
     
     # Calculate counts (in case they differ slightly from summary)
     new_findings = [f for f in findings if (f.get("regression_status") or "").upper() == "NEW"]
@@ -130,8 +172,9 @@ def evaluate_quality_gate(report_path):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: ci_quality_gate.py <path_to_final_qa_report.json>")
+        print("Usage: ci_quality_gate.py <path_to_final_qa_report.json> [history_dir]")
         sys.exit(2)
         
-    exit_code = evaluate_quality_gate(sys.argv[1])
+    hist_dir = sys.argv[2] if len(sys.argv) > 2 else None
+    exit_code = evaluate_quality_gate(sys.argv[1], history_dir=hist_dir)
     sys.exit(exit_code)

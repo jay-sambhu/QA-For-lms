@@ -18,6 +18,24 @@ if not os.environ.get("DATABASE_URL"):
 import pytest
 from unittest.mock import MagicMock, patch
 
+def pytest_configure(config):
+    """
+    Configure pytest to emit results to a persistent, timestamped location:
+    results/test-runs/<timestamp>.xml
+    Preserves explicit --junitxml CLI options if provided.
+    """
+    if not getattr(config.option, "xmlpath", None):
+        import datetime
+        from _pytest.junitxml import LogXML
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+        test_runs_dir = os.path.join(ROOT_DIR, "results", "test-runs")
+        os.makedirs(test_runs_dir, exist_ok=True)
+        xml_path = os.path.join(test_runs_dir, f"test_run_{timestamp}.xml")
+        config.option.xmlpath = xml_path
+        if not config.pluginmanager.has_plugin("junitxml"):
+            logfile = LogXML(xml_path, prefix=config.getini("junit_suite_name") or None)
+            config.pluginmanager.register(logfile, "junitxml")
+
 @pytest.fixture(scope="session", autouse=True)
 def cleanup_isolated_test_database():
     """Clean up the isolated test SQLite database after the test session."""
