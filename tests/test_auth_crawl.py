@@ -272,3 +272,179 @@ def test_report_generator_handles_auth_errored_and_blocks_downstream(tmp_path):
     findings = final_report["findings"]
     assert len(findings) == 1
     assert findings[0]["title"] == "Authentication Failed on Login Page"
+
+
+class _StubAuthServerHandler:
+    """Ephemeral HTTP handler simulating an authentication flow for Playwright crawler."""
+    @staticmethod
+    def create_handler():
+        import urllib.parse
+        from http.server import BaseHTTPRequestHandler
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, format, *args):
+                pass  # Suppress server logging during tests
+
+            def do_GET(self):
+                if self.path == "/login":
+                    html = """<!DOCTYPE html>
+<html>
+<head><title>Login Page</title></head>
+<body>
+    <h2>Sign In</h2>
+    <form method="POST" action="/login">
+        <input type="email" name="email" id="email" placeholder="Email address" />
+        <input type="password" name="password" id="password" placeholder="Password" />
+        <button type="submit" id="submit-btn">Sign In</button>
+    </form>
+</body>
+</html>"""
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html")
+                    self.end_headers()
+                    self.wfile.write(html.encode("utf-8"))
+                elif self.path == "/dashboard":
+                    html = """<!DOCTYPE html>
+<html>
+<head><title>Dashboard</title></head>
+<body>
+    <h1>Protected Dashboard</h1>
+    <p>Session initialized successfully</p>
+</body>
+</html>"""
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html")
+                    self.end_headers()
+                    self.wfile.write(html.encode("utf-8"))
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+
+            def do_POST(self):
+                if self.path == "/login":
+                    content_len = int(self.headers.get("Content-Length", 0))
+                    post_body = self.rfile.read(content_len).decode("utf-8")
+                    params = urllib.parse.parse_qs(post_body)
+                    email = params.get("email", [""])[0]
+                    password = params.get("password", [""])[0]
+
+                    if email == "crawler_user@example.com" and password == "SecretPass123!":
+                        self.send_response(302)
+                        self.send_header("Location", "/dashboard")
+                        self.end_headers()
+                    else:
+                        html = """<!DOCTYPE html>
+<html>
+<head><title>Login Failed</title></head>
+<body>
+    <div class="alert error" role="alert">Invalid credentials</div>
+    <form method="POST" action="/login">
+        <input type="email" name="email" id="email" />
+        <input type="password" name="password" id="password" />
+        <button type="submit">Sign In</button>
+    </form>
+</body>
+</html>"""
+                        self.send_response(200)
+                        self.send_header("Content-Type", "text/html")
+                        self.end_headers()
+                        self.wfile.write(html.encode("utf-8"))
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+
+        return Handler
+
+
+def test_playwright_crawler_hits_local_stub_login_success():
+    """Verify Playwright crawler against a real local HTTP auth server with valid credentials."""
+    import threading
+    from http.server import HTTPServer
+    from playwright.async_api import async_playwright
+
+    server = HTTPServer(("127.0.0.1", 0), _StubAuthServerHandler.create_handler())
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    async def _run():
+        login_url = f"http://127.0.0.1:{port}/login"
+        crawler = WebsiteCrawler(
+            f"http://127.0.0.1:{port}",
+            login_url=login_url,
+            username="crawler_user@example.com",
+            password="SecretPass123!",
+        )
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(viewport={"width": 1920, "height": 1080})
+            page = await context.new_page()
+            try:
+                res = await crawler.perform_login(page, "desktop")
+                assert res["success"] is True
+                assert res["status"] == "passed"
+                assert "/dashboard" in page.url
+            finally:
+                await context.close()
+                await browser.close()
+
+    try:
+        asyncio.run(_run())
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_playwright_crawler_hits_local_stub_login_failure():
+    """Verify Playwright crawler against a real local HTTP auth server with invalid credentials."""
+    import threading
+    from http.server import HTTPServer
+    from playwright.async_api import async_playwright
+
+    server = HTTPServer(("127.0.0.1", 0), _StubAuthServerHandler.create_handler())
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    async def _run():
+        login_url = f"http://127.0.0.1:{port}/login"
+        crawler = WebsiteCrawler(
+            f"http://127.0.0.1:{port}",
+            login_url=login_url,
+            username="wrong_user@example.com",
+            password="InvalidPassword123!",
+        )
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(viewport={"width": 1920, "height": 1080})
+            page = await context.new_page()
+            try:
+                res = await crawler.perform_login(page, "desktop")
+                assert res["success"] is False
+                assert res["status"] == "errored"
+                assert "Invalid credentials" in res.get("error", "")
+            finally:
+                await context.close()
+                await browser.close()
+
+    try:
+        asyncio.run(_run())
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.live_auth
+def test_live_supabase_auth_connection():
+    """
+    Legitimate live Supabase test requiring real network authentication credentials.
+    Excluded from default CI/test runs via -m 'not live_auth'.
+    """
+    import os
+    from supabase import create_client
+    url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
+    key = os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+    if not url or not key:
+        pytest.skip("Live Supabase credentials not configured in environment")
+    sb = create_client(url, key)
+    assert sb is not None

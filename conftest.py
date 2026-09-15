@@ -16,6 +16,7 @@ if not os.environ.get("DATABASE_URL"):
     os.environ["DATABASE_URL"] = f"sqlite:///{_test_db_path}"
 
 import pytest
+from unittest.mock import MagicMock, patch
 
 @pytest.fixture(scope="session", autouse=True)
 def cleanup_isolated_test_database():
@@ -27,3 +28,42 @@ def cleanup_isolated_test_database():
             os.remove(test_db)
         except OSError:
             pass
+
+
+@pytest.fixture(autouse=True)
+def mock_supabase_jwt(request):
+    """
+    Auto-mock Supabase JWT validation so tests never make a real network call to Supabase.
+    Can be bypassed for tests marked with @pytest.mark.live_auth.
+    """
+    if "live_auth" in request.keywords:
+        yield
+        return
+
+    mock_user_obj = MagicMock()
+    mock_user_obj.id = "00000000-0000-0000-0000-000000000001"
+    mock_user_obj.email = "tester@example.com"
+    mock_user_obj.role = "authenticated"
+    mock_user_obj.user_metadata = {"role": "user"}
+
+    mock_resp = MagicMock()
+    mock_resp.user = mock_user_obj
+
+    try:
+        import api.main
+    except Exception:
+        yield
+        return
+
+    if api.main.supabase is not None:
+        with patch.object(api.main.supabase.auth, "get_user", return_value=mock_resp):
+            yield
+    else:
+        mock_client = MagicMock()
+        mock_client.auth.get_user.return_value = mock_resp
+        orig_client = api.main.supabase
+        api.main.supabase = mock_client
+        try:
+            yield
+        finally:
+            api.main.supabase = orig_client
