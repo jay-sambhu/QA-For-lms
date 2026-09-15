@@ -1,0 +1,37 @@
+# Python bytecode and environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.venv*
+.venv/
+.venv312/
+.pytest_cache/
+.ruff_cache/
+
+# Tests & Test Configuration (exclude from production Docker build)
+tests/
+conftest.py
+test_*.py
+*_test.py
+
+# Local databases, output, and artifacts
+*.db
+*.sqlite
+*.sqlite3
+results/
+reports/
+screenshots/
+user_data/
+scripts/*.log
+scripts/.jasuss_pids
+scratch/
+
+# Web frontend sources (built and hosted separately)
+web/
+node_modules/
+
+# Git & CI
+.git/
+.github/
+.gitignore
+.dockerignore

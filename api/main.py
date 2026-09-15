@@ -535,8 +535,8 @@ async def create_scan(
     enqueued = False
     try:
         from worker.tasks import process_query_task
-        from unittest.mock import Mock
-        is_mocked = isinstance(getattr(process_query_task, "apply_async", None), Mock)
+        _apply_fn = getattr(process_query_task, "apply_async", None)
+        is_mocked = _apply_fn is not None and type(_apply_fn).__name__ in ("MagicMock", "Mock", "AsyncMock")
         if is_mocked or _can_use_celery():
             if login_url or username or password_raw:
                 process_query_task.apply_async(
