@@ -10,6 +10,13 @@ from urllib.parse import urlparse
 from uuid import uuid4, UUID
 from dotenv import load_dotenv
 
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+_env_file = os.path.join(ROOT_DIR, ".env")
+if os.path.exists(_env_file):
+    load_dotenv(dotenv_path=_env_file, override=True)
+else:
+    load_dotenv(override=True)
+
 from fastapi import Depends, FastAPI, HTTPException, Header, BackgroundTasks
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, SecretStr, field_validator
@@ -37,11 +44,6 @@ try:
     Base.metadata.create_all(bind=engine)
 except Exception:
     pass
-
-
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-
-load_dotenv(dotenv_path=os.path.join(ROOT_DIR, ".env"))
 
 # Diagnostics go through logging, not print: background tasks fail where nobody
 # is watching stdout, and an operator needs the traceback to tell "expired
@@ -92,17 +94,50 @@ from api.admin import admin_router
 app.include_router(billing_router)
 app.include_router(admin_router)
 
-supabase_url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
-supabase_anon_key = os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
-supabase_service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+supabase_url = (os.environ.get("NEXT_PUBLIC_SUPABASE_URL") or "").strip()
+supabase_anon_key = (os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY") or "").strip()
+supabase_service_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
+
+# Print and log explicit startup diagnostic check for all three Supabase variables
+_status_url = "PRESENT" if supabase_url else "MISSING"
+_status_anon = "PRESENT" if supabase_anon_key else "MISSING"
+_status_service = "PRESENT" if supabase_service_key else "MISSING"
+
+_startup_diag = (
+    f"[SUPABASE AUTH] Environment check: "
+    f"NEXT_PUBLIC_SUPABASE_URL={_status_url}, "
+    f"NEXT_PUBLIC_SUPABASE_ANON_KEY={_status_anon}, "
+    f"SUPABASE_SERVICE_ROLE_KEY={_status_service}"
+)
+logger.info(_startup_diag)
+print(_startup_diag, flush=True)
 
 # Use Service Role Key for backend if available to bypass RLS, otherwise fallback to Anon Key
 supabase_key = supabase_service_key if supabase_service_key else supabase_anon_key
 
+missing_supabase_vars = []
+if not supabase_url:
+    missing_supabase_vars.append("NEXT_PUBLIC_SUPABASE_URL")
+if not supabase_key:
+    missing_supabase_vars.append("SUPABASE_SERVICE_ROLE_KEY / NEXT_PUBLIC_SUPABASE_ANON_KEY")
+
 if supabase_url and supabase_key:
-    supabase: Client = create_client(supabase_url.strip(), supabase_key.strip())
+    try:
+        supabase: Optional[Client] = create_client(supabase_url, supabase_key)
+        _init_msg = f"[SUPABASE AUTH] Client initialized successfully using {'SERVICE_ROLE_KEY' if supabase_service_key else 'ANON_KEY'}."
+        logger.info(_init_msg)
+        print(_init_msg, flush=True)
+    except Exception as exc:
+        logger.error(f"[SUPABASE AUTH ERROR] Failed to instantiate Supabase client: {exc}", exc_info=True)
+        print(f"[SUPABASE AUTH ERROR] Failed to instantiate Supabase client: {exc}", file=sys.stderr, flush=True)
+        supabase = None
 else:
-    logger.warning("Supabase credentials not configured in environment. Authentication service will be disabled.")
+    _err_msg = (
+        f"[SUPABASE AUTH ERROR] Supabase credentials missing in environment: "
+        f"{', '.join(missing_supabase_vars)}. Authentication service is disabled."
+    )
+    logger.error(_err_msg)
+    print(_err_msg, file=sys.stderr, flush=True)
     supabase = None
 
 
@@ -233,7 +268,12 @@ def require_user(authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail="Missing bearer token")
 
     if not supabase:
-        raise HTTPException(status_code=503, detail="Authentication service unavailable")
+        missing_desc = ", ".join(missing_supabase_vars) if missing_supabase_vars else "NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY"
+        logger.error("Authentication rejected: Supabase client is not configured. Missing variable(s): %s", missing_desc)
+        raise HTTPException(
+            status_code=503,
+            detail=f"Authentication service unavailable: missing environment variable(s) {missing_desc}",
+        )
 
     try:
         user_response = supabase.auth.get_user(token)

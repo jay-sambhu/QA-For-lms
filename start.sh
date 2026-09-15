@@ -42,8 +42,20 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM EXIT
 
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+UVICORN_ENV_ARG=""
+if [ -f "$REPO_ROOT/.env" ]; then
+    echo -e "${C_CYAN}[ENV] Loading environment variables from $REPO_ROOT/.env...${C_RESET}"
+    set -a
+    source "$REPO_ROOT/.env"
+    set +a
+    UVICORN_ENV_ARG="--env-file $REPO_ROOT/.env"
+else
+    echo -e "${C_YELLOW}[!] Warning: No .env file found at $REPO_ROOT/.env${C_RESET}"
+fi
+
 echo -e "${C_BLUE}[1/2] Starting FastAPI Backend on http://0.0.0.0:8000...${C_RESET}"
-python3 -m uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload 2>&1 | sed "s/^/$(echo -e "${C_CYAN}[API]${C_RESET} ")/" &
+python3 -m uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload $UVICORN_ENV_ARG 2>&1 | sed "s/^/$(echo -e "${C_CYAN}[API]${C_RESET} ")/" &
 API_PID=$!
 
 echo -e "${C_BLUE}[2/2] Starting Next.js Web Frontend on http://localhost:3000...${C_RESET}"
