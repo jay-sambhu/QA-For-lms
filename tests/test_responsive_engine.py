@@ -10,8 +10,8 @@ class TestResponsiveEngine(unittest.TestCase):
         config = DeviceConfigManager.get_devices_config()
         self.assertIn("Desktop Chrome", config)
         desktop = config["Desktop Chrome"]
-        self.assertEqual(desktop["viewport"]["width"], 1366)
-        self.assertEqual(desktop["viewport"]["height"], 768)
+        self.assertEqual(desktop["viewport"]["width"], 1920)
+        self.assertEqual(desktop["viewport"]["height"], 1080)
         self.assertFalse(desktop["is_mobile"])
 
     def test_02_iphone_configuration(self):
@@ -69,8 +69,8 @@ class TestResponsiveEngine(unittest.TestCase):
                     "forms_outside_viewport": 0,
                     "clipped_buttons": 0,
                     "navigation_visible": True,
-                    "viewport_width": 1366,
-                    "viewport_height": 768
+                    "viewport_width": 1920,
+                    "viewport_height": 1080
                 }
             }]
         }

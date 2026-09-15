@@ -5,10 +5,21 @@ import re
 from datetime import datetime
 from urllib.parse import urljoin, urlparse
 
+import inspect
 from playwright.async_api import async_playwright
 
 from .network import NetworkMonitor
 from .devices import DeviceConfigManager
+
+async def _safe_wait_load_state(page, state="networkidle", timeout=3000):
+    """Safely wait for page load state without failing if unsupported or mocked."""
+    if hasattr(page, "wait_for_load_state"):
+        try:
+            res = page.wait_for_load_state(state, timeout=timeout)
+            if inspect.isawaitable(res):
+                await res
+        except Exception:
+            pass
 
 # Schemes we are willing to fetch. Everything else (mailto:, tel:,
 # javascript:, data: ...) is left untouched and treated as external.
@@ -175,7 +186,7 @@ class WebsiteCrawler:
             print(f"[{dev_name}] Performing automated login at: {self.login_url}")
             try:
                 res = await page.goto(self.login_url, wait_until="domcontentloaded", timeout=20000)
-                await page.wait_for_timeout(1000)
+                await _safe_wait_load_state(page, "networkidle", timeout=3000)
             except Exception as e:
                 return {"success": False, "error": f"Failed to load login page: {str(e)}", "status": "errored"}
 
@@ -260,7 +271,7 @@ class WebsiteCrawler:
                 await password_input.press("Enter")
             elif username_input:
                 await username_input.press("Enter")
-            await page.wait_for_timeout(2500)
+            await _safe_wait_load_state(page, "networkidle", timeout=3000)
         except Exception as e:
             return {"success": False, "error": f"Failed submitting login form: {str(e)}", "status": "errored"}
 
@@ -288,8 +299,9 @@ class WebsiteCrawler:
 
         async with async_playwright() as p:
 
+            headless_mode = os.environ.get("PLAYWRIGHT_HEADLESS", "true").lower() != "false"
             browser = await p.chromium.launch(
-                headless=True
+                headless=headless_mode
             )
 
             devices_config = DeviceConfigManager.get_devices_config(p)
@@ -431,7 +443,7 @@ class WebsiteCrawler:
                                 timeout=30000
                             )
 
-                            await page.wait_for_timeout(1500)
+                            await _safe_wait_load_state(page, "networkidle", timeout=3000)
 
                             # Auto-detect login if enabled and not already logged in
                             if not self.login_url and self.username and self.password and not auto_logged_in_devices.get(dev_name):
@@ -439,13 +451,13 @@ class WebsiteCrawler:
                                 if login_res.get("success") and login_res.get("status") != "no_login_form_detected":
                                     print(f"[{dev_name}] Auto-login successful on {url}")
                                     auto_logged_in_devices[dev_name] = True
-                                    await page.wait_for_timeout(2000)
+                                    await _safe_wait_load_state(page, "networkidle", timeout=3000)
 
                             status = response.status if response else None
                             title = await page.title()
                             
                             # Execute deterministic responsive checks in page JS
-                            responsive_checks = {"horizontal_overflow": False, "overflow_pixels": 0, "elements_outside_viewport": 0, "forms_outside_viewport": 0, "clipped_buttons": 0, "navigation_visible": True, "viewport_width": 1366, "viewport_height": 768}
+                            responsive_checks = {"horizontal_overflow": False, "overflow_pixels": 0, "elements_outside_viewport": 0, "forms_outside_viewport": 0, "clipped_buttons": 0, "navigation_visible": True, "viewport_width": 1920, "viewport_height": 1080}
                             try:
                                 responsive_checks = await page.evaluate("""() => {
                                     const docWidth = document.documentElement ? document.documentElement.scrollWidth : 0;
@@ -531,7 +543,7 @@ class WebsiteCrawler:
                                             # Safely trigger click to uncover dynamic client-side SPA state transitions
                                             try:
                                                 await btn.click(timeout=1500)
-                                                await page.wait_for_timeout(500)
+                                                await _safe_wait_load_state(page, "domcontentloaded", timeout=1000)
                                                 
                                                 # Check if click changed URL or added new internal links
                                                 curr_url = self.normalize_url(page.url)

@@ -10,7 +10,7 @@ class DeviceConfigManager:
 
     DEFAULT_DESKTOP = {
         "name": "Desktop Chrome",
-        "viewport": {"width": 1366, "height": 768},
+        "viewport": {"width": 1920, "height": 1080},
         "is_mobile": False,
         "device_scale_factor": 1.0,
     }
@@ -21,12 +21,12 @@ class DeviceConfigManager:
         Build Playwright context kwargs for supported devices.
         
         Devices supported:
-        - Desktop Chrome (1366x768)
+        - Desktop Chrome (1920x1080)
         - iPhone 13 (Playwright device profile)
         - iPad (gen 7) (Playwright device profile)
         """
         desktop_kwargs = {
-            "viewport": {"width": 1366, "height": 768},
+            "viewport": {"width": 1920, "height": 1080},
             "is_mobile": False,
             "has_touch": False,
             "device_scale_factor": 1.0,
@@ -72,6 +72,6 @@ class DeviceConfigManager:
         """Extract viewport width and height safely."""
         vp = dev_config.get("viewport") or {}
         return {
-            "width": vp.get("width", 1366 if "Desktop" in dev_name else 390),
-            "height": vp.get("height", 768 if "Desktop" in dev_name else 844),
+            "width": vp.get("width", 1920 if "Desktop" in dev_name else 390),
+            "height": vp.get("height", 1080 if "Desktop" in dev_name else 844),
         }

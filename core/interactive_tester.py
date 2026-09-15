@@ -4,10 +4,21 @@ import os
 from datetime import datetime
 from urllib.parse import urlparse, urljoin
 
+import inspect
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 
 # Re-use NetworkMonitor from crawler
 from crawler.network import NetworkMonitor
+
+async def _safe_wait_load_state(page, state="networkidle", timeout=3000):
+    """Safely wait for page load state without blocking if unsupported or mocked."""
+    if hasattr(page, "wait_for_load_state"):
+        try:
+            res = page.wait_for_load_state(state, timeout=timeout)
+            if inspect.isawaitable(res):
+                await res
+        except Exception:
+            pass
 
 # Destructive action keywords (case-insensitive)
 DESTRUCTIVE_KEYWORDS = {
@@ -88,7 +99,7 @@ class InteractiveTester:
         """Navigate to a URL and wait safely."""
         try:
             await page.goto(url, wait_until="domcontentloaded", timeout=self.interaction_timeout)
-            await page.wait_for_timeout(1000)
+            await _safe_wait_load_state(page, "networkidle", timeout=2000)
             return True
         except Exception:
             return False
@@ -111,10 +122,11 @@ class InteractiveTester:
         if not pages_to_test:
             return self._build_result(0, 0, 0, 0, 0)
 
+        headless_mode = os.environ.get("PLAYWRIGHT_HEADLESS", "true").lower() != "false"
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(headless=headless_mode)
             context = await browser.new_context(
-                viewport={"width": 1366, "height": 768},
+                viewport={"width": 1920, "height": 1080},
                 ignore_https_errors=True
             )
             
@@ -260,7 +272,7 @@ class InteractiveTester:
                                 await locator.evaluate("form => form.submit()")
                                 
                             await page.wait_for_load_state("domcontentloaded", timeout=self.interaction_timeout)
-                            await page.wait_for_timeout(1000) # Let network settle
+                            await _safe_wait_load_state(page, "networkidle", timeout=2000)
                             
                         except PlaywrightTimeoutError:
                             interaction_failed = True
