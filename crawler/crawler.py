@@ -1,5 +1,7 @@
+import sys
 import asyncio
 import json
+import logging
 import os
 import re
 from datetime import datetime
@@ -10,6 +12,8 @@ from playwright.async_api import async_playwright
 
 from .network import NetworkMonitor
 from .devices import DeviceConfigManager
+
+logger = logging.getLogger(__name__)
 
 async def _safe_wait_load_state(page, state="networkidle", timeout=3000):
     """Safely wait for page load state without failing if unsupported or mocked."""
