@@ -32,9 +32,25 @@ from core import ci_quality_gate
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
+def ensure_playwright_ready():
+    """Ensure Chromium executable exists before starting the pipeline."""
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            exec_path = p.chromium.executable_path
+            if not os.path.exists(exec_path):
+                print(f"[PLAYWRIGHT] Chromium binary not found at {exec_path}. Auto-installing...")
+                import subprocess
+                subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+                print("[PLAYWRIGHT] Chromium installation complete.")
+    except Exception as e:
+        print(f"[PLAYWRIGHT] Browser availability check note: {e}")
+
+
 async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_dir=None,
                        login_url=None, username=None, password=None, **kwargs):
     """Executes the complete autonomous quality engineering pipeline end-to-end."""
+    ensure_playwright_ready()
     run_id = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
     base_dir = os.path.abspath(output_dir) if output_dir else ROOT_DIR
     results_dir = os.path.join(base_dir, "results")

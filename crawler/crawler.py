@@ -300,9 +300,24 @@ class WebsiteCrawler:
         async with async_playwright() as p:
 
             headless_mode = os.environ.get("PLAYWRIGHT_HEADLESS", "true").lower() != "false"
-            browser = await p.chromium.launch(
-                headless=headless_mode
-            )
+            try:
+                browser = await p.chromium.launch(
+                    headless=headless_mode
+                )
+            except Exception as launch_err:
+                if "Executable doesn't exist" in str(launch_err):
+                    logger.warning("Chromium executable missing. Running automatic playwright installation...")
+                    install_proc = await asyncio.create_subprocess_exec(
+                        sys.executable, "-m", "playwright", "install", "chromium",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await install_proc.communicate()
+                    browser = await p.chromium.launch(
+                        headless=headless_mode
+                    )
+                else:
+                    raise
 
             devices_config = DeviceConfigManager.get_devices_config(p)
 

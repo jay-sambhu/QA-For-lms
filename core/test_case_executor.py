@@ -42,7 +42,19 @@ class TestCaseExecutor:
         new_findings = []
         
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            try:
+                browser = await p.chromium.launch(headless=True)
+            except Exception as launch_err:
+                if "Executable doesn't exist" in str(launch_err):
+                    install_proc = await asyncio.create_subprocess_exec(
+                        sys.executable, "-m", "playwright", "install", "chromium",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await install_proc.communicate()
+                    browser = await p.chromium.launch(headless=True)
+                else:
+                    raise
             context = await browser.new_context(ignore_https_errors=True)
             async def handle_dialog(dialog):
                 try:
