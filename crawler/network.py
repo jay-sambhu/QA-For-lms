@@ -40,15 +40,25 @@ class NetworkMonitor:
         })
 
     def record_console(self, message, page_url):
-        if message.type != "error":
+        """Record console error messages from Playwright.
+
+        Playwright's ConsoleMessage exposes `type()` and `text()` methods.
+        The original implementation accessed them as attributes, causing
+        attribute errors and preventing console errors from being captured.
+        """
+        try:
+            msg_type = message.type()
+        except Exception:
+            return
+        if msg_type != "error":
             return
 
         entry = {
             "page": page_url,
             # Always "error" given the filter above, but kept so the recorded
             # schema stays compatible with existing crawl_*.json files.
-            "type": message.type,
-            "text": message.text,
+            "type": msg_type,
+            "text": message.text(),
         }
 
         # Source location makes console errors far easier to act on. It is not
