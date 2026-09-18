@@ -31,10 +31,10 @@ class PipelineStage(str, Enum):
 STAGE_PROGRESS_MAP: Dict[PipelineStage, int] = {
     PipelineStage.CREATED: 0,
     PipelineStage.DISCOVERING: 10,
-    PipelineStage.MODELING: 25,
-    PipelineStage.PLANNING: 35,
-    PipelineStage.GENERATING: 45,
-    PipelineStage.EXECUTING: 60,
+    PipelineStage.MODELING: 35,
+    PipelineStage.PLANNING: 45,
+    PipelineStage.GENERATING: 55,
+    PipelineStage.EXECUTING: 65,
     PipelineStage.VERIFYING: 75,
     PipelineStage.TRIAGING: 85,
     PipelineStage.REGRESSION: 90,
@@ -72,6 +72,7 @@ class PipelineStateMachine:
         self.results_dir = results_dir
         self.progress_cb = progress_cb
         self.current_stage = PipelineStage.CREATED
+        self.highest_percent = 0
         self.history = []
         self.checkpoint_file = os.path.join(results_dir, f"checkpoint_{scan_id}.json")
         self.progress_file = os.path.join(results_dir, f"progress_{scan_id}.json")
@@ -92,7 +93,10 @@ class PipelineStateMachine:
 
     def _record_state(self, stage: PipelineStage, message: str, metadata: Optional[Dict[str, Any]] = None):
         timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        percent = STAGE_PROGRESS_MAP.get(stage, 0)
+        raw_percent = STAGE_PROGRESS_MAP.get(stage, 0)
+        self.highest_percent = max(self.highest_percent, raw_percent)
+        percent = self.highest_percent
+
         entry = {
             "stage": stage.value,
             "percent": percent,
@@ -136,11 +140,18 @@ class PipelineStateMachine:
         """Updates live progress percent and message without transitioning stage."""
         timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         try:
+            int_pct = int(percent)
+        except (ValueError, TypeError):
+            int_pct = self.highest_percent
+        self.highest_percent = max(self.highest_percent, int_pct)
+        monotonic_percent = self.highest_percent
+
+        try:
             with open(self.progress_file, "w", encoding="utf-8") as f:
                 json.dump({
                     "scan_id": self.scan_id,
                     "stage": self.current_stage.value,
-                    "percent": percent,
+                    "percent": monotonic_percent,
                     "message": message,
                     "timestamp": timestamp,
                     **metadata,
@@ -150,6 +161,6 @@ class PipelineStateMachine:
 
         if self.progress_cb:
             try:
-                self.progress_cb(self.current_stage.value, percent, message)
+                self.progress_cb(self.current_stage.value, monotonic_percent, message)
             except Exception:
                 pass

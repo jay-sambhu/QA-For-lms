@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -27,6 +27,13 @@ export const ScanDetailPage: React.FC = () => {
     'Initializing isolated browser environments across viewports...',
   ]);
 
+  const [retryCount, setRetryCount] = useState(0);
+
+  // Keep track of consecutive polling errors to avoid console flood and handle backoff
+  const consecutiveErrorsRef = useRef(0);
+  const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isPollingRef = useRef(false);
+
   // Elapsed timer
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
@@ -50,57 +57,116 @@ export const ScanDetailPage: React.FC = () => {
 
   // Stop Scan handler
   const handleStopScan = async () => {
-    if (!scanId || !session) return;
+    if (!scanId || !session?.access_token) return;
     try {
-      await fetch(`/api/scans/${scanId}/cancel`, {
+      await fetch(`/api/v1/scans/${scanId}/cancel`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       setStatus('cancelled');
       setError('Scan was cancelled by user.');
-    } catch (e) {
-      console.error('Stop scan failed:', e);
+    } catch {
+      // Ignore network aborts on cancel
     }
   };
 
-  // Poll scan state
+  // Manual retry handler
+  const handleManualRetry = () => {
+    consecutiveErrorsRef.current = 0;
+    setError('');
+    setStatus('pending');
+    setRetryCount((c) => c + 1);
+  };
+
+  // Poll scan state safely without console error storms
   useEffect(() => {
-    if (!scanId) return;
+    // 1. Wait until session authentication state is determined
+    if (!sessionLoaded || !scanId) return;
 
-    let cancelled = false;
+    // 2. If user is unauthenticated, show error without firing API requests
+    if (!session?.access_token) {
+      setError('Please sign in to view this scan.');
+      setStatus('error');
+      return;
+    }
 
-    const poll = async () => {
+    let isMounted = true;
+    consecutiveErrorsRef.current = 0;
+
+    const stopPolling = () => {
+      if (pollTimerRef.current) {
+        clearTimeout(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
+
+    const scheduleNextPoll = (delayMs: number) => {
+      if (!isMounted) return;
+      stopPolling();
+      pollTimerRef.current = setTimeout(() => {
+        executePoll();
+      }, delayMs);
+    };
+
+    const executePoll = async () => {
+      if (!isMounted || isPollingRef.current) return;
+      isPollingRef.current = true;
+
       try {
-        const headers: Record<string, string> = {};
-        if (session?.access_token) {
-          headers['Authorization'] = `Bearer ${session.access_token}`;
-        }
+        const headers: Record<string, string> = {
+          Authorization: `Bearer ${session.access_token}`,
+        };
 
-        const res = await fetch(`/api/scans/${scanId}`, { headers });
-        if (cancelled) return;
+        const res = await fetch(`/api/v1/scans/${scanId}`, { headers });
+        if (!isMounted) return;
 
+        // Terminal state: Scan not found
         if (res.status === 404) {
+          stopPolling();
           setError('Scan not found or has expired.');
           setStatus('error');
           return;
         }
 
+        // Terminal state: Unauthorized / Session invalid
         if (res.status === 401) {
+          stopPolling();
           setError('Session expired or unauthorized. Please sign in again.');
           setStatus('error');
           return;
         }
 
-        if (res.status === 503) {
-          setError('Authentication service unavailable. Please check your connection.');
+        // Forbidden
+        if (res.status === 403) {
+          stopPolling();
+          setError('You do not have permission to view this scan.');
           setStatus('error');
           return;
         }
 
-        if (!res.ok) return;
+        // Server errors: 500, 502 Bad Gateway, 503, 504
+        if (!res.ok) {
+          consecutiveErrorsRef.current += 1;
+          if (consecutiveErrorsRef.current >= 5) {
+            stopPolling();
+            setError(
+              res.status === 502
+                ? 'Backend service is temporarily unavailable (502 Bad Gateway). Please retry in a few moments.'
+                : `Scan service returned an error (${res.status}). Click retry to check again.`
+            );
+            setStatus('error');
+            return;
+          }
+          // Exponential backoff for temporary gateway / server hiccups (2s -> 4s -> 6s...)
+          const backoff = Math.min(8000, 2000 * consecutiveErrorsRef.current);
+          scheduleNextPoll(backoff);
+          return;
+        }
 
+        // Successful response - reset consecutive error counter
+        consecutiveErrorsRef.current = 0;
         const data = await res.json();
-        if (cancelled) return;
+        if (!isMounted) return;
 
         if (data.url) setTargetUrl(data.url);
         setStatus(data.status);
@@ -109,33 +175,60 @@ export const ScanDetailPage: React.FC = () => {
           setProgress(data.progress);
         }
 
+        // Terminal state: Completed
         if (data.status === 'completed') {
-          if (data.results) setResults(data.results);
+          if (data.results) {
+            setResults(data.results);
+            stopPolling();
+            return;
+          }
+          // If status is completed but results file is still finalizing, poll once more with short delay
+          scheduleNextPoll(1000);
           return;
         }
 
+        // Terminal state: Failed
         if (data.status === 'failed') {
-          const failureDetail = data.progress?.message || 'Scan execution failed. The target site may be unreachable or returned an error.';
+          stopPolling();
+          const failureDetail =
+            data.progress?.message ||
+            'Scan execution failed. The target site may be unreachable or returned an error.';
           setError(failureDetail);
           return;
         }
 
+        // Terminal state: Cancelled
         if (data.status === 'cancelled') {
+          stopPolling();
           setError('Scan was stopped by user.');
           return;
         }
-      } catch (err) {
-        console.error('Polling error:', err);
+
+        // Scan is still pending or running - schedule next poll in 2000ms
+        scheduleNextPoll(2000);
+      } catch {
+        if (!isMounted) return;
+        consecutiveErrorsRef.current += 1;
+        if (consecutiveErrorsRef.current >= 5) {
+          stopPolling();
+          setError('Network connection error while checking scan status. Please retry.');
+          setStatus('error');
+          return;
+        }
+        const backoff = Math.min(8000, 2000 * consecutiveErrorsRef.current);
+        scheduleNextPoll(backoff);
+      } finally {
+        isPollingRef.current = false;
       }
     };
 
-    poll();
-    const interval = setInterval(poll, 2000);
+    executePoll();
+
     return () => {
-      cancelled = true;
-      clearInterval(interval);
+      isMounted = false;
+      stopPolling();
     };
-  }, [scanId, session]);
+  }, [scanId, session?.access_token, sessionLoaded, retryCount]);
 
   if (!sessionLoaded) {
     return (
@@ -204,11 +297,21 @@ export const ScanDetailPage: React.FC = () => {
           <p style={{ color: '#94a3b8', maxWidth: '500px', margin: '8px auto 24px' }}>
             {error || 'The automated QA scan could not complete successfully.'}
           </p>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            {status === 'error' && (
+              <button
+                type="button"
+                onClick={handleManualRetry}
+                className="btn btn-secondary"
+                style={{ padding: '10px 20px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+              >
+                <RefreshCw size={15} /> Retry Connection
+              </button>
+            )}
             <Link
               href="/dashboard"
               className="btn btn-primary"
-              style={{ textDecoration: 'none', padding: '10px 20px' }}
+              style={{ textDecoration: 'none', padding: '10px 20px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
             >
               <RefreshCw size={15} /> Launch New Scan
             </Link>

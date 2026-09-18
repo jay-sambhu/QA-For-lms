@@ -436,20 +436,23 @@ class WebsiteCrawler:
                     dev_keys = list(pages.keys())
                     for dev_idx, (dev_name, page) in enumerate(pages.items()):
                         if self.progress_cb:
-                            pct = int(((len(self.visited) - 1) / self.max_pages) * 35 + ((dev_idx + 1) / len(pages)) * (35 / self.max_pages))
+                            max_p = max(1, self.max_pages)
+                            num_pages = max(1, len(pages))
+                            pct = int(10 + ((len(self.visited) - 1) / max_p) * 20 + ((dev_idx + 1) / num_pages) * (20 / max_p))
+                            safe_pct = min(35, max(10, pct))
                             try:
                                 self.progress_cb(
-                                    min(35, max(5, pct)),
-                                    f"Crawling page {len(self.visited)}/{self.max_pages} · [{dev_name}]",
+                                    safe_pct,
+                                    f"Crawling page {len(self.visited)}/{max_p} · [{dev_name}]",
                                     active_device=dev_name,
                                     active_url=url,
                                     page_current=len(self.visited),
-                                    page_total=self.max_pages,
+                                    page_total=max_p,
                                 )
                             except TypeError:
                                 self.progress_cb(
-                                    min(35, max(5, pct)),
-                                    f"Crawling page {len(self.visited)}/{self.max_pages} · [{dev_name}]"
+                                    safe_pct,
+                                    f"Crawling page {len(self.visited)}/{max_p} · [{dev_name}]"
                                 )
 
                         try:

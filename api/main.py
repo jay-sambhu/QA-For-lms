@@ -306,20 +306,24 @@ def require_user(authorization: str = Header(None)):
 
 def get_scan(scan_id: str):
     """Retrieve a Scan record by ID using SQLAlchemy."""
-    with SessionLocal() as db:
-        scan = db.query(Scan).filter(Scan.id == scan_id).first()
-        if not scan:
-            return None
-        return {
-            "id": str(scan.id),
-            "user_id": str(scan.user_id),
-            "url": scan.url,
-            "status": scan.status,
-            "created_at": scan.created_at.isoformat() if scan.created_at else None,
-            "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
-            "report_path": scan.report_path,
-            "json_path": scan.json_path,
-        }
+    try:
+        with SessionLocal() as db:
+            scan = db.query(Scan).filter(Scan.id == scan_id).first()
+            if not scan:
+                return None
+            return {
+                "id": str(scan.id),
+                "user_id": str(scan.user_id),
+                "url": scan.url,
+                "status": scan.status,
+                "created_at": scan.created_at.isoformat() if scan.created_at else None,
+                "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
+                "report_path": scan.report_path,
+                "json_path": scan.json_path,
+            }
+    except Exception as error:
+        logger.error("Database error retrieving scan %s: %s", scan_id, error)
+        return None
 
 def update_scan(
     scan_id: str,
@@ -328,16 +332,19 @@ def update_scan(
     json_path: Optional[str] = None,
 ):
     """Update a Scan's status and optional paths via SQLAlchemy."""
-    with SessionLocal() as db:
-        db_scan = db.query(Scan).filter(Scan.id == scan_id).first()
-        if not db_scan or db_scan.status == "cancelled":
-            return
-        db_scan.status = status
-        if status == "completed":
-            db_scan.completed_at = datetime.now(timezone.utc)
-            db_scan.report_path = report_path
-            db_scan.json_path = json_path
-        db.commit()
+    try:
+        with SessionLocal() as db:
+            db_scan = db.query(Scan).filter(Scan.id == scan_id).first()
+            if not db_scan or db_scan.status == "cancelled":
+                return
+            db_scan.status = status
+            if status == "completed":
+                db_scan.completed_at = datetime.now(timezone.utc)
+                db_scan.report_path = report_path
+                db_scan.json_path = json_path
+            db.commit()
+    except Exception as error:
+        logger.error("Database error updating scan %s: %s", scan_id, error)
 
 
 

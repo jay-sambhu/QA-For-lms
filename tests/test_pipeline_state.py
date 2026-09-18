@@ -78,3 +78,21 @@ def test_pipeline_state_machine_update_progress():
         assert data["active_device"] == "Desktop"
         assert len(calls) == 3  # CREATED, DISCOVERING, update_progress
 
+
+def test_pipeline_state_machine_monotonic_progress():
+    """Verify that progress percentage never regresses backwards even if out-of-order calls occur."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        sm = PipelineStateMachine("test_scan_monotonic", tmp_dir)
+        sm.transition_to(PipelineStage.DISCOVERING, "Discovery")
+        sm.update_progress(35, "Crawled all pages")
+        assert sm.highest_percent == 35
+
+        # Lower percent call should not regress highest_percent
+        sm.update_progress(20, "Out of order progress update")
+        assert sm.highest_percent == 35
+
+        # Transitioning to MODELING should not drop below 35
+        sm.transition_to(PipelineStage.MODELING, "Modeling stage")
+        assert sm.highest_percent >= 35
+
+
