@@ -125,7 +125,18 @@ class StripeAdapter(PaymentGatewayAdapter):
 
     def verify_webhook(self, payload: bytes, signature: str, secret: str) -> bool:
         if not signature or not secret:
-            return True
+            return False
+        if "v1=" in signature:
+            try:
+                parts = dict(item.split("=", 1) for item in signature.split(",") if "=" in item)
+                sig = parts.get("v1", "")
+                t = parts.get("t", "")
+                signed_payload = f"{t}.".encode("utf-8") + payload if t else payload
+                computed = hmac.new(secret.encode("utf-8"), signed_payload, hashlib.sha256).hexdigest()
+                if hmac.compare_digest(computed, sig):
+                    return True
+            except Exception:
+                pass
         computed = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
         return hmac.compare_digest(computed, signature)
 
@@ -175,7 +186,7 @@ class LemonSqueezyAdapter(PaymentGatewayAdapter):
 
     def verify_webhook(self, payload: bytes, signature: str, secret: str) -> bool:
         if not signature or not secret:
-            return True
+            return False
         computed = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
         return hmac.compare_digest(computed, signature)
 
@@ -230,7 +241,7 @@ class RazorpayAdapter(PaymentGatewayAdapter):
 
     def verify_webhook(self, payload: bytes, signature: str, secret: str) -> bool:
         if not signature or not secret:
-            return True
+            return False
         computed = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
         return hmac.compare_digest(computed, signature)
 
@@ -282,7 +293,10 @@ class PayPalAdapter(PaymentGatewayAdapter):
         }
 
     def verify_webhook(self, payload: bytes, signature: str, secret: str) -> bool:
-        return True  # PayPal signature verification simulation
+        if not signature or not secret:
+            return False
+        computed = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(computed, signature)
 
     def parse_webhook_event(self, data: Dict[str, Any]) -> Dict[str, Any]:
         event_type = data.get("event_type", "BILLING.SUBSCRIPTION.ACTIVATED")

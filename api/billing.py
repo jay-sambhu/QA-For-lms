@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Request, Header
 from pydantic import BaseModel, Field
 from typing import Optional, Any
 from datetime import datetime, timezone
+import os
 import uuid
 import logging
 
@@ -117,27 +118,83 @@ async def get_user_subscription(current_user: Any = None):
         }
 
 
+def get_gateway_webhook_secret(gateway: str) -> Optional[str]:
+    """Retrieve configured webhook signing secret for gateway from environment or config."""
+    gw = gateway.lower().strip()
+    mapping = {
+        "stripe": ["STRIPE_WEBHOOK_SECRET"],
+        "lemonsqueezy": ["LEMONSQUEEZY_WEBHOOK_SECRET"],
+        "razorpay": ["RAZORPAY_WEBHOOK_SECRET"],
+        "paypal": ["PAYPAL_WEBHOOK_SECRET", "PAYPAL_WEBHOOK_ID"],
+    }
+    keys = mapping.get(gw, [f"{gw.upper()}_WEBHOOK_SECRET"])
+    for k in keys:
+        v = os.getenv(k)
+        if v:
+            return v
+    try:
+        from config import settings
+        if settings:
+            for k in keys:
+                v = getattr(settings, k, None)
+                if v:
+                    return v
+    except Exception:
+        pass
+    return None
+
+
 @billing_router.post("/webhook/{gateway}")
 async def handle_gateway_webhook(
     gateway: str,
     request: Request,
     x_signature: Optional[str] = Header(None, alias="X-Signature"),
     stripe_signature: Optional[str] = Header(None, alias="Stripe-Signature"),
+    x_razorpay_signature: Optional[str] = Header(None, alias="X-Razorpay-Signature"),
+    paypal_signature: Optional[str] = Header(None, alias="Paypal-Transmission-Sig"),
 ):
     """
     Unified Webhook receiver for Stripe, LemonSqueezy, Razorpay, and PayPal.
+    Enforces fail-closed configuration checks (503 if secret missing) and constant-time signature verification (400 if invalid).
     """
+    gw_norm = gateway.lower().strip()
     try:
-        adapter = GatewayManager.get_adapter(gateway)
+        adapter = GatewayManager.get_adapter(gw_norm)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    body_bytes = await request.body()
-    signature = stripe_signature or x_signature or ""
-    secret = "mock_webhook_secret"
+    # 1. Fail closed if secret is not configured
+    secret = get_gateway_webhook_secret(gw_norm)
+    if not secret:
+        logger.warning("Webhook received for gateway '%s' but webhook secret is not configured (fail closed)", gateway)
+        raise HTTPException(
+            status_code=503,
+            detail=f"Webhook secret not configured for gateway '{gateway}'",
+        )
 
+    # 2. Extract signature for specific gateway with generic fallback
+    if gw_norm == "stripe":
+        signature = stripe_signature or request.headers.get("stripe-signature") or x_signature
+    elif gw_norm == "lemonsqueezy":
+        signature = x_signature or request.headers.get("x-signature")
+    elif gw_norm == "razorpay":
+        signature = x_razorpay_signature or request.headers.get("x-razorpay-signature") or x_signature
+    elif gw_norm == "paypal":
+        signature = paypal_signature or request.headers.get("paypal-transmission-sig") or x_signature or request.headers.get("x-signature")
+    else:
+        signature = stripe_signature or x_signature or x_razorpay_signature or paypal_signature
+
+    if not signature:
+        logger.warning("Webhook received for gateway '%s' with missing signature header", gateway)
+        raise HTTPException(status_code=400, detail="Missing or invalid webhook cryptographic signature")
+
+    # 3. Read raw body bytes
+    body_bytes = await request.body()
+
+    # 4. Verify signature in constant time
     if not adapter.verify_webhook(body_bytes, signature, secret):
-        raise HTTPException(status_code=401, detail="Invalid webhook cryptographic signature")
+        logger.warning("Webhook signature verification failed for gateway '%s'", gateway)
+        raise HTTPException(status_code=400, detail="Invalid webhook cryptographic signature")
 
     try:
         import json

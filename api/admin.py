@@ -17,10 +17,28 @@ from core.ai_config import (
 )
 
 
+def get_admin_emails() -> set:
+    """Return set of explicitly allowed admin email addresses (exact matches only)."""
+    raw = os.getenv("ADMIN_EMAILS", "")
+    try:
+        from config import settings
+        if settings and settings.ADMIN_EMAILS:
+            raw = settings.ADMIN_EMAILS
+    except Exception:
+        pass
+    if not raw:
+        return set()
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
 def require_admin(authorization: str = Header(None)):
     """
     Admin-only auth dependency.
-    Verifies the bearer token via Supabase and confirms the user has an admin role.
+    Verifies the bearer token via Supabase and confirms the user has an admin role from an explicit source:
+    1. A 'role' claim in the verified token metadata or user attributes (role == 'admin')
+    2. The local database 'users.role' column == 'admin'
+    3. An exact match in the ADMIN_EMAILS allow-list from config.
+    Wildcard, pattern, or domain-prefix matches are strictly forbidden.
     """
     # Import here to avoid circular import (admin.py is imported by main.py)
     try:
@@ -30,26 +48,34 @@ def require_admin(authorization: str = Header(None)):
 
     user = require_user(authorization)
 
-    # Derive role: Admin if local DB role is 'admin', or Supabase metadata is 'admin', or admin email
     user_meta = getattr(user, "user_metadata", None) or {}
     app_meta = getattr(user, "app_metadata", None) or {}
-    user_email = getattr(user, "email", "") or ""
+    user_email = (getattr(user, "email", "") or "").strip().lower()
+    user_role = str(getattr(user, "role", "") or "").strip().lower()
 
+    # 1. Explicit role claim in token metadata or user attributes
     is_admin = (
         user_meta.get("role") == "admin"
         or app_meta.get("role") == "admin"
-        or str(getattr(user, "role", "")).lower() == "admin"
-        or user_email.startswith("admin@")
-        or user_email.endswith("@admin.jasuss.io")
+        or user_role == "admin"
     )
+
+    # 2. Explicit role in local database users table
     if not is_admin:
         try:
             with SessionLocal() as db:
-                db_user = db.query(User).filter(User.id == str(getattr(user, "id", user))).first()
-                if db_user and db_user.role == "admin":
+                user_id = str(getattr(user, "id", user))
+                db_user = db.query(User).filter(User.id == user_id).first()
+                if db_user and str(db_user.role).lower() == "admin":
                     is_admin = True
         except Exception:
             pass
+
+    # 3. Explicit exact email in ADMIN_EMAILS allow-list from config
+    if not is_admin and user_email:
+        admin_emails = get_admin_emails()
+        if user_email in admin_emails:
+            is_admin = True
 
     if not is_admin:
         raise HTTPException(

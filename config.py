@@ -26,6 +26,23 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")
     ENVIRONMENT: str = Field(default="development", env="ENVIRONMENT")
 
+    # Admin access configuration
+    ADMIN_EMAILS: str = Field(default="", env="ADMIN_EMAILS")
+
+    # Payment Gateway Webhook Secrets
+    STRIPE_WEBHOOK_SECRET: Optional[str] = Field(default=None, env="STRIPE_WEBHOOK_SECRET")
+    LEMONSQUEEZY_WEBHOOK_SECRET: Optional[str] = Field(default=None, env="LEMONSQUEEZY_WEBHOOK_SECRET")
+    RAZORPAY_WEBHOOK_SECRET: Optional[str] = Field(default=None, env="RAZORPAY_WEBHOOK_SECRET")
+    PAYPAL_WEBHOOK_SECRET: Optional[str] = Field(default=None, env="PAYPAL_WEBHOOK_SECRET")
+    PAYPAL_WEBHOOK_ID: Optional[str] = Field(default=None, env="PAYPAL_WEBHOOK_ID")
+
+    @property
+    def admin_emails_set(self) -> set:
+        """Set of lowercase, stripped email addresses with explicit admin privileges."""
+        if not self.ADMIN_EMAILS:
+            return set()
+        return {e.strip().lower() for e in self.ADMIN_EMAILS.split(",") if e.strip()}
+
     @property
     def gemini_key(self) -> Optional[str]:
         """Effective Gemini API key, preferring GEMINI_API_KEY over GOOGLE_API_KEY."""
