@@ -34,6 +34,10 @@ export interface Finding {
   };
 }
 
+export type QAFinding = Finding;
+export type TestCase = NonNullable<QAReport['test_cases']>[number];
+export type CrossDeviceMetrics = NonNullable<QAReport['report_metadata']['cross_device_metrics']>;
+
 export interface QAReport {
   report_metadata: {
     generated_at: string;

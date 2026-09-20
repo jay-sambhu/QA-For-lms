@@ -44,12 +44,25 @@ export const ScanMonitor: React.FC<ScanMonitorProps> = ({
   }, [elapsedSeconds]);
 
   const currentStageIndex = useMemo(() => {
+    const stage = progress?.stage?.toUpperCase();
+    if (stage === 'DISCOVERING' || stage === 'CREATED') return 0;
+    if (stage === 'MODELING' || stage === 'PLANNING' || stage === 'GENERATING') return 1;
+    if (stage === 'EXECUTING') return 2;
+    if (
+      stage === 'VERIFYING' ||
+      stage === 'TRIAGING' ||
+      stage === 'REGRESSION' ||
+      stage === 'SCORING' ||
+      stage === 'COMPLETED'
+    )
+      return 3;
+
     const pct = progress?.percent || 0;
     if (pct < 35) return 0;
-    if (pct < 60) return 1;
+    if (pct < 55) return 1;
     if (pct < 75) return 2;
     return 3;
-  }, [progress?.percent]);
+  }, [progress?.stage, progress?.percent]);
 
   const activeDeviceName = useMemo(() => {
     if (progress?.active_device) return progress.active_device;

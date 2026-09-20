@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Loader2, AlertTriangle, ArrowLeft, RefreshCw } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, supabase } from '../context/AuthContext';
 import { ScanMonitor } from '../components/scan/ScanMonitor';
 import { ScanResults } from '../components/scan/ScanResults';
 import { QAReport, ProgressPayload, ScanStatus } from '../types/qa';
@@ -113,23 +113,47 @@ export const ScanDetailPage: React.FC = () => {
       isPollingRef.current = true;
 
       try {
+        let currentToken = session.access_token;
+        if (supabase) {
+          try {
+            const { data } = await supabase.auth.getSession();
+            if (data?.session?.access_token) {
+              currentToken = data.session.access_token;
+            }
+          } catch {}
+        }
+
         const headers: Record<string, string> = {
-          Authorization: `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${currentToken}`,
         };
 
         const res = await fetch(`/api/v1/scans/${scanId}`, { headers });
         if (!isMounted) return;
 
-        // Terminal state: Scan not found
+        // Terminal state: Scan not found (retry twice for newly enqueued scans during DB commit lag)
         if (res.status === 404) {
+          consecutiveErrorsRef.current += 1;
+          if (consecutiveErrorsRef.current < 3) {
+            scheduleNextPoll(1500);
+            return;
+          }
           stopPolling();
           setError('Scan not found or has expired.');
           setStatus('error');
           return;
         }
 
-        // Terminal state: Unauthorized / Session invalid
+        // Unauthorized: attempt a session refresh before giving up
         if (res.status === 401) {
+          if (supabase) {
+            try {
+              const refreshRes = await supabase.auth.refreshSession();
+              if (refreshRes.data?.session?.access_token) {
+                scheduleNextPoll(1000);
+                return;
+              }
+            } catch {}
+          }
           stopPolling();
           setError('Session expired or unauthorized. Please sign in again.');
           setStatus('error');
@@ -147,18 +171,18 @@ export const ScanDetailPage: React.FC = () => {
         // Server errors: 500, 502 Bad Gateway, 503, 504
         if (!res.ok) {
           consecutiveErrorsRef.current += 1;
-          if (consecutiveErrorsRef.current >= 5) {
+          if (consecutiveErrorsRef.current >= 10) {
             stopPolling();
             setError(
               res.status === 502
-                ? 'Backend service is temporarily unavailable (502 Bad Gateway). Please retry in a few moments.'
+                ? 'Backend service is temporarily restarting (502 Bad Gateway). Please retry in a few moments.'
                 : `Scan service returned an error (${res.status}). Click retry to check again.`
             );
             setStatus('error');
             return;
           }
-          // Exponential backoff for temporary gateway / server hiccups (2s -> 4s -> 6s...)
-          const backoff = Math.min(8000, 2000 * consecutiveErrorsRef.current);
+          // Exponential backoff for temporary gateway / server hiccups (2s -> 4s -> 6s... up to 8s)
+          const backoff = Math.min(8000, 2000 * Math.min(4, consecutiveErrorsRef.current));
           scheduleNextPoll(backoff);
           return;
         }

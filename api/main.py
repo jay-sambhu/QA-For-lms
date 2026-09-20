@@ -514,14 +514,14 @@ def _can_use_celery() -> bool:
         parsed = urlparse(redis_url)
         host = parsed.hostname or "localhost"
         port = parsed.port or 6379
-        with socket.create_connection((host, port), timeout=0.2):
+        with socket.create_connection((host, port), timeout=1.5):
             pass
     except Exception:
         return False
 
     try:
         from worker.celery_app import celery_app
-        inspector = celery_app.control.inspect(timeout=0.2)
+        inspector = celery_app.control.inspect(timeout=1.0)
         return bool(inspector and inspector.ping())
     except Exception:
         return False

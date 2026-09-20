@@ -304,9 +304,19 @@ class WebsiteCrawler:
         async with async_playwright() as p:
 
             headless_mode = os.environ.get("PLAYWRIGHT_HEADLESS", "true").lower() != "false"
+            launch_args = [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-software-rasterizer",
+                "--no-first-run",
+                "--no-default-browser-check",
+            ]
             try:
                 browser = await p.chromium.launch(
-                    headless=headless_mode
+                    headless=headless_mode,
+                    args=launch_args,
                 )
             except Exception as launch_err:
                 if "Executable doesn't exist" in str(launch_err):
@@ -318,7 +328,8 @@ class WebsiteCrawler:
                     )
                     await install_proc.communicate()
                     browser = await p.chromium.launch(
-                        headless=headless_mode
+                        headless=headless_mode,
+                        args=launch_args,
                     )
                 else:
                     raise
@@ -587,14 +598,31 @@ class WebsiteCrawler:
                                 f"{len(self.visited):03d}_{safe_dev_name}_page.png"
                             )
 
-                            await page.screenshot(
-                                path=screenshot_path,
-                                full_page=True
-                            )
-
-                            rel_screenshot = os.path.relpath(
-                                screenshot_path, self.base_dir
-                            )
+                            rel_screenshot = None
+                            try:
+                                await page.screenshot(
+                                    path=screenshot_path,
+                                    full_page=True,
+                                    timeout=10000,
+                                )
+                                rel_screenshot = os.path.relpath(
+                                    screenshot_path, self.base_dir
+                                )
+                            except Exception as ss_err:
+                                logger.warning(
+                                    f"Full page screenshot failed on {dev_name} ({ss_err}); attempting standard viewport capture"
+                                )
+                                try:
+                                    await page.screenshot(
+                                        path=screenshot_path,
+                                        full_page=False,
+                                        timeout=5000,
+                                    )
+                                    rel_screenshot = os.path.relpath(
+                                        screenshot_path, self.base_dir
+                                    )
+                                except Exception:
+                                    rel_screenshot = None
 
                             page_data = {
                                 "url": page_id,
