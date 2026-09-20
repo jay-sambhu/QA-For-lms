@@ -5,7 +5,7 @@ services:
     env: docker
     dockerfilePath: ./Dockerfile
     plan: starter
-    healthCheckPath: /docs
+    healthCheckPath: /healthz
     envVars:
       - key: ENVIRONMENT
         value: production
