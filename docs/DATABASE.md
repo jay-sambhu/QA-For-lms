@@ -58,8 +58,7 @@ erDiagram
 
 ## 2. Proposed production schema (Target State: Phase 3)
 
-> **Note on Migration Status:** The current database migration head is `003_add_subscriptions_and_plans.py`. The additions marked below (`findings`, `scan_artifacts`, `webhook_events`, etc.) define the target production schema to be introduced via Alembic migrations in Phase 3.  
-> **Note on Tenant Isolation & RLS:** The FastAPI backend currently enforces tenant isolation at the query level (`Scan.user_id == user.id`). Row Level Security (RLS) is an optional direct-client database defence-in-depth layer.
+> **Note on Migration Status:** The current database migration head is `003_add_subscriptions_and_plans.py`. The additions marked below (`findings`, `scan_artifacts`, `webhook_events`, etc.) define the target production schema to be introduced via Alembic migrations in Phase 3.
 
 Additions marked **(new)** normalise findings out of JSON blobs, support regression diffing, make webhooks idempotent, and add auditability.
 
