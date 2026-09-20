@@ -435,10 +435,10 @@ Observed in the repository and recommended fixes before production:
 | Finding | Action |
 |---|---|
 | `.venv312/` is committed | Remove from git (`git rm -r --cached .venv312`), add to `.gitignore`; consider history rewrite if it is large |
-| Both `render.yaml` and `render.yml` exist | Keep one (`render.yaml`), delete the other to avoid drift |
+| `render.yaml` configuration | Confirmed as the sole Render blueprint; `render.yml` is absent |
 | Python modules and `test_*.py` files at repo root, plus a `tests/` folder | Move into a package (`jasuss/`) and `tests/`; add `pyproject.toml` |
 | `results/` directory in repo | Add to `.gitignore`; never commit scan output |
-| No `.env.example` visible | Add one with placeholders |
+| `.env.example` template | Root `.env.example` created with sanitized placeholders |
 | No `LICENSE`/`SECURITY.md`/`CODEOWNERS` verified | Add them (README links to `LICENSE`) |
 | Single `Dockerfile` for everything | Split api/worker/web images as in section 3 |
 | `runtime.txt` and Docker both pin Python | Keep Python version in one place (`pyproject.toml` + Dockerfile) |

@@ -121,7 +121,7 @@ sequenceDiagram
 |---|---|---|
 | `GET` | `/healthz` | Liveness: process is up |
 | `GET` | `/readyz` | Readiness: DB and Redis reachable |
-| `GET` | `/metrics` | Prometheus (internal network only) |
+| `GET` | `/metrics` | Prometheus (internal network only) *(Planned: Phase 4)* |
 
 ## 4. Error model
 
@@ -163,7 +163,7 @@ Headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After`.
 
 ## 6. Progress streaming (optional)
 
-`GET /scans/{id}/events` (Server-Sent Events) emits `stage`, `progress`, `finding`, `done`. Falls back to polling `GET /scans/{id}` every 2 s.
+`GET /scans/{id}/events` (Server-Sent Events) is a planned enhancement. The current production web client polls `GET /api/scans/{id}` (or `/api/v1/scans/{id}`) every 2 seconds.
 
 ## 7. Versioning and deprecation
 

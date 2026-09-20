@@ -66,6 +66,8 @@ The success redirect **never** upgrades the account. Only a verified webhook doe
 
 ## 3. Webhook handling (idempotent)
 
+> **Implementation Note:** Gateway signature adapter verification is scaffolded in `billing/gateways.py`. Production environment secret lookup, the `webhook_events` table, and transactional idempotency handling described below are scheduled for Phase 2 hardening.
+
 ```mermaid
 sequenceDiagram
     autonumber

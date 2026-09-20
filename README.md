@@ -72,6 +72,7 @@ Full C4 diagrams, sequence diagrams and state machines: see [docs/ARCHITECTURE.m
 | [docs/BILLING.md](docs/BILLING.md) | Multi-gateway checkout, webhook idempotency, subscription lifecycle |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Topology, Docker, Kubernetes, CI/CD, environment variables |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | SLOs, metrics, alerts, runbooks, backup and DR |
+| [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) | Production audit matrix, code vs docs truth alignment, baseline test results |
 
 ## 4. Quick start (Docker)
 
@@ -166,7 +167,12 @@ python ci_quality_gate.py                   # project quality gate
 
 Every pull request must pass: lint, type check, unit and integration tests, migration test (`test_database_migrations.py`), frontend build, dependency and container vulnerability scan. See the CI pipeline in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#7-cicd-pipeline).
 
-## 10. Production readiness checklist
+## 10. Implementation status
+ 
+For an audited breakdown of implemented versus planned capabilities across SSRF defense, JWT verification, tenant isolation, rate limiting, payment webhooks, Celery, database migrations, and observability, see:
+- 📊 **[Production Implementation Status Matrix](docs/IMPLEMENTATION_STATUS.md)**
+
+## 11. Production readiness checklist
 
 Use this before go-live. Items marked ⚠️ are the most common gaps.
 

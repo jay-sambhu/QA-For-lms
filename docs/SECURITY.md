@@ -55,6 +55,8 @@ Rule: **workers can reach the internet, but never the private network, cloud met
 
 ## 3. SSRF defence for the crawler
 
+> **Implementation Note:** The API currently enforces string-based hostname/IP blocklisting (`api/main.py`). The full DNS resolution (A/AAAA checks, DNS rebinding prevention, port filtering) and Playwright `context.route` sub-request/redirect guard illustrated below are scheduled for implementation in Phase 2.
+
 Validate **before** enqueue and **again** at request time inside the worker.
 
 ```mermaid
