@@ -18,7 +18,7 @@ else:
     load_dotenv(override=True)
 
 from fastapi import Depends, FastAPI, HTTPException, Header, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, SecretStr, field_validator
 from supabase import create_client, Client
 
@@ -885,3 +885,45 @@ async def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require
 @app.get("/")
 def read_root():
     return {"message": "AI QA Agent SaaS API is running."}
+
+
+@app.get("/healthz")
+@app.get("/api/v1/healthz")
+def healthz():
+    """Liveness probe: returns 200 if process is up."""
+    return {"status": "ok", "service": "ai-qa-api"}
+
+
+@app.get("/readyz")
+@app.get("/api/v1/readyz")
+def readyz():
+    """Readiness probe: verifies database and redis reachability."""
+    from sqlalchemy import text
+    checks = {"database": "unknown", "redis": "unknown"}
+    is_ready = True
+
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+            checks["database"] = "connected"
+    except Exception as db_err:
+        checks["database"] = f"error: {str(db_err)}"
+        is_ready = False
+
+    redis_url = os.environ.get("REDIS_URL")
+    if redis_url:
+        try:
+            from urllib.parse import urlparse
+            import socket
+            parsed = urlparse(redis_url)
+            host = parsed.hostname or "localhost"
+            port = parsed.port or 6379
+            with socket.create_connection((host, port), timeout=1.0):
+                checks["redis"] = "connected"
+        except Exception as redis_err:
+            checks["redis"] = f"unavailable: {str(redis_err)}"
+    else:
+        checks["redis"] = "not_configured"
+
+    status_code = 200 if is_ready else 503
+    return JSONResponse(status_code=status_code, content={"status": "ok" if is_ready else "degraded", **checks})

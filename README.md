@@ -1,364 +1,234 @@
 # 🛡️ JASUSS — Enterprise Web Quality Assurance Platform
-### *Continuous Automated Testing, Multi-Viewport Verification & Defect Triage*
-**Powered by Nexus Engine**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![Next.js](https://img.shields.io/badge/Next.js-16.3-black.svg?logo=next.js&logoColor=white)](https://nextjs.org)
-[![Playwright](https://img.shields.io/badge/Playwright-Chromium-green.svg?logo=playwright&logoColor=white)](https://playwright.dev)
-[![Celery](https://img.shields.io/badge/Celery-Distributed%20Queue-37814A.svg?logo=celery&logoColor=white)](https://docs.celeryq.dev)
-[![Pytest](https://img.shields.io/badge/Tests-167%20Passing-brightgreen.svg?logo=pytest&logoColor=white)](https://pytest.org)
+**Continuous automated testing, multi-viewport verification and AI-assisted defect triage.**
+Powered by the **Nexus Engine**.
 
----
-
-## 📖 Table of Contents
-
-- [Overview](#-overview)
-- [System Architecture & Data Flow Diagram (DFD)](#-system-architecture--data-flow-diagram-dfd)
-- [Database Schema (Entity-Relationship Diagram)](#-database-schema-entity-relationship-diagram)
-- [Key Features & Capabilities](#-key-features--capabilities)
-- [Subscription & Multi-Payment Gateways](#-subscription--multi-payment-gateways)
-- [Technology Stack](#-technology-stack)
-- [Repository Structure & Conventions](#-repository-structure--conventions)
-- [Getting Started & Local Development](#-getting-started--local-development)
-- [Admin Console & Telemetry](#-admin-console--telemetry)
-- [Running Automated Tests](#-running-automated-tests)
-- [Contributing & Open Source Guidelines](#-contributing--open-source-guidelines)
+![License](https://img.shields.io/badge/license-MIT-blue)
+![Python](https://img.shields.io/badge/python-3.12+-3776AB)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688)
+![Next.js](https://img.shields.io/badge/Next.js-16-black)
+![Playwright](https://img.shields.io/badge/Playwright-Chromium-45ba4b)
+![Celery](https://img.shields.io/badge/Celery-Redis-37814A)
 
 ---
 
-## 🌟 Overview
+## Table of contents
 
-**JASUSS** is an end-to-end automated web quality assurance suite designed for software development teams, QA engineers, and high-velocity SaaS products. Powered by the **Nexus Engine**, JASUSS autonomously audits web applications across multiple viewports (Desktop, Mobile, Tablet), executes synthetic interactive journeys, intercepts client-side and network defects, performs AI-assisted root cause triage, and delivers compliance audit reports with a single click.
+1. [What JASUSS does](#1-what-jasuss-does)
+2. [Architecture at a glance](#2-architecture-at-a-glance)
+3. [Documentation map](#3-documentation-map)
+4. [Quick start (Docker)](#4-quick-start-docker)
+5. [Local development (no Docker)](#5-local-development-no-docker)
+6. [Configuration](#6-configuration)
+7. [API overview](#7-api-overview)
+8. [Plans and billing](#8-plans-and-billing)
+9. [Testing and quality gates](#9-testing-and-quality-gates)
+10. [Production readiness checklist](#10-production-readiness-checklist)
+11. [Repository structure](#11-repository-structure)
+12. [Contributing](#12-contributing)
+13. [License](#13-license)
 
 ---
 
-## 📐 System Architecture & Data Flow Diagram (DFD)
+## 1. What JASUSS does
 
-The following diagram illustrates how JASUSS orchestrates multi-viewport crawling, synthetic user interactions, defect triage, AI synthesis, and report exports:
+JASUSS audits a web application end to end. Given a target URL (and optional login credentials) it:
+
+1. **Crawls** the site in three viewports in parallel: Desktop 1920×1080, iPhone 13 390×844, iPad Gen 7 820×1180.
+2. **Exercises** the UI with synthetic interactions: buttons, links, forms, dialogs.
+3. **Detects defects** deterministically: HTTP 4xx/5xx, unhandled JS exceptions, layout overflow and clipping.
+4. **Collects evidence**: screenshots, network/HAR telemetry, and diffs against previous scans (regression detection).
+5. **Triages with AI**: Gemini-assisted root-cause analysis, P0–P4 severity, reproduction steps.
+6. **Scores** the site with a canonical 0–100 quality score and letter grade (A+ … F).
+7. **Exports** PDF, Excel, JSON and Markdown reports.
+
+## 2. Architecture at a glance
 
 ```mermaid
-flowchart TD
-    subgraph ClientLayer["🖥️ Presentation & Client Layer"]
-        A["User / CI Pipeline"] -->|"Submit Target URL"| B["Next.js 16 App Router\n(JASUSS UI)"]
-        B -->|"REST API / Auth Bearer"| C["FastAPI Gateway\n(/api/v1/scans)"]
-    end
-
-    subgraph DistributedExecution["⚡ Asynchronous Processing & Workers"]
-        C -->|"Enqueue Scan Task"| D[("Redis Message Broker\n(qa_queue)")]
-        D -->|"Consume Job"| E["Celery Worker Pool\n(Isolated Contexts)"]
-    end
-
-    subgraph QAPipeline["🔍 Core Multi-Stage QA Engine"]
-        E --> S1["Stage 1: Multi-Viewport Crawler\n• Desktop Chrome (1920x1080)\n• iPhone 13 (390x844)\n• iPad Gen 7 (820x1180)"]
-        S1 --> S2["Stage 2: Synthetic Interactive Tester\n• Button & Link Discovery\n• Form Assertions\n• Dialog Dismissal"]
-        S2 --> S3["Stage 3: Deterministic Defect Detector\n• HTTP 4xx/5xx Errors\n• Unhandled JS Exceptions\n• Layout Overflows"]
-        S3 --> S4["Stage 4: Evidence & Regression Engine\n• DOM Screenshots\n• Network HAR Telemetry\n• Historical Diffing"]
-        S4 --> S5["Stage 5: AI-Enriched Quality Synthesis\n• Gemini Root-Cause Triage\n• P0-P4 Severity Classification\n• Reproduction Steps"]
-        S5 --> S6["Stage 6: Canonical Calculation Engine\n• Canonical Quality Score (0-100)\n• Letter Grade (A+ to F)\n• Executive Summary"]
-    end
-
-    subgraph StorageLayer["💾 Unified Persistence & Artifacts"]
-        S6 --> DB[("PostgreSQL / SQLite Database\n(SQLAlchemy Sole Truth)")]
-        S6 --> FS["Local Output Artifacts\n• PDF Audit Reports\n• Multi-Tab Excel Sheets\n• Raw JSON Telemetry\n• Markdown Summary"]
-    end
-
-    subgraph Exporters["📊 Reporting & Webhooks"]
-        FS --> EXP1["📄 PDF Exporter (ReportLab)"]
-        FS --> EXP2["📑 Excel Exporter (OpenPyXL)"]
-        FS --> EXP3["📝 Markdown / JSON Exporter"]
-    end
+flowchart LR
+    U["User / CI pipeline"] --> WEB["Next.js dashboard"]
+    WEB -->|"HTTPS + JWT"| API["FastAPI API"]
+    API -->|"enqueue"| RQ[("Redis broker")]
+    RQ --> W["Celery workers + Playwright"]
+    W --> T["Target website"]
+    W --> AI["Gemini API"]
+    API <--> DB[("PostgreSQL")]
+    W --> DB
+    W --> OBJ[("Object storage: reports and evidence")]
+    API --> PAY["Stripe / LemonSqueezy / Razorpay / PayPal"]
+    WEB --> AUTH["Supabase Auth"]
 ```
 
----
+Full C4 diagrams, sequence diagrams and state machines: see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## 🗄️ Database Schema (Entity-Relationship Diagram)
+## 3. Documentation map
 
-SQLAlchemy is the sole source of truth for all users, scans, subscriptions, and financial transactions:
+| Document | Purpose |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Context, container, component, DFD, sequence and state diagrams |
+| [docs/DATABASE.md](docs/DATABASE.md) | ERD (current and proposed), indexes, retention, migrations |
+| [docs/API.md](docs/API.md) | REST contract, auth, errors, rate limits, webhooks |
+| [docs/SECURITY.md](docs/SECURITY.md) | Threat model, SSRF defence, secrets, RBAC, compliance |
+| [docs/BILLING.md](docs/BILLING.md) | Multi-gateway checkout, webhook idempotency, subscription lifecycle |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Topology, Docker, Kubernetes, CI/CD, environment variables |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) | SLOs, metrics, alerts, runbooks, backup and DR |
 
-```mermaid
-erDiagram
-    USERS ||--o{ SCANS : executes
-    USERS ||--o{ SUBSCRIPTIONS : maintains
-    USERS ||--o{ PAYMENT_TRANSACTIONS : pays
+## 4. Quick start (Docker)
 
-    USERS {
-        string id PK "UUID Primary Key"
-        string email UK "Unique User Email"
-        string role "Role ('user', 'admin')"
-        string plan_tier "Tier ('free', 'pro', 'enterprise')"
-        datetime created_at "Registration Timestamp"
-    }
+Prerequisites: Docker 24+ and Docker Compose v2.
 
-    SCANS {
-        string id PK "Scan UUID Primary Key"
-        string user_id FK "References USERS(id)"
-        text url "Target Website URL"
-        string status "Status ('pending', 'running', 'completed', 'failed', 'cancelled')"
-        boolean is_authenticated "Authenticated Crawl Flag"
-        datetime created_at "Creation Timestamp"
-        datetime completed_at "Completion Timestamp"
-        text report_path "Relative Markdown Path"
-        text json_path "Relative JSON Telemetry Path"
-    }
-
-    SUBSCRIPTIONS {
-        string id PK "Subscription UUID"
-        string user_id FK "References USERS(id)"
-        string plan_id "Plan ID ('free', 'pro', 'enterprise')"
-        string status "Status ('active', 'past_due', 'cancelled')"
-        string gateway "Gateway ('stripe', 'lemonsqueezy', 'razorpay', 'paypal')"
-        string customer_id "Gateway Customer ID"
-        string subscription_id "Gateway Subscription ID"
-        datetime current_period_end "Renewal Date"
-        boolean cancel_at_period_end "Cancel Flag"
-        datetime created_at "Creation Timestamp"
-    }
-
-    PAYMENT_TRANSACTIONS {
-        string id PK "Transaction UUID"
-        string user_id FK "References USERS(id)"
-        string gateway "Gateway Name"
-        string transaction_id "Gateway Charge Reference"
-        int amount_cents "Amount in Cents"
-        string currency "Currency Code (USD, EUR, INR)"
-        string status "Status ('succeeded', 'failed')"
-        string plan_id "Plan Purchased"
-        datetime created_at "Payment Timestamp"
-    }
-```
-
----
-
-## 🚀 Key Features & Capabilities
-
-1. **Multi-Viewport Cross-Device Crawling**:
-   - Simultaneous parallel crawling across **Desktop (1920×1080)**, **iPhone 13 (390×844)**, and **iPad Gen 7 (820×1180)**.
-   - Evaluates horizontal layout overflows, element clipping, and viewport breakpoints.
-
-2. **Deterministic Interactive Testing**:
-   - Automatically uncovers interactive controls (buttons, links, form inputs) and verifies state changes, client-side routing, and modal transitions.
-
-3. **Secure Authenticated Crawling**:
-   - Supports form-based authentication (`login_url`, `username`, `password`) using Pydantic `SecretStr` transient memory. Zero password leakage into databases, server logs, or report artifacts.
-
-4. **Canonical Calculation Engine**:
-   - Single source of truth for QA metrics (`core/calculation_engine.py`):
-     - Normalized Pass/Fail rates.
-     - Deterministic Health Score (0–100) and Letter Grade (A+, A, B, C, D, F).
-     - Weighted severity penalties (Critical: 25 pts, High: 15 pts, Medium: 7 pts, Low: 2 pts).
-
-5. **Executive Multi-Format Exports**:
-   - One-click downloads for:
-     - **PDF Reports**: Formal executive audit with visual score gauges and remediation tables.
-     - **Excel Workbooks**: Structured multi-tab spreadsheets (`Overview`, `Findings`, `Test Cases`, `Responsive Matrix`).
-     - **JSON & Markdown**: Complete raw telemetry for CI/CD integrations.
-
-6. **Interactive Stop / Cancel Scan**:
-   - Real-time scan abort controls directly from the scanning monitor via `POST /api/v1/scans/{id}/cancel`.
-
----
-
-## 💳 Subscription & Multi-Payment Gateways
-
-JASUSS includes built-in multi-gateway payment processing supporting **Stripe**, **LemonSqueezy**, **Razorpay**, and **PayPal**:
-
-| Plan Tier | Price | Scans / Month | Page Crawl Depth | Key Features |
-| :--- | :--- | :--- | :--- | :--- |
-| **Community Starter** | **$0** (Free) | 10 Scans | Up to 10 Pages | Multi-viewport crawling, defect triage, web quality score |
-| **Professional QA** | **$49 / mo** | 200 Scans | Up to 50 Pages | Authenticated crawling, PDF & Excel exports, priority queue |
-| **Enterprise Suite** | **$199 / mo** | Unlimited | Deep Discovery | Dedicated worker node, custom auth, 24/7 SLA, custom rules |
-
-### Supported Gateways:
-- 💳 **Stripe**: Credit/Debit Cards, Apple Pay, Google Pay (`StripeAdapter`).
-- 🛍️ **LemonSqueezy**: Merchant of Record with global tax handling (`LemonSqueezyAdapter`).
-- ⚡ **Razorpay**: UPI, NetBanking, International Cards (`RazorpayAdapter`).
-- 💵 **PayPal**: PayPal Wallet & Express Checkout (`PayPalAdapter`).
-
----
-
-## 🛠️ Technology Stack
-
-- **Backend Framework**: Python 3.12+, FastAPI, Pydantic V2, Uvicorn
-- **Browser Automation**: Playwright (Headless Chromium)
-- **Task Queue & Broker**: Celery, Redis
-- **Database & ORM**: SQLAlchemy, PostgreSQL / SQLite, Alembic Migrations
-- **AI Synthesis**: Google Gemini AI (`gemini-2.5-flash` / `gemini-3-flash-preview`)
-- **Reporting Engines**: ReportLab (PDF), OpenPyXL (Excel)
-- **Frontend Architecture**: Next.js 16 (Turbopack, App Router), React 19, TypeScript
-- **Styling & Animations**: Vanilla CSS Modules (Glassmorphism & Luxury Dark Mode), Framer Motion, Lucide Icons
-- **Authentication**: Supabase Auth (JWT Bearer Token Validation)
-
----
-
-## 📂 Repository Structure & Conventions
-
-```text
-ai-qa-agent/
-├── api/                        # FastAPI Route Controllers & API Endpoints
-│   ├── __init__.py
-│   ├── main.py                 # Core API & Scan Pipeline Orchestrator
-│   ├── billing.py              # Subscription & Multi-Gateway Checkout Endpoints
-│   ├── admin.py                # Admin Telemetry & Platform Metrics
-│   └── rate_limiter.py         # Client IP & User Rate Limiting
-├── billing/                    # Payment Gateway Adapters
-│   ├── __init__.py
-│   └── gateways.py             # Stripe, LemonSqueezy, Razorpay, PayPal Adapters
-├── core/                       # Core QA Pipeline Engines & Stage Modules
-│   ├── __init__.py
-│   ├── bug_detector.py         # Deterministic Anomaly & Defect Trapper
-│   ├── bug_triage.py           # Severity, Confidence & Priority Triage Engine
-│   ├── calculation_engine.py   # Sole Backend Source of Truth for QA Metrics
-│   ├── ci_quality_gate.py      # Automated CI/CD Regression Gate Evaluator
-│   ├── evidence_engine.py      # Screenshot & Network Evidence Engine
-│   ├── explorer.py             # LLM Site Exploration Engine
-│   ├── gemini_analyzer.py      # AI Root-Cause & Verification Engine
-│   ├── interactive_tester.py   # Synthetic Interaction Runner
-│   ├── model_router.py         # Adaptive Gemini Model Router
-│   ├── qa_report_generator.py  # PDF, Excel, JSON & Markdown Exporters
-│   ├── regression_detector.py  # Historical Baseline Regression Diffing
-│   ├── test_case_executor.py   # Test Case Execution Engine
-│   └── test_case_generator.py  # Test Case Discovery & Generation
-├── crawler/                    # Multi-Viewport Playwright Crawler
-│   ├── __init__.py
-│   ├── crawler.py              # Playwright Desktop, Mobile, Tablet Engine
-│   ├── network.py              # Network HAR & Traffic Monitor
-│   └── viewport.py             # Viewport Configurations
-├── security/                   # Sensitive Data Sanitization & Redaction
-│   ├── __init__.py
-│   └── redactor.py             # Zero-Leakage SecretStr & PII Redactor
-├── worker/                     # Asynchronous Celery Queue Workers
-│   ├── __init__.py
-│   ├── celery_app.py           # Celery Broker & Queue Configuration
-│   └── tasks.py                # Distributed Scan Task Runner
-├── web/                        # Next.js 16 App Router Frontend Web Application
-│   ├── src/
-│   │   ├── app/                # Dedicated App Router Routes
-│   │   │   ├── page.tsx        # Landing & Marketing Showcase Route (/)
-│   │   │   ├── dashboard/      # User QA Dashboard Route (/dashboard)
-│   │   │   │   ├── page.tsx
-│   │   │   │   └── scan/[id]/  # Scan Detail & Live Monitor Route (/dashboard/scan/[id])
-│   │   │   │       └── page.tsx
-│   │   │   ├── pricing/        # Pricing & Gateways Route (/pricing)
-│   │   │   │   └── page.tsx
-│   │   │   ├── admin/          # Admin Telemetry Console Route (/admin)
-│   │   │   │   └── page.tsx
-│   │   │   ├── layout.tsx      # Global App Layout with AuthProvider & NavBar
-│   │   │   └── page.module.css # Luxury Dark Mode & Responsive CSS Module
-│   │   ├── components/         # Reusable Modular UI Components
-│   │   │   ├── layout/         # Persistent NavBar, Footer
-│   │   │   ├── auth/           # Production AuthModal (Sign In / Sign Up)
-│   │   │   ├── scan/           # ScanForm, ScanMonitor, ScanResults, DeviceDeck
-│   │   │   ├── admin/          # AdminMetrics, TenantTable, PipelineInspector, SystemTelemetry
-│   │   │   └── pricing/        # PricingCards & Multi-Gateway Selector
-│   │   ├── context/            # React AuthContext (Session & Subscription State)
-│   │   ├── types/              # Strongly-Typed QA & Scan Contracts (qa.ts)
-│   │   └── utils/              # Client-Side Exporters & Supabase Client
-│   └── next.config.ts          # Turbopack & Dynamic API Proxy Rewrites
-├── alembic/                    # Database Migrations (001 -> 002 -> 003)
-├── tests/                      # Consolidated Pytest Test Suite (167+ Tests)
-├── config.py                   # Global Pydantic Environment Configuration
-├── db.py                       # SQLAlchemy Session Factory & DB Connection
-├── models.py                   # SQLAlchemy Models (User, Scan, Subscription, Transaction)
-├── run_qa.py                   # Standalone CLI QA Automation Pipeline
-├── start.sh                    # Foreground Interactive Development Launcher
-├── Dockerfile                  # Production Container Definition
-├── render.yaml                 # Render Cloud Deployment Blueprint
-├── .env.example                # Environment Template (Secrets Omitted)
-└── README.md                   # Platform Documentation
-```
-
-### 📌 Project Structure Conventions
-- **Pipeline Stages**: All individual pipeline stages and analysis algorithms reside in `core/`.
-- **API Endpoints**: All FastAPI route handlers reside in `api/`.
-- **Worker Tasks**: Asynchronous Celery task wrappers reside in `worker/`.
-- **Testing Suite**: All automated unit and integration test modules reside exclusively in `tests/`.
-- **Frontend Routes**: Every top-level page lives in its own `web/src/app/<route>/page.tsx` directory.
-- **Frontend Components**: Reusable UI components live in `web/src/components/<domain>/`.
-- **Local Output Directories**: The `results/`, `reports/`, `screenshots/`, and `user_data/` directories are local-only transient output artifacts and are strictly `.gitignore`d (never committed to git history).
-
----
-
-## ⚡ Getting Started & Local Development
-
-### 1. Prerequisites
-- Python `3.10+` (Python `3.12` recommended)
-- Node.js `18+` and `npm`
-- Redis (or local mock broker)
-
-### 2. Clone & Install Dependencies
 ```bash
-# Clone the repository
 git clone https://github.com/jay-sambhu/QA-For-lms.git
 cd QA-For-lms
+cp .env.example .env          # then edit values, see section 6
+docker compose up --build -d
+docker compose exec api alembic upgrade head
+```
 
-# Install Python dependencies & Playwright Chromium
+| Service | URL |
+|---|---|
+| Web dashboard | http://localhost:3000 |
+| API (Swagger UI) | http://localhost:8000/docs |
+| Health | http://localhost:8000/healthz |
+
+Run a scan from the CLI without the UI:
+
+```bash
+docker compose exec api python run_qa.py --url https://example.com
+```
+
+## 5. Local development (no Docker)
+
+Prerequisites: Python 3.12, Node.js 18+, Redis.
+
+```bash
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-playwright install chromium
-
-# Install Next.js frontend dependencies
+playwright install --with-deps chromium
 npm install --prefix web
+alembic upgrade head
+chmod +x start.sh && ./start.sh      # API :8000, web :3000, worker
 ```
 
-### 3. Configure Environment Variables
-Copy `.env.example` to `.env` and fill in your keys:
+## 6. Configuration
+
+All configuration is via environment variables (12-factor). Never commit `.env`.
+The complete, annotated list lives in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#5-environment-variables); the essentials:
+
+| Variable | Required | Description |
+|---|---|---|
+| `ENVIRONMENT` | yes | `development` / `staging` / `production` |
+| `DATABASE_URL` | yes | PostgreSQL DSN in production (`postgresql+psycopg://…`) |
+| `REDIS_URL` | yes | Broker and rate-limit store |
+| `GEMINI_API_KEY` | yes | AI triage; if unset, deterministic-only mode |
+| `SUPABASE_JWT_SECRET` / JWKS URL | yes | JWT validation |
+| `CORS_ALLOWED_ORIGINS` | yes | Comma-separated exact origins, never `*` in production |
+| `STORAGE_BACKEND` | prod | `local` or `s3` (use `s3` when more than one worker node) |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | optional | Billing |
+
+## 7. API overview
+
+Base path `/api/v1`. All routes require `Authorization: Bearer <JWT>` except health and payment webhooks.
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/scans` | Create and enqueue a scan |
+| `GET` | `/scans` | List the caller's scans |
+| `GET` | `/scans/{id}` | Status and results |
+| `POST` | `/scans/{id}/cancel` | Cancel a running scan |
+| `GET` | `/scans/{id}/report?format=pdf\|xlsx\|json\|md` | Download report |
+| `POST` | `/billing/checkout` | Start a checkout session |
+| `POST` | `/billing/webhooks/{gateway}` | Gateway webhook receiver |
+| `GET` | `/admin/metrics` | Admin telemetry (role `admin`) |
+
+Details, schemas and error model: [docs/API.md](docs/API.md).
+
+## 8. Plans and billing
+
+| Plan | Price | Scans / month | Crawl depth | Highlights |
+|---|---|---|---|---|
+| Community Starter | $0 | 10 | 10 pages | Multi-viewport, triage, quality score |
+| Professional QA | $49/mo | 200 | 50 pages | Authenticated crawl, PDF/Excel export, priority queue |
+| Enterprise Suite | $199/mo | Unlimited | Deep | Dedicated workers, custom auth, SLA |
+
+Gateways: Stripe, LemonSqueezy, Razorpay, PayPal. See [docs/BILLING.md](docs/BILLING.md).
+
+## 9. Testing and quality gates
+
 ```bash
-cp .env.example .env
+pytest -q                                   # backend suite
+pytest -q --cov=. --cov-report=term-missing # with coverage
+ruff check . && ruff format --check .       # lint / format
+mypy .                                      # type check
+npm run lint --prefix web && npm run build --prefix web
+python ci_quality_gate.py                   # project quality gate
 ```
 
-### 4. Start Interactive Development Servers
-Use the included foreground terminal launcher to monitor live API requests and compilation logs:
-```bash
-chmod +x start.sh
-./start.sh
+Every pull request must pass: lint, type check, unit and integration tests, migration test (`test_database_migrations.py`), frontend build, dependency and container vulnerability scan. See the CI pipeline in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#7-cicd-pipeline).
+
+## 10. Production readiness checklist
+
+Use this before go-live. Items marked ⚠️ are the most common gaps.
+
+**Security**
+- [ ] ⚠️ Crawler blocks private/link-local/metadata IPs (SSRF), including after redirects and DNS rebinding ([SECURITY.md](docs/SECURITY.md#3-ssrf-defence-for-the-crawler))
+- [ ] ⚠️ Workers run as non-root, in a network-restricted sandbox
+- [ ] ⚠️ Webhook signatures verified for every gateway, events deduplicated
+- [ ] Secrets in a secret manager, not in the image or repo
+- [ ] CORS locked to exact origins; HTTPS and HSTS enforced
+- [ ] Rate limits backed by Redis (not in-process memory)
+- [ ] Dependency, secret and container scans green in CI
+
+**Reliability**
+- [ ] PostgreSQL (not SQLite), automated backups, restore tested
+- [ ] Reports and evidence in object storage, not local disk
+- [ ] Celery: `acks_late`, visibility timeout, per-task time limits, retry with backoff
+- [ ] Stuck-scan reaper marks orphaned `running` scans as `failed`
+- [ ] Health, readiness and liveness probes configured
+
+**Observability**
+- [ ] Structured JSON logs with `request_id` and `scan_id`
+- [ ] Prometheus metrics, dashboards and alerts ([OPERATIONS.md](docs/OPERATIONS.md))
+- [ ] Error tracking (Sentry or equivalent)
+
+**Delivery**
+- [ ] Immutable, tagged container images; migrations run as a release step
+- [ ] Staging environment mirrors production
+- [ ] Rollback procedure rehearsed
+
+## 11. Repository structure
+
+Current layout has Python modules and tests at the repository root. The recommended production layout (see [Restructuring notes](docs/DEPLOYMENT.md#10-repository-hygiene)) is:
+
+```
+jasuss/
+├── apps/
+│   ├── api/            # FastAPI: routers, schemas, dependencies
+│   ├── worker/         # Celery app and tasks
+│   └── web/            # Next.js frontend
+├── jasuss/             # Core python package
+│   ├── crawler/  interactive/  detection/  triage/  evidence/
+│   ├── scoring/        # calculation_engine
+│   ├── reporting/      # pdf, xlsx, json, md
+│   ├── billing/        # gateway adapters
+│   └── security/       # redactor, ssrf guard
+├── alembic/
+├── tests/              # unit/, integration/, e2e/
+├── deploy/             # docker, k8s, terraform
+├── docs/
+├── .github/workflows/
+├── pyproject.toml
+├── docker-compose.yml
+└── .env.example
 ```
 
-- 🌐 **Web Application**: `http://localhost:3000`
-- 🔌 **API Documentation (Swagger UI)**: `http://localhost:8000/docs`
+## 12. Contributing
 
----
+1. Fork and create a branch: `git checkout -b feat/short-description`
+2. Follow [Conventional Commits](https://www.conventionalcommits.org/)
+3. Ensure `pytest -q`, lint and `npm run build --prefix web` pass
+4. Open a pull request using the template; at least one review required
 
-## 📊 Admin Console & Telemetry
+## 13. License
 
-Navigate to `/admin` or click **"Admin"** in the top navigation bar:
-- **MRR & Financial Analytics**: Real-time revenue, active paid subscriptions, and transaction logs.
-- **Tenant Management**: View registered users, active plan tiers (`Free`, `Pro`, `Enterprise`), and scan history.
-- **Global Scan Pipeline Inspector**: Live visibility into all running, completed, and failed scans.
-- **System Telemetry**: Real-time CPU load, memory utilization, and Celery worker node health.
-
----
-
-## 🧪 Running Automated Tests
-
-Run the full pytest suite across calculation engines, database migrations, security sanitizers, payment gateways, and report exporters:
-
-```bash
-# Run entire test suite (167+ tests passing)
-pytest -q
-
-# Run specific test modules
-pytest -q tests/test_billing_gateways.py tests/test_admin_api.py
-pytest -q tests/test_calculation_engine.py tests/test_auth_crawl.py
-```
-
----
-
-## 🤝 Contributing & Open Source Guidelines
-
-We welcome contributions from developers worldwide!
-
-1. **Fork the Repository**.
-2. **Create a Feature Branch** (`git checkout -b feat/amazing-feature`).
-3. **Commit your Changes** (`git commit -m 'feat: add amazing feature'`).
-4. **Push to the Branch** (`git push origin feat/amazing-feature`).
-5. **Open a Pull Request**.
-
-Please ensure all tests pass (`pytest -q`) and Next.js builds cleanly (`npm run build --prefix web`) before submitting your PR.
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
-
-*Engineered with precision by the JASUSS Team · Powered by Nexus.*
+MIT. See [LICENSE](LICENSE).
