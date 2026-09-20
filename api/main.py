@@ -147,10 +147,16 @@ else:
 PIPELINE_TIMEOUT_SECONDS = int(os.environ.get("QA_PIPELINE_TIMEOUT", "1800"))
 MAX_PAGES_LIMIT = int(os.environ.get("QA_MAX_PAGES_LIMIT", "100"))
 
-# TEMPORARY LAUNCH CONFIG: Free-tier users are limited to 1 page per scan during the
-# free period. Raise FREE_TIER_MAX_PAGES (or set QA_FREE_TIER_MAX_PAGES env var) to
-# increase the limit for premium tiers when billing is re-enabled.
-FREE_TIER_MAX_PAGES: int = int(os.environ.get("QA_FREE_TIER_MAX_PAGES", "1"))
+def _get_plan_max_pages(plan_tier: str) -> int:
+    """Get max_pages limit from billing PLANS config for the given plan tier.
+
+    Falls back to 10 (free-tier default) if the tier is unknown.
+    The result is also capped by MAX_PAGES_LIMIT as an absolute safety ceiling.
+    """
+    from billing.gateways import PLANS
+    plan = PLANS.get(plan_tier, PLANS.get("free", {}))
+    plan_limit = plan.get("max_pages", 10)
+    return min(plan_limit, MAX_PAGES_LIMIT)
 
 
 class ScanAuthPayload(BaseModel):
@@ -535,20 +541,19 @@ async def create_scan(
         request.auth_token or (request.auth and (request.auth.login_url or request.auth.username or request.auth.password))
     )
 
-    # Enforce free-tier page limit (TEMPORARY LAUNCH CONFIG)
-    # All users currently default to free tier. Override QA_FREE_TIER_MAX_PAGES env var
-    # when premium tiers are activated.
+    # Enforce plan-based page limit using billing PLANS config
     from models import User as _User  # noqa: PLC0415
     with SessionLocal() as db:
         db_user_check = db.query(_User).filter(_User.id == user_id_val).first()
         user_plan = getattr(db_user_check, "plan_tier", "free") if db_user_check else "free"
 
-    if user_plan == "free" and request.max_pages > FREE_TIER_MAX_PAGES:
+    plan_max_pages = _get_plan_max_pages(user_plan)
+    if request.max_pages > plan_max_pages:
         logger.info(
-            "Free-tier cap applied: user %s requested %d pages, capped to %d",
-            user_id_val, request.max_pages, FREE_TIER_MAX_PAGES,
+            "Plan cap applied: user %s (%s tier) requested %d pages, capped to %d",
+            user_id_val, user_plan, request.max_pages, plan_max_pages,
         )
-        request.max_pages = FREE_TIER_MAX_PAGES
+        request.max_pages = plan_max_pages
 
 
     # Persist in SQLAlchemy database as single source of truth

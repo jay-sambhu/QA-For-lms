@@ -412,6 +412,7 @@ class WebsiteCrawler:
                 # Dictionary to track if a device has successfully auto-logged in
                 auto_logged_in_devices = {}
 
+                print(f"[CRAWL] Strict page limit: {self.max_pages} pages")
 
                 while self.queue and len(self.visited) < self.max_pages:
 
@@ -437,9 +438,11 @@ class WebsiteCrawler:
                     for dev_idx, (dev_name, page) in enumerate(pages.items()):
                         if self.progress_cb:
                             max_p = max(1, self.max_pages)
-                            num_pages = max(1, len(pages))
-                            pct = int(10 + ((len(self.visited) - 1) / max_p) * 20 + ((dev_idx + 1) / num_pages) * (20 / max_p))
-                            safe_pct = min(35, max(10, pct))
+                            num_devs = max(1, len(pages))
+                            # Spread progress evenly across the DISCOVERING band (10% - 30%)
+                            page_fraction = (len(self.visited) - 1 + (dev_idx + 1) / num_devs) / max_p
+                            pct = int(10 + page_fraction * 20)
+                            safe_pct = min(30, max(10, pct))
                             try:
                                 self.progress_cb(
                                     safe_pct,
@@ -554,6 +557,7 @@ class WebsiteCrawler:
                                         if (
                                             absolute_url not in self.visited
                                             and absolute_url not in self.queue
+                                            and len(self.visited) + len(self.queue) < self.max_pages
                                         ):
                                             self.queue.append(absolute_url)
 
