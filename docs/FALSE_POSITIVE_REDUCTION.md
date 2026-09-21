@@ -13,7 +13,7 @@ In Phase 19, JASUSS generated **15 False Positives** across 6 challenge applicat
 
 ## 2. Phase 20 Console Noise Filter Classification
 
-The updated [`core/bug_detector.py`](file:///home/devxgamer/ai-qa-agent/core/bug_detector.py) classifies console error messages into strict categories:
+The updated [`core/bug_detector.py`](../core/bug_detector.py) classifies console error messages into strict categories:
 
 | Console Log Category | Pattern Match Criteria | Classifier Action | Severity | Candidate Finding Created? |
 |---|---|---|---|---|

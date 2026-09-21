@@ -7,7 +7,7 @@ This document defines the **SPA Exploration Engine** in JASUSS Phase 20, built t
 
 ## 1. SPA Dynamic Control & Event Dispatching
 
-Single Page Applications (SPAs) often manage views and async API calls without triggering full page navigation. The Phase 20 crawler ([`crawler/crawler.py`](file:///home/devxgamer/ai-qa-agent/crawler/crawler.py)) dispatches events on:
+Single Page Applications (SPAs) often manage views and async API calls without triggering full page navigation. The Phase 20 crawler ([`crawler/crawler.py`](../crawler/crawler.py)) dispatches events on:
 
 - **Client-Side Tab Controls**: Buttons managing DOM visibility (`showPage('feed-page')`).
 - **Async API Fetch Triggers**: Buttons executing async network calls (`fetchFeed(3)`).

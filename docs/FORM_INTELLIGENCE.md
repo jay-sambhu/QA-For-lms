@@ -7,7 +7,7 @@ This document defines the **Semantic Form Intelligence Subsystem** implemented i
 
 ## 1. Field Semantic Recognition
 
-The test generator ([`core/test_generator_v2.py`](file:///home/devxgamer/ai-qa-agent/core/test_generator_v2.py)) inspects form field attributes (`id`, `name`, `type`, `placeholder`, `aria-label`) to assign semantic types:
+The test generator ([`core/test_generator_v2.py`](../core/test_generator_v2.py)) inspects form field attributes (`id`, `name`, `type`, `placeholder`, `aria-label`) to assign semantic types:
 
 | Semantic Field Category | Matched Attribute Terms | Valid Payload | Boundary / Invalid Payload |
 |---|---|---|---|

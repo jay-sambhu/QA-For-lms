@@ -1,7 +1,7 @@
 # JASUSS Self-Healing Safety Audit & Principles (Phase 19)
 
 ## Executive Summary
-This document establishes safety guidelines and audit requirements for the **Self-Healing Test Executor** ([`core/executor_v2.py`](file:///home/devxgamer/ai-qa-agent/core/executor_v2.py)) in JASUSS.
+This document establishes safety guidelines and audit requirements for the **Self-Healing Test Executor** ([`core/executor_v2.py`](../core/executor_v2.py)) in JASUSS.
 
 ---
 

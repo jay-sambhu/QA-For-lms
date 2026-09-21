@@ -9,7 +9,7 @@ This document defines the methodology for evaluating **JASUSS** against **Hidden
 
 1. **Zero Prior Knowledge**: The JASUSS engine is initialized with `UNKNOWN_DEFECT_MODE=true`. It receives ONLY the target application URL.
 2. **Dynamic Service Spawning**: Challenge applications are dynamically launched on isolated ports (`8101` to `8106`).
-3. **Seeded Defect Inventory Isolation**: The ground-truth defect registry ([`benchmarks/autonomous/defect_registry.py`](file:///home/devxgamer/ai-qa-agent/benchmarks/autonomous/defect_registry.py)) is imported ONLY by the evaluator (`scoring.py`) during post-execution scoring.
+3. **Seeded Defect Inventory Isolation**: The ground-truth defect registry ([`benchmarks/autonomous/defect_registry.py`](../benchmarks/autonomous/defect_registry.py)) is imported ONLY by the evaluator (`scoring.py`) during post-execution scoring.
 4. **Multi-Domain Diversity**: Challenge applications represent 6 distinct software paradigms (CRUD, E-Commerce, LMS, Admin Dashboard, SPA, and Complex Forms).
 
 ---
