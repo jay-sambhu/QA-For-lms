@@ -50,7 +50,7 @@ services:
   worker:
     build: .
     container_name: ai_qa_worker
-    command: celery -A worker.celery_app worker --loglevel=info -Q qa_queue -c 2
+    command: celery -A worker.celery_app worker --loglevel=info -Q qa_queue,priority_queue -c ${WORKER_CONCURRENCY:-2}
     environment:
       - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-ai_qa_db}

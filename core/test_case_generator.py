@@ -137,8 +137,14 @@ class TestCaseGenerator:
                 
         urls_to_visit = urls_to_visit[:self.max_pages]
         
+        browser_args = [
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--disable-software-rasterizer",
+        ]
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(headless=True, args=browser_args)
             context = await browser.new_context(ignore_https_errors=True)
             page = await context.new_page()
 

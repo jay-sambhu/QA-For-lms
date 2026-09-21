@@ -23,16 +23,21 @@ celery_app = Celery(
     include=["worker.tasks"],
 )
 
-# Simple routing – all QA jobs go to the "qa_queue"
-celery_app.conf.task_routes = {"worker.tasks.process_query": {"queue": "qa_queue"}}
+# Multi-queue routing for standard and priority scans
+celery_app.conf.task_routes = {
+    "worker.tasks.process_query": {"queue": "qa_queue"},
+    "worker.tasks.process_query_priority": {"queue": "priority_queue"},
+}
 
-# Recommended production settings
+# Recommended production scalability settings
 celery_app.conf.update(
     result_expires=3600,               # keep results for 1 hour
     task_time_limit=1800,              # hard limit (seconds)
     task_soft_time_limit=1700,         # soft limit for graceful shutdown
     worker_prefetch_multiplier=1,      # avoid task hoarding
     task_acks_late=True,               # ensure tasks are re‑queued on failure
+    worker_max_tasks_per_child=20,     # recycle worker process to prevent memory leaks from browser automation
+    worker_max_memory_per_child=500000, # recycle worker child process if RAM usage exceeds 500MB (in KB)
     
     # Prevent delay() from hanging indefinitely if Redis is down
     broker_connection_retry_on_startup=False,

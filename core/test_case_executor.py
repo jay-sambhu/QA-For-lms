@@ -41,9 +41,15 @@ class TestCaseExecutor:
         results = []
         new_findings = []
         
+        browser_args = [
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--disable-software-rasterizer",
+        ]
         async with async_playwright() as p:
             try:
-                browser = await p.chromium.launch(headless=True)
+                browser = await p.chromium.launch(headless=True, args=browser_args)
             except Exception as launch_err:
                 if "Executable doesn't exist" in str(launch_err):
                     install_proc = await asyncio.create_subprocess_exec(
@@ -52,7 +58,7 @@ class TestCaseExecutor:
                         stderr=asyncio.subprocess.PIPE,
                     )
                     await install_proc.communicate()
-                    browser = await p.chromium.launch(headless=True)
+                    browser = await p.chromium.launch(headless=True, args=browser_args)
                 else:
                     raise
             context = await browser.new_context(ignore_https_errors=True)
