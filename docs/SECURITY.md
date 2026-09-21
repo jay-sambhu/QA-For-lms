@@ -40,7 +40,7 @@ Rule: **workers can reach the internet, but never the private network, cloud met
 ## 2. Threat model (STRIDE summary)
 
 | # | Threat | Vector | Mitigation |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | T1 | SSRF into internal services | Scan URL, redirects, page-initiated requests | Section 3 |
 | T2 | Malicious target site attacks worker | Browser exploit, download bombs, infinite pages | Sandbox, resource limits, no downloads, non-root |
 | T3 | Credential leakage | Login creds in logs, DB, reports, AI prompts | `SecretStr`, redactor, prompt scrubbing, tests |
@@ -74,6 +74,7 @@ flowchart TD
 ```
 
 Checklist:
+
 - Block: `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`, `100.64.0.0/10`, `::1`, `fc00::/7`, `fe80::/10`, and `file:`, `ftp:`, `gopher:`, `chrome:` schemes.
 - Enforce at the network layer too: Kubernetes `NetworkPolicy` or security-group egress rules that deny RFC1918 and metadata ranges from the worker subnet. Application checks alone are not sufficient.
 - Cap redirects (≤ 5), page count, total bytes, per-page timeout, per-scan wall clock.
@@ -90,7 +91,7 @@ Checklist:
 ## 5. Secrets and credentials
 
 | Secret | Storage | Rotation |
-|---|---|---|
+| --- | --- | --- |
 | DB password, Redis, Gemini, gateway keys | Secret manager (AWS SM / GCP SM / Vault), injected at runtime | 90 days or on incident |
 | Supabase JWT config | Secret manager | On rotation event |
 | Webhook signing secrets | Secret manager | On gateway rotation |
@@ -98,6 +99,7 @@ Checklist:
 | API keys (customer) | SHA-256 hash at rest, shown once | User-initiated |
 
 Enforcement:
+
 - `gitleaks`/`trufflehog` in CI and as a pre-commit hook.
 - `security/redactor.py` applied to logs, findings, reports and AI prompts; keep `test_redaction.py` covering passwords, tokens, cookies, `Authorization` headers, and HAR bodies.
 - HAR capture must strip `Authorization`, `Cookie`, `Set-Cookie` and form password fields.
@@ -105,7 +107,7 @@ Enforcement:
 ## 6. Authorization (RBAC)
 
 | Resource | user | admin |
-|---|---|---|
+| --- | --- | --- |
 | Own scans / reports | read, create, cancel, delete | read all |
 | Other users' scans | 404 | read, cancel |
 | Billing (own) | manage | view all |
@@ -147,7 +149,7 @@ Implement as a FastAPI dependency (`require_role("admin")`) and a query helper t
 ## 11. Compliance posture
 
 | Topic | Approach |
-|---|---|
+| --- | --- |
 | GDPR / privacy | Data map, DPA with subprocessors (Supabase, Google, payment gateways, cloud), export and delete on request, retention in [DATABASE.md](DATABASE.md#5-retention-and-privacy) |
 | Terms of use | Require the user to attest they are authorised to test the target; log acceptance |
 | Robots / rate courtesy | Honour configurable crawl delay; identifiable User-Agent `JASUSS-Nexus/1.x (+url)` |

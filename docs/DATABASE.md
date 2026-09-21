@@ -190,7 +190,7 @@ erDiagram
 ## 3. Indexes and constraints
 
 | Table | Index / constraint | Reason |
-|---|---|---|
+| --- | --- | --- |
 | `scans` | `(user_id, created_at DESC)` | Dashboard history |
 | `scans` | `(status)` partial where status in (`pending`,`running`) | Reaper and admin inspector |
 | `scans` | `(url_host, completed_at DESC)` | Baseline lookup for regression |
@@ -213,7 +213,7 @@ erDiagram
 ## 5. Retention and privacy
 
 | Data | Retention | Notes |
-|---|---|---|
+| --- | --- | --- |
 | Scan rows and findings | Per plan: Free 30 days, Pro 12 months, Enterprise configurable | Nightly retention job |
 | Screenshots / HAR | 30 days default | Contain target-site content; treat as customer data |
 | Reports (PDF/XLSX/JSON/MD) | Same as scan | Object-storage lifecycle rule |
@@ -233,7 +233,7 @@ Account deletion: soft-delete immediately, hard-delete personal data and artifac
 ## 7. Backup and recovery
 
 | Item | Target |
-|---|---|
+| --- | --- |
 | Backups | Daily full + continuous WAL archiving (PITR) |
 | RPO | ≤ 5 minutes |
 | RTO | ≤ 1 hour |

@@ -60,7 +60,7 @@ services:
   # 3. Uptime Watchdog (keep-alive pinger — prevents free-tier spin-downs)
   - type: worker
     name: ai-qa-watchdog
-    env: python
+    runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: python -m worker.watchdog
     plan: starter
@@ -79,7 +79,7 @@ services:
   # 4. Next.js Web UI Frontend
   - type: web
     name: ai-qa-web
-    env: node
+    runtime: node
     plan: starter
     rootDir: web
     buildCommand: npm install && npm run build

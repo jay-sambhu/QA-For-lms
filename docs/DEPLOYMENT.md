@@ -1,6 +1,7 @@
 # Deployment
 
 ## Contents
+
 1. [Environments](#1-environments)
 2. [Production topology](#2-production-topology)
 3. [Container images](#3-container-images)
@@ -17,7 +18,7 @@
 ## 1. Environments
 
 | Env | Purpose | Data | Notes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `local` | Development | SQLite or Compose Postgres | `./start.sh` or Compose |
 | `ci` | Automated tests | Ephemeral Postgres + Redis services | GitHub Actions |
 | `staging` | Pre-release validation | Anonymised/synthetic | Mirrors production topology, gateway sandbox modes |
@@ -75,6 +76,7 @@ flowchart TB
 ```
 
 Notes:
+
 - The current repo ships `render.yaml` and `render.yml` and a Vercel frontend; the diagram above is the target for a scaled production deployment. Render or a single VM with Compose is fine for early stage as long as Postgres, Redis and object storage are managed services.
 - The API must be stateless. Do **not** rely on local disk for reports or evidence once more than one API/worker instance exists; set `STORAGE_BACKEND=s3`.
 
@@ -295,6 +297,7 @@ flowchart LR
 ```
 
 Guidelines:
+
 - **Autoscaling:** scale workers with KEDA on Redis list length of each queue; scale API on CPU/p95.
 - **Resources:** worker requests `1 CPU / 2 Gi`, limits `2 CPU / 3 Gi`; mount `emptyDir` with `medium: Memory` at `/dev/shm`.
 - **Probes:** API `livenessProbe: /healthz`, `readinessProbe: /readyz`. Workers: `celery inspect ping` exec probe.
@@ -410,6 +413,7 @@ sequenceDiagram
 ```
 
 Rules:
+
 - Semantic versioning with Git tags; changelog generated from Conventional Commits.
 - Migrations are backward compatible with the previous release (expand/contract), so rollback never needs a DB downgrade.
 - Feature flags for risky features (e.g. new AI model routing).
@@ -419,7 +423,7 @@ Rules:
 Starting point for ~1,000 scans/day (each scan ≈ 3–8 min, 1 Chromium):
 
 | Component | Suggested size |
-|---|---|
+| --- | --- |
 | API | 2 × (1 vCPU, 1 GiB) |
 | Workers | 6–10 concurrent scan slots ≈ 4 × (2 vCPU, 4 GiB) with concurrency 2 |
 | PostgreSQL | 2 vCPU, 8 GiB, 100 GiB SSD, standby |
@@ -433,7 +437,7 @@ Levers: cap `max_pages`, reduce screenshot resolution/format (WebP), compress HA
 Observed in the repository and recommended fixes before production:
 
 | Finding | Action |
-|---|---|
+| --- | --- |
 | `.venv312/` is committed | Remove from git (`git rm -r --cached .venv312`), add to `.gitignore`; consider history rewrite if it is large |
 | Both `render.yaml` and `render.yml` exist | Keep one (`render.yaml`), delete the other to avoid drift |
 | Python modules and `test_*.py` files at repo root, plus a `tests/` folder | Move into a package (`jasuss/`) and `tests/`; add `pyproject.toml` |
