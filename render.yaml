@@ -34,7 +34,7 @@ services:
     name: ai-qa-worker
     env: docker
     dockerfilePath: ./Dockerfile
-    dockerCommand: celery -A worker.celery_app worker --loglevel=info -Q qa_queue -c 2
+    dockerCommand: celery -A worker.celery_app worker --loglevel=info -Q qa_queue,priority_queue,celery -c 2
     plan: starter
     envVars:
       - key: ENVIRONMENT

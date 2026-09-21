@@ -123,8 +123,15 @@ class InteractiveTester:
             return self._build_result(0, 0, 0, 0, 0)
 
         headless_mode = os.environ.get("PLAYWRIGHT_HEADLESS", "true").lower() != "false"
+        browser_args = [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--disable-software-rasterizer",
+        ]
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=headless_mode)
+            browser = await p.chromium.launch(headless=headless_mode, args=browser_args)
             context = await browser.new_context(
                 viewport={"width": 1920, "height": 1080},
                 ignore_https_errors=True

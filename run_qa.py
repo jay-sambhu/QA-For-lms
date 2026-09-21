@@ -82,8 +82,11 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
     discovery_result = await discovery_engine.execute_discovery()
     crawl_file = discovery_result.get("output_file")
     if not crawl_file or discovery_result.get("pages_crawled", 0) == 0:
-        sm.transition_to(PipelineStage.FAILED, "Discovery failed to load target pages.")
-        print("ERROR: Autonomous Discovery produced no pages.")
+        pages_attempted = discovery_result.get("pages", []) if discovery_result else []
+        failure_reasons = [p.get("error") for p in pages_attempted if p.get("error")]
+        detailed_msg = f"Discovery failed to load target pages: {failure_reasons[0]}" if failure_reasons else "Discovery failed to load target pages."
+        sm.transition_to(PipelineStage.FAILED, detailed_msg)
+        print(f"ERROR: Autonomous Discovery produced no pages. {detailed_msg}")
         return None
 
     # 2. MODELING STAGE

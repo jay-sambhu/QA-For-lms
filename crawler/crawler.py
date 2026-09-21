@@ -342,6 +342,7 @@ class WebsiteCrawler:
             for dev_name, dev_config in devices_config.items():
                 # Make a copy so we don't mutate the global playwright device configs
                 ctx_kwargs = dict(dev_config)
+                ctx_kwargs["ignore_https_errors"] = True
                 if self.auth_token:
                     ctx_kwargs["extra_http_headers"] = {"Authorization": f"Bearer {self.auth_token}"}
                 
@@ -470,11 +471,22 @@ class WebsiteCrawler:
                             # Use f"{url} [{dev_name}]" as the canonical page ID for this device
                             page_id = f"{url} [{dev_name}]"
                             print(f"[{dev_name}] Navigating...")
-                            response = await page.goto(
-                                url,
-                                wait_until="domcontentloaded",
-                                timeout=30000
-                            )
+                            try:
+                                response = await page.goto(
+                                    url,
+                                    wait_until="domcontentloaded",
+                                    timeout=25000
+                                )
+                            except Exception as nav_err:
+                                if "timeout" in str(nav_err).lower():
+                                    print(f"[{dev_name}] DOMContentLoaded timeout on {url}, attempting commit fallback...")
+                                    response = await page.goto(
+                                        url,
+                                        wait_until="commit",
+                                        timeout=15000
+                                    )
+                                else:
+                                    raise
 
                             await _safe_wait_load_state(page, "networkidle", timeout=3000)
 

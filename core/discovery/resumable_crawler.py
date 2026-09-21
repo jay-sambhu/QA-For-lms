@@ -53,7 +53,18 @@ class ResumableDiscoveryEngine:
             progress_cb=self.progress_cb,
             **self.kwargs
         )
-        raw_result = await crawler.crawl()
+        try:
+            raw_result = await crawler.crawl()
+        except Exception as crawl_err:
+            print(f"[DISCOVERY] Unexpected crawler error: {crawl_err}")
+            raw_result = {
+                "target": self.start_url,
+                "run_id": self.run_id,
+                "pages_crawled": 0,
+                "pages_attempted": 1,
+                "pages": [{"url": self.start_url, "error": str(crawl_err)}],
+                "output_file": None,
+            }
 
         # Enrich raw crawl output with dynamic route normalization & typed discovery model
         pages = raw_result.get("pages", [])

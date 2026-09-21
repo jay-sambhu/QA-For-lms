@@ -118,14 +118,14 @@ class TestApiScanEnqueue(unittest.TestCase):
         self.assertEqual(data["status"], "pending")
         self.assertEqual(data["url"], "https://example.com/lms")
 
-        # Verify Celery apply_async was called once with exact arguments (capped to 1 by free-tier limit) and task_id
+        # Verify Celery apply_async was called once with exact arguments (capped to 10 by free-tier limit) and task_id
         scan_id = data["scan_id"]
         mock_apply_async.assert_called_once_with(
             args=[
                 scan_id,
                 "test-user-uuid-123",
                 "https://example.com/lms",
-                1,
+                10,
                 "bearer-token-abc"
             ],
             task_id=scan_id,
