@@ -88,11 +88,16 @@ app.add_middleware(
 )
 
 # Register Domain Routers
-from api.billing import billing_router
+from api.billing import billing_router, handle_gateway_webhook
 from api.admin import admin_router
 
 app.include_router(billing_router)
 app.include_router(admin_router)
+
+# Webhook route aliases to prevent 404s from gateway configuration drift
+app.add_api_route("/webhook/{gateway}", handle_gateway_webhook, methods=["POST"], include_in_schema=False)
+app.add_api_route("/webhooks/{gateway}", handle_gateway_webhook, methods=["POST"], include_in_schema=False)
+app.add_api_route("/billing/webhooks/{gateway}", handle_gateway_webhook, methods=["POST"], include_in_schema=False)
 
 supabase_url = (os.environ.get("NEXT_PUBLIC_SUPABASE_URL") or "").strip()
 supabase_anon_key = (os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY") or "").strip()

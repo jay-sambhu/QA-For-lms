@@ -17,27 +17,14 @@ from core.ai_config import (
 )
 
 
-def get_admin_emails() -> set:
-    """Return set of explicitly allowed admin email addresses (exact matches only)."""
-    raw = os.getenv("ADMIN_EMAILS", "")
-    try:
-        from config import settings
-        if settings and settings.ADMIN_EMAILS:
-            raw = settings.ADMIN_EMAILS
-    except Exception:
-        pass
-    if not raw:
-        return set()
-    return {e.strip().lower() for e in raw.split(",") if e.strip()}
-
-
 def require_admin(authorization: str = Header(None)):
     """
     Admin-only auth dependency.
     Verifies the bearer token via Supabase and confirms the user has an admin role from an explicit source:
-    1. A 'role' claim in the verified token metadata or user attributes (role == 'admin')
+    1. A 'role' claim in app_metadata (app_metadata.role == 'admin')
     2. The local database 'users.role' column == 'admin'
-    3. An exact match in the ADMIN_EMAILS allow-list from config.
+    3. An exact match in settings.admin_emails_set with a confirmed email (email_confirmed_at is set).
+    user_metadata is client-writable in Supabase and is NEVER trusted for admin authorization.
     Wildcard, pattern, or domain-prefix matches are strictly forbidden.
     """
     # Import here to avoid circular import (admin.py is imported by main.py)
@@ -45,20 +32,17 @@ def require_admin(authorization: str = Header(None)):
         from api.main import require_user
     except ImportError:
         from main import require_user
+    from config import settings
 
     user = require_user(authorization)
 
-    user_meta = getattr(user, "user_metadata", None) or {}
     app_meta = getattr(user, "app_metadata", None) or {}
+    if not isinstance(app_meta, dict):
+        app_meta = {}
     user_email = (getattr(user, "email", "") or "").strip().lower()
-    user_role = str(getattr(user, "role", "") or "").strip().lower()
 
-    # 1. Explicit role claim in token metadata or user attributes
-    is_admin = (
-        user_meta.get("role") == "admin"
-        or app_meta.get("role") == "admin"
-        or user_role == "admin"
-    )
+    # 1. Explicit role claim in app_metadata (server-managed, never client-writable)
+    is_admin = app_meta.get("role") == "admin"
 
     # 2. Explicit role in local database users table
     if not is_admin:
@@ -71,11 +55,15 @@ def require_admin(authorization: str = Header(None)):
         except Exception:
             pass
 
-    # 3. Explicit exact email in ADMIN_EMAILS allow-list from config
+    # 3. Explicit exact email in ADMIN_EMAILS allow-list from settings
+    # For the ADMIN_EMAILS path, also require the Supabase user's email to be confirmed (email_confirmed_at is set).
     if not is_admin and user_email:
-        admin_emails = get_admin_emails()
-        if user_email in admin_emails:
-            is_admin = True
+        email_confirmed_at = getattr(user, "email_confirmed_at", None)
+        if isinstance(user, dict):
+            email_confirmed_at = email_confirmed_at or user.get("email_confirmed_at")
+        if email_confirmed_at:
+            if settings and user_email in settings.admin_emails_set:
+                is_admin = True
 
     if not is_admin:
         raise HTTPException(

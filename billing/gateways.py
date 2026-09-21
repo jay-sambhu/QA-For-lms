@@ -9,6 +9,7 @@ import os
 import uuid
 import hmac
 import hashlib
+import time
 
 PLANS: Dict[str, Dict[str, Any]] = {
     "free": {
@@ -123,22 +124,63 @@ class StripeAdapter(PaymentGatewayAdapter):
             "currency": plan["currency"],
         }
 
-    def verify_webhook(self, payload: bytes, signature: str, secret: str) -> bool:
+    def verify_webhook(self, payload: bytes, signature: str, secret: str, tolerance: int = 300) -> bool:
         if not signature or not secret:
             return False
-        if "v1=" in signature:
+
+        # If stripe library is installed, prefer stripe.Webhook.construct_event
+        try:
+            import stripe
             try:
-                parts = dict(item.split("=", 1) for item in signature.split(",") if "=" in item)
-                sig = parts.get("v1", "")
-                t = parts.get("t", "")
-                signed_payload = f"{t}.".encode("utf-8") + payload if t else payload
-                computed = hmac.new(secret.encode("utf-8"), signed_payload, hashlib.sha256).hexdigest()
-                if hmac.compare_digest(computed, sig):
-                    return True
+                stripe.Webhook.construct_event(payload, signature, secret, tolerance=tolerance)
+                return True
             except Exception:
-                pass
-        computed = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(computed, signature)
+                return False
+        except ImportError:
+            pass
+
+        # Parse Stripe-Signature header: t=<timestamp>,v1=<sig1>,v1=<sig2>...
+        try:
+            timestamp_str = None
+            v1_signatures = []
+            for item in signature.split(","):
+                if "=" not in item:
+                    continue
+                k, v = item.split("=", 1)
+                k = k.strip()
+                v = v.strip()
+                if k == "t":
+                    timestamp_str = v
+                elif k == "v1":
+                    v1_signatures.append(v)
+
+            # Both t= and at least one v1= must be present in the header
+            if not timestamp_str or not v1_signatures:
+                return False
+
+            timestamp = int(timestamp_str)
+            now = int(time.time())
+
+            # Reject if the timestamp is older than tolerance (300s) or too far in the future
+            if timestamp < (now - tolerance) or timestamp > (now + tolerance):
+                return False
+
+            signed_payload = f"{timestamp}.".encode("utf-8") + payload
+            secret_bytes = secret.encode("utf-8") if isinstance(secret, str) else secret
+            expected_hex_bytes = hmac.new(secret_bytes, signed_payload, hashlib.sha256).hexdigest().encode("utf-8")
+
+            # Accept any of multiple v1 values via hmac.compare_digest (comparing bytes)
+            for v1 in v1_signatures:
+                try:
+                    v1_bytes = v1.encode("utf-8") if isinstance(v1, str) else v1
+                    if hmac.compare_digest(expected_hex_bytes, v1_bytes):
+                        return True
+                except Exception:
+                    continue
+
+            return False
+        except Exception:
+            return False
 
     def parse_webhook_event(self, data: Dict[str, Any]) -> Dict[str, Any]:
         event_type = data.get("type", "checkout.session.completed")
@@ -187,8 +229,13 @@ class LemonSqueezyAdapter(PaymentGatewayAdapter):
     def verify_webhook(self, payload: bytes, signature: str, secret: str) -> bool:
         if not signature or not secret:
             return False
-        computed = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(computed, signature)
+        try:
+            secret_bytes = secret.encode("utf-8") if isinstance(secret, str) else secret
+            sig_bytes = signature.encode("utf-8") if isinstance(signature, str) else signature
+            computed_hex_bytes = hmac.new(secret_bytes, payload, hashlib.sha256).hexdigest().encode("utf-8")
+            return hmac.compare_digest(computed_hex_bytes, sig_bytes)
+        except Exception:
+            return False
 
     def parse_webhook_event(self, data: Dict[str, Any]) -> Dict[str, Any]:
         meta = data.get("meta", {})
@@ -242,8 +289,13 @@ class RazorpayAdapter(PaymentGatewayAdapter):
     def verify_webhook(self, payload: bytes, signature: str, secret: str) -> bool:
         if not signature or not secret:
             return False
-        computed = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(computed, signature)
+        try:
+            secret_bytes = secret.encode("utf-8") if isinstance(secret, str) else secret
+            sig_bytes = signature.encode("utf-8") if isinstance(signature, str) else signature
+            computed_hex_bytes = hmac.new(secret_bytes, payload, hashlib.sha256).hexdigest().encode("utf-8")
+            return hmac.compare_digest(computed_hex_bytes, sig_bytes)
+        except Exception:
+            return False
 
     def parse_webhook_event(self, data: Dict[str, Any]) -> Dict[str, Any]:
         event = data.get("event", "payment.captured")
@@ -293,10 +345,9 @@ class PayPalAdapter(PaymentGatewayAdapter):
         }
 
     def verify_webhook(self, payload: bytes, signature: str, secret: str) -> bool:
-        if not signature or not secret:
-            return False
-        computed = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(computed, signature)
+        # PayPal webhook verification requires calling PayPal's verify-webhook-signature API.
+        # HMAC scheme is removed; incoming PayPal webhooks fail closed until API verification is added.
+        return False
 
     def parse_webhook_event(self, data: Dict[str, Any]) -> Dict[str, Any]:
         event_type = data.get("event_type", "BILLING.SUBSCRIPTION.ACTIVATED")

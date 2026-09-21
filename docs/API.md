@@ -105,7 +105,7 @@ sequenceDiagram
 | `POST` | `/billing/checkout` | user | Create checkout session `{plan_id, gateway}` |
 | `GET` | `/billing/subscription` | user | Current subscription |
 | `POST` | `/billing/cancel` | user | Cancel at period end |
-| `POST` | `/billing/webhooks/{gateway}` | signature | Gateway webhooks (no JWT) |
+| `POST` | `/api/v1/billing/webhook/{gateway}` | signature | Gateway webhooks (no JWT; alias: `/webhook/{gateway}`) |
 
 ### Admin
 

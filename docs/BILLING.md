@@ -76,7 +76,7 @@ sequenceDiagram
     participant D as PostgreSQL
     participant B as BillingService
 
-    G->>A: POST /billing/webhooks/{gateway} (raw body + signature)
+    G->>A: POST /api/v1/billing/webhook/{gateway} (raw body + signature)
     A->>A: Verify signature on RAW body
     alt invalid signature
         A-->>G: 400
@@ -155,14 +155,16 @@ gateway_price_ids:
   paypal:       { pro: P-XXXX,    enterprise: P-YYYY }
 ```
 
-## 7. Gateway notes
+## 7. Gateway dashboard instructions & notes
 
-| Gateway | Best for | Watch out for |
-|---|---|---|
-| Stripe | Cards, wallets | Use Checkout + Customer Portal; verify `Stripe-Signature` with tolerance |
-| LemonSqueezy | Global tax as Merchant of Record | Fewer billing controls; map `subscription_*` events |
-| Razorpay | India: UPI, NetBanking | Amounts in paise; separate international-card setup |
-| PayPal | Wallet users | Verify via the webhook verification API; subscription state sync |
+**Webhook Endpoint URL:** `https://api.jasuss.tech/api/v1/billing/webhook/{gateway}` (alias: `/webhook/{gateway}`)
+
+| Gateway | Dashboard Setup & Webhook URL | Best for | Watch out for |
+|---|---|---|---|
+| Stripe | URL: `.../api/v1/billing/webhook/stripe`<br>Events: `checkout.session.completed`, `invoice.payment_succeeded`, `customer.subscription.deleted` | Cards, wallets | Use Checkout + Customer Portal; verify `Stripe-Signature` (`t=` and `v1=`) within 300s tolerance |
+| LemonSqueezy | URL: `.../api/v1/billing/webhook/lemonsqueezy`<br>Events: `order_created`, `subscription_created`, `subscription_updated`, `subscription_cancelled` | Global tax as Merchant of Record | Fewer billing controls; map `subscription_*` events |
+| Razorpay | URL: `.../api/v1/billing/webhook/razorpay`<br>Events: `payment.captured`, `subscription.activated`, `subscription.charged` | India: UPI, NetBanking | Amounts in paise; separate international-card setup |
+| PayPal | URL: `.../api/v1/billing/webhook/paypal`<br>Status: Returns 501 until PayPal verify-webhook-signature API is integrated | Wallet users | Verify via the webhook verification API; subscription state sync |
 
 ## 8. Testing
 

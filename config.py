@@ -4,6 +4,7 @@ All fields are optional to allow test environments that do not provide them.
 The `gemini_key` property prefers GEMINI_API_KEY over the legacy GOOGLE_API_KEY.
 """
 
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -39,9 +40,10 @@ class Settings(BaseSettings):
     @property
     def admin_emails_set(self) -> set:
         """Set of lowercase, stripped email addresses with explicit admin privileges."""
-        if not self.ADMIN_EMAILS:
+        raw = os.getenv("ADMIN_EMAILS", self.ADMIN_EMAILS)
+        if not raw:
             return set()
-        return {e.strip().lower() for e in self.ADMIN_EMAILS.split(",") if e.strip()}
+        return {e.strip().lower() for e in raw.split(",") if e.strip()}
 
     @property
     def gemini_key(self) -> Optional[str]:

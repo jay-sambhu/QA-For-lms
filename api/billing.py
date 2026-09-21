@@ -125,7 +125,7 @@ def get_gateway_webhook_secret(gateway: str) -> Optional[str]:
         "stripe": ["STRIPE_WEBHOOK_SECRET"],
         "lemonsqueezy": ["LEMONSQUEEZY_WEBHOOK_SECRET"],
         "razorpay": ["RAZORPAY_WEBHOOK_SECRET"],
-        "paypal": ["PAYPAL_WEBHOOK_SECRET", "PAYPAL_WEBHOOK_ID"],
+        "paypal": ["PAYPAL_WEBHOOK_SECRET"],
     }
     keys = mapping.get(gw, [f"{gw.upper()}_WEBHOOK_SECRET"])
     for k in keys:
@@ -145,6 +145,7 @@ def get_gateway_webhook_secret(gateway: str) -> Optional[str]:
 
 
 @billing_router.post("/webhook/{gateway}")
+@billing_router.post("/webhooks/{gateway}")
 async def handle_gateway_webhook(
     gateway: str,
     request: Request,
@@ -156,12 +157,21 @@ async def handle_gateway_webhook(
     """
     Unified Webhook receiver for Stripe, LemonSqueezy, Razorpay, and PayPal.
     Enforces fail-closed configuration checks (503 if secret missing) and constant-time signature verification (400 if invalid).
+    Returns 501 for PayPal until PayPal verify-webhook-signature API integration is completed.
     """
     gw_norm = gateway.lower().strip()
     try:
         adapter = GatewayManager.get_adapter(gw_norm)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    # PayPal webhook verification requires PayPal verify-webhook-signature API
+    if gw_norm == "paypal":
+        logger.warning("PayPal webhook verification is not yet implemented (501 Not Implemented)")
+        raise HTTPException(
+            status_code=501,
+            detail="PayPal webhook signature verification is not implemented yet; verification via PayPal verify-webhook-signature API is required",
+        )
 
     # 1. Fail closed if secret is not configured
     secret = get_gateway_webhook_secret(gw_norm)
