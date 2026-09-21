@@ -47,7 +47,6 @@ class TestReportExports(unittest.TestCase):
         10 Tests: 5 passed, 2 failed, 1 skipped, 1 blocked, 1 errored
         9 Findings: 1 critical, 2 high, 3 medium, 2 low, 1 info
         """
-        generator = QAReportGenerator()
         raw_data = {
             "target": "https://example.com/app",
             "findings": [
@@ -153,7 +152,7 @@ class TestReportExports(unittest.TestCase):
 
         generator = QAReportGenerator()
         generator.test_cases_file = None
-        report = generator.generate_json_report(Path("dummy_consistency.json"), raw_data)
+        generator.generate_json_report(Path("dummy_consistency.json"), raw_data)
 
         # Directly inject test cases to verify full calculation
         canonical = CalculationEngine.calculate_canonical_metrics(

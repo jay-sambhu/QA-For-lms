@@ -66,12 +66,3 @@ class DeviceConfigManager:
             "iPhone 13": iphone_kwargs,
             "iPad (gen 7)": ipad_kwargs,
         }
-
-    @classmethod
-    def get_viewport_dimensions(cls, dev_name: str, dev_config: Dict[str, Any]) -> Dict[str, int]:
-        """Extract viewport width and height safely."""
-        vp = dev_config.get("viewport") or {}
-        return {
-            "width": vp.get("width", 1920 if "Desktop" in dev_name else 390),
-            "height": vp.get("height", 1080 if "Desktop" in dev_name else 844),
-        }

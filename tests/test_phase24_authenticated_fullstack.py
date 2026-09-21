@@ -3,10 +3,6 @@ JASUSS Phase 24.1 Authenticated Full-Stack Runtime Validation Suite.
 Starts live FastAPI API server (port 8000) and Challenge App (port 8105), verifies process health, authenticates scan creation requests (200/201/202 status code), validates database persistence, Playwright browser automation, and export reports.
 """
 import os
-import sys
-import time
-import requests
-import subprocess
 from core.multi_session_manager import MultiSessionManager
 from core.export_validator import ExportReportValidator
 
@@ -51,9 +47,9 @@ def test_phase24_1_multi_session_browser_isolation():
     Verify multi-session authorization and context isolation on live server instances.
     """
     mgr = MultiSessionManager()
-    user_a = mgr.create_session("fullstack_user_a", "USER", "user_101", "token_a")
-    user_b = mgr.create_session("fullstack_user_b", "USER", "user_102", "token_b")
-    admin_c = mgr.create_session("fullstack_admin_c", "ADMIN", "admin_001", "token_admin")
+    mgr.create_session("fullstack_user_a", "USER", "user_101", "token_a")
+    mgr.create_session("fullstack_user_b", "USER", "user_102", "token_b")
+    mgr.create_session("fullstack_admin_c", "ADMIN", "admin_001", "token_admin")
 
     assert mgr.validate_authorization("fullstack_user_a", "USER", "user_101") is True
     assert mgr.validate_authorization("fullstack_user_b", "USER", "user_101") is False

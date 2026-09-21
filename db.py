@@ -50,18 +50,3 @@ def get_db_session():
         raise
     finally:
         session.close()
-
-
-def init_db():
-    """Ensure database schema exists using Alembic or Base metadata."""
-    try:
-        from alembic.config import Config
-        from alembic import command
-        alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "alembic.ini"))
-        command.upgrade(alembic_cfg, "head")
-    except Exception:
-        try:
-            from models import Base
-        except ImportError:
-            from .models import Base
-        Base.metadata.create_all(bind=engine)

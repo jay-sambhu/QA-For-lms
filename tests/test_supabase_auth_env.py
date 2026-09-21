@@ -4,7 +4,7 @@ import pytest
 from fastapi import HTTPException
 from unittest.mock import patch
 
-from api.main import require_user, missing_supabase_vars, _startup_diag
+from api.main import require_user, _startup_diag
 import api.main
 
 

@@ -4,7 +4,6 @@ Each billing tier (free, pro, enterprise) has its own max_pages defined in
 billing.gateways.PLANS, and scan requests exceeding that cap must be silently reduced.
 """
 import uuid
-import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 

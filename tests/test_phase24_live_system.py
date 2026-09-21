@@ -54,9 +54,9 @@ def test_phase24_live_multi_session_authorization():
     Verify multi-session authorization and context isolation on live server instances.
     """
     mgr = MultiSessionManager()
-    user_a = mgr.create_session("live_user_a", "USER", "user_101", "token_a")
-    user_b = mgr.create_session("live_user_b", "USER", "user_102", "token_b")
-    admin_c = mgr.create_session("live_admin_c", "ADMIN", "admin_001", "token_admin")
+    mgr.create_session("live_user_a", "USER", "user_101", "token_a")
+    mgr.create_session("live_user_b", "USER", "user_102", "token_b")
+    mgr.create_session("live_admin_c", "ADMIN", "admin_001", "token_admin")
 
     assert mgr.validate_authorization("live_user_a", "USER", "user_101") is True
     assert mgr.validate_authorization("live_user_b", "USER", "user_101") is False

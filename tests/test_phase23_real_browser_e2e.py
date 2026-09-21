@@ -13,9 +13,9 @@ def test_phase23_multi_session_auth_isolation():
     Verify multi-session auth context isolation across USER_A, USER_B, and ADMIN_C.
     """
     mgr = MultiSessionManager()
-    user_a = mgr.create_session("sess_user_a", "USER", "usr_101", "token_a_xyz")
-    user_b = mgr.create_session("sess_user_b", "USER", "usr_102", "token_b_uvw")
-    admin_c = mgr.create_session("sess_admin_c", "ADMIN", "adm_999", "token_admin_999")
+    mgr.create_session("sess_user_a", "USER", "usr_101", "token_a_xyz")
+    mgr.create_session("sess_user_b", "USER", "usr_102", "token_b_uvw")
+    mgr.create_session("sess_admin_c", "ADMIN", "adm_999", "token_admin_999")
 
     # Authorization enforcement
     assert mgr.validate_authorization("sess_user_a", "USER", "usr_101") is True

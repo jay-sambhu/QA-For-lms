@@ -460,7 +460,6 @@ def run_qa_pipeline(
         
         result_returncode = process.returncode
         result_stdout = "".join(stdout_lines)
-        result_stderr = ""  # Already merged into stdout
         
     except subprocess.TimeoutExpired:
         update_scan(scan_id, "failed")
@@ -821,7 +820,6 @@ async def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require
     if scan.get("status") != "completed":
         raise HTTPException(status_code=400, detail="Scan is not completed")
 
-    user_dir = os.path.join(ROOT_DIR, "user_data", user_id_val)
     if file_type_norm == "json":
         stored_path = scan.get("json_path")
         canonical_ext = "json"

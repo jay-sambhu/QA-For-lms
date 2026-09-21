@@ -23,6 +23,7 @@ def test_auth_sync_creates_missing_user():
             headers={"Authorization": "Bearer fake_token_123"},
             json={"url": "https://example.com"}
         )
+        assert resp.status_code == 200
         
         session = SessionLocal()
         db_user = session.query(User).filter_by(id=dummy_id).first()

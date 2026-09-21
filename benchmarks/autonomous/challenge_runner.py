@@ -60,7 +60,7 @@ def run_challenge_suite(app_filter: str = None, viewports: int = 1) -> str:
 
         try:
             # Run JASUSS Pipeline
-            pipeline_results = asyncio.run(run_pipeline(
+            asyncio.run(run_pipeline(
                 url=cfg.base_url,
                 run_id=scan_id,
                 output_dir=app_results_dir,

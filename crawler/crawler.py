@@ -377,12 +377,10 @@ class WebsiteCrawler:
 
             try:
                 # If authentication is configured, perform login across pages before crawl
-                auth_success = True
                 if self.login_url:
                     for dev_name, page in pages.items():
                         auth_res = await self.perform_login(page, dev_name)
                         if not auth_res.get("success"):
-                            auth_success = False
                             if dev_name == "desktop":
                                 self.auth_test_cases.append({
                                     "id": "TC-AUTH-001",
@@ -445,7 +443,6 @@ class WebsiteCrawler:
                     print("=" * 70)
                     
                     # Navigate Desktop first to extract internal links
-                    dev_keys = list(pages.keys())
                     for dev_idx, (dev_name, page) in enumerate(pages.items()):
                         if self.progress_cb:
                             max_p = max(1, self.max_pages)
@@ -589,7 +586,7 @@ class WebsiteCrawler:
                                                     internal_links.append(curr_url)
                                             except Exception:
                                                 pass
-                                except Exception as btn_err:
+                                except Exception:
                                     pass
 
                             safe_dev_name = dev_name.replace(" ", "_")

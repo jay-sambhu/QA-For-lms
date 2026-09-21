@@ -9,7 +9,7 @@ import time
 from typing import List, Optional, Any
 
 from core.oracle.assertion_engine import AssertionEngine
-from core.schemas.execution_result import TestExecutionResultModel, TestResultStatus, HealingRecordModel, AssertionResultModel
+from core.schemas.execution_result import TestExecutionResultModel, HealingRecordModel, AssertionResultModel
 from core.schemas.test_case import TestCaseModel
 
 
@@ -78,7 +78,6 @@ class SelfHealingExecutor:
 
             assertions: List[AssertionResultModel] = []
             healing_events: List[HealingRecordModel] = []
-            status = TestResultStatus.PASS
 
             # Deterministic simulation of step assertions & self-healing verification
             for step in tc.steps:

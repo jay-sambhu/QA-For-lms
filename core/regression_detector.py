@@ -79,10 +79,8 @@ class RegressionDetector:
                     print(f"Failed to read previous report {previous_file}: {e}")
 
         candidates = self.current_data.get('root_cause_candidates', [])
-        is_findings_list = False
         if not candidates:
             candidates = self.current_data.get('findings', [])
-            is_findings_list = True
         
         regression_summary = {
             "new": 0,

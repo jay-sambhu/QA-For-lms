@@ -121,17 +121,17 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
 
     # API Testing & Perf/A11y Auditing
     api_engine = ApiTestingEngine(discovery_result.get("api_calls", []), results_dir, run_id)
-    api_results = api_engine.run_api_tests()
+    api_engine.run_api_tests()
 
     perf_a11y_engine = PerfA11yEngine(discovery_result.get("pages", []), results_dir, run_id)
-    perf_a11y_report = perf_a11y_engine.audit_pages()
+    perf_a11y_engine.audit_pages()
 
     # 7. TRIAGING & REGRESSION STAGE
     sm.transition_to(PipelineStage.TRIAGING, "Triaging deduplicated defect findings...")
     sm.transition_to(PipelineStage.REGRESSION, "Detecting regressions against historical memory...")
     baseline_file = kwargs.get("baseline_file")
     regression_engine = RegressionMemoryEngine([d.model_dump() for d in deduplicated_defects], baseline_file, results_dir, run_id)
-    regression_analysis = regression_engine.analyze_regression()
+    regression_engine.analyze_regression()
 
     # Learning Engine Pattern Extraction
     learning_engine = HistoricalLearningEngine(app_manager.app_id, results_dir)

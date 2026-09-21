@@ -94,7 +94,7 @@ class GeminiQAAnalyzer:
                     self.api_key = active_key.key_value
                 else:
                     self._fallback_to_env()
-        except Exception as e:
+        except Exception:
             self._fallback_to_env()
 
     def _fallback_to_env(self):
