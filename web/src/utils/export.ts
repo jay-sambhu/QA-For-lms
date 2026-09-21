@@ -64,7 +64,7 @@ export interface CanonicalExportData {
 /**
  * Normalizes scan results from any API / report format into a strict canonical export model.
  */
-export const extractCanonicalExportData = (results: any, scanId: string | null = ''): CanonicalExportData => {
+const extractCanonicalExportData = (results: any, scanId: string | null = ''): CanonicalExportData => {
   if (!results) {
     return {
       target: 'Unknown',
@@ -251,7 +251,7 @@ export const extractCanonicalExportData = (results: any, scanId: string | null =
 /**
  * Generates and triggers a PDF download for the QA scan.
  */
-export const downloadPDF = (results: any, scanId: string | null = '') => {
+const downloadPDF = (results: any, scanId: string | null = '') => {
   if (!results) return;
 
   const data = extractCanonicalExportData(results, scanId);
@@ -502,7 +502,7 @@ export const downloadPDF = (results: any, scanId: string | null = '') => {
 /**
  * Generates and triggers an Excel (.xlsx) workbook download for the QA scan.
  */
-export const downloadExcel = (results: any, scanId: string | null = '') => {
+const downloadExcel = (results: any, scanId: string | null = '') => {
   if (!results) return;
 
   const data = extractCanonicalExportData(results, scanId);
@@ -650,7 +650,7 @@ export const downloadExcel = (results: any, scanId: string | null = '') => {
 /**
  * Generates formatted Markdown report string from canonical data.
  */
-export const generateMarkdownReport = (data: CanonicalExportData): string => {
+const generateMarkdownReport = (data: CanonicalExportData): string => {
   const formattedDate = new Date(data.generatedAt).toLocaleString();
   const tc = data.testCasesSummary;
   const fs = data.findingsSummary;
@@ -755,7 +755,7 @@ export const generateMarkdownReport = (data: CanonicalExportData): string => {
 /**
  * Downloads Markdown report file directly via Blob.
  */
-export const downloadMarkdown = (results: any, scanId: string | null = '') => {
+const downloadMarkdown = (results: any, scanId: string | null = '') => {
   if (!results) return;
   const data = extractCanonicalExportData(results, scanId);
   const mdContent = generateMarkdownReport(data);
@@ -777,7 +777,7 @@ export const downloadMarkdown = (results: any, scanId: string | null = '') => {
 /**
  * Downloads raw JSON report file directly via Blob.
  */
-export const downloadJSON = (results: any, scanId: string | null = '') => {
+const downloadJSON = (results: any, scanId: string | null = '') => {
   if (!results) return;
   const data = extractCanonicalExportData(results, scanId);
   const jsonContent = JSON.stringify(results, null, 2);
@@ -808,7 +808,7 @@ export interface DownloadReportOptions {
 /**
  * Parses filename from Content-Disposition header with fallback.
  */
-export const extractFilenameFromDisposition = (disposition: string | null, fallbackFilename: string): string => {
+const extractFilenameFromDisposition = (disposition: string | null, fallbackFilename: string): string => {
   if (!disposition) return fallbackFilename;
 
   // Check for RFC 5987 / RFC 6266 utf-8 filename
