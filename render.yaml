@@ -57,7 +57,26 @@ services:
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
 
-  # 3. Next.js Web UI Frontend
+  # 3. Uptime Watchdog (keep-alive pinger — prevents free-tier spin-downs)
+  - type: worker
+    name: ai-qa-watchdog
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m worker.watchdog
+    plan: starter
+    envVars:
+      - key: API_BASE_URL
+        value: "https://ai-qa-api.onrender.com"
+      - key: PING_INTERVAL
+        value: "900"
+      - key: REQUEST_TIMEOUT
+        value: "30"
+      - key: MAX_RETRIES
+        value: "3"
+      - key: WATCHDOG_LOG_LEVEL
+        value: "INFO"
+
+  # 4. Next.js Web UI Frontend
   - type: web
     name: ai-qa-web
     env: node
@@ -80,7 +99,7 @@ services:
       - key: NEXT_PUBLIC_GOOGLE_CLIENT_ID
         sync: false
 
-  # 4. Redis Queue Broker
+  # 5. Redis Queue Broker
   - type: redis
     name: ai-qa-redis
     plan: starter
@@ -88,7 +107,7 @@ services:
     ipAllowList: []
 
 databases:
-  # 5. PostgreSQL Database
+  # 6. PostgreSQL Database
   - name: ai-qa-postgres
     plan: starter
     databaseName: ai_qa_db

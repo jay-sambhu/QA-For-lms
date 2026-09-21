@@ -39,3 +39,6 @@ python-multipart==0.0.9
 # --- Testing & Test Fixtures ---
 pytest==9.1.1
 fakeredis==2.37.1
+
+# --- HTTP client (transitive via supabase; pinned for watchdog explicitness) ---
+httpx==0.28.1
