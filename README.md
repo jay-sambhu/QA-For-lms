@@ -64,7 +64,7 @@ Full C4 diagrams, sequence diagrams and state machines: see [docs/ARCHITECTURE.m
 ## 3. Documentation map
 
 | Document | Purpose |
-|---|---|
+| --- | --- |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Context, container, component, DFD, sequence and state diagrams |
 | [docs/DATABASE.md](docs/DATABASE.md) | ERD (current and proposed), indexes, retention, migrations |
 | [docs/API.md](docs/API.md) | REST contract, auth, errors, rate limits, webhooks |
@@ -87,10 +87,10 @@ docker compose exec api alembic upgrade head
 
 | Service | URL |
 | --- | --- |
-| Web dashboard | http://localhost:3000 |
-| API (Swagger UI) | http://localhost:8000/docs |
-| Readiness probe | http://localhost:8000/readyz |
-| Health check | http://localhost:8000/healthz |
+| Web dashboard | `http://localhost:3000` |
+| API (Swagger UI) | `http://localhost:8000/docs` |
+| Readiness probe | `http://localhost:8000/readyz` |
+| Health check | `http://localhost:8000/healthz` |
 
 Run a scan from the CLI inside the container:
 
@@ -273,7 +273,7 @@ All configuration is via environment variables (12-factor). Never commit `.env`.
 The complete, annotated list lives in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#5-environment-variables); the essentials:
 
 | Variable | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `ENVIRONMENT` | yes | `development` / `staging` / `production` |
 | `DATABASE_URL` | yes | PostgreSQL DSN in production (`postgresql+psycopg://…`) |
 | `REDIS_URL` | yes | Broker and rate-limit store |
@@ -288,7 +288,7 @@ The complete, annotated list lives in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#5-
 Base path `/api/v1`. All routes require `Authorization: Bearer <JWT>` except health and payment webhooks.
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | `POST` | `/scans` | Create and enqueue a scan |
 | `GET` | `/scans` | List the caller's scans |
 | `GET` | `/scans/{id}` | Status and results |
@@ -303,7 +303,7 @@ Details, schemas and error model: [docs/API.md](docs/API.md).
 ## 8. Plans and billing
 
 | Plan | Price | Scans / month | Crawl depth | Highlights |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | Community Starter | $0 | 10 | 10 pages | Multi-viewport, triage, quality score |
 | Professional QA | $49/mo | 200 | 50 pages | Authenticated crawl, PDF/Excel export, priority queue |
 | Enterprise Suite | $199/mo | Unlimited | Deep | Dedicated workers, custom auth, SLA |
@@ -327,7 +327,8 @@ Every pull request must pass: lint, type check, unit and integration tests, migr
 
 Use this before go-live. Items marked ⚠️ are the most common gaps.
 
-**Security**
+### Security
+
 - [ ] ⚠️ Crawler blocks private/link-local/metadata IPs (SSRF), including after redirects and DNS rebinding ([SECURITY.md](docs/SECURITY.md#3-ssrf-defence-for-the-crawler))
 - [ ] ⚠️ Workers run as non-root, in a network-restricted sandbox
 - [ ] ⚠️ Webhook signatures verified for every gateway, events deduplicated
@@ -336,19 +337,22 @@ Use this before go-live. Items marked ⚠️ are the most common gaps.
 - [ ] Rate limits backed by Redis (not in-process memory)
 - [ ] Dependency, secret and container scans green in CI
 
-**Reliability**
+### Reliability
+
 - [ ] PostgreSQL (not SQLite), automated backups, restore tested
 - [ ] Reports and evidence in object storage, not local disk
 - [ ] Celery: `acks_late`, visibility timeout, per-task time limits, retry with backoff
 - [ ] Stuck-scan reaper marks orphaned `running` scans as `failed`
 - [ ] Health, readiness and liveness probes configured
 
-**Observability**
+### Observability
+
 - [ ] Structured JSON logs with `request_id` and `scan_id`
 - [ ] Prometheus metrics, dashboards and alerts ([OPERATIONS.md](docs/OPERATIONS.md))
 - [ ] Error tracking (Sentry or equivalent)
 
-**Delivery**
+### Delivery
+
 - [ ] Immutable, tagged container images; migrations run as a release step
 - [ ] Staging environment mirrors production
 - [ ] Rollback procedure rehearsed
@@ -357,7 +361,7 @@ Use this before go-live. Items marked ⚠️ are the most common gaps.
 
 Current layout has Python modules and tests at the repository root. The recommended production layout (see [Restructuring notes](docs/DEPLOYMENT.md#10-repository-hygiene)) is:
 
-```
+```text
 jasuss/
 ├── apps/
 │   ├── api/            # FastAPI: routers, schemas, dependencies
