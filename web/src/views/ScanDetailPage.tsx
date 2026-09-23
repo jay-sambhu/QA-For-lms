@@ -145,16 +145,25 @@ export const ScanDetailPage: React.FC = () => {
           return;
         }
 
-        // Unauthorized: attempt a session refresh before giving up
+        // Unauthorized: attempt a session refresh before giving up.
+        // On fresh page loads after sign-up, the session token may not have
+        // propagated to localStorage yet — retry up to 3 times with backoff.
         if (res.status === 401) {
-          if (supabase) {
-            try {
-              const refreshRes = await supabase.auth.refreshSession();
-              if (refreshRes.data?.session?.access_token) {
-                scheduleNextPoll(1000);
-                return;
-              }
-            } catch {}
+          consecutiveErrorsRef.current += 1;
+          if (consecutiveErrorsRef.current <= 3) {
+            // Try to refresh the Supabase session first
+            if (supabase) {
+              try {
+                const refreshRes = await supabase.auth.refreshSession();
+                if (refreshRes.data?.session?.access_token) {
+                  scheduleNextPoll(500);
+                  return;
+                }
+              } catch {}
+            }
+            // Session not ready yet — wait and retry
+            scheduleNextPoll(1500);
+            return;
           }
           stopPolling();
           setInitialLoading(false);
