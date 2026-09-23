@@ -18,7 +18,7 @@ Powered by the **Nexus Engine**.
 2. [Architecture at a glance](#2-architecture-at-a-glance)
 3. [Documentation map](#3-documentation-map)
 4. [Quick start (Docker)](#4-quick-start-docker)
-5. [Local development (no Docker)](#5-local-development-no-docker)
+5. [Local development and execution guide](#5-local-development-and-execution-guide)
 6. [Configuration](#6-configuration)
 7. [API overview](#7-api-overview)
 8. [Plans and billing](#8-plans-and-billing)
@@ -80,35 +80,192 @@ Prerequisites: Docker 24+ and Docker Compose v2.
 ```bash
 git clone https://github.com/jay-sambhu/QA-For-lms.git
 cd QA-For-lms
-cp .env.example .env          # then edit values, see section 6
+cp .env.example .env          # configure your API keys (see section 6)
 docker compose up --build -d
 docker compose exec api alembic upgrade head
 ```
 
 | Service | URL |
-|---|---|
+| --- | --- |
 | Web dashboard | http://localhost:3000 |
 | API (Swagger UI) | http://localhost:8000/docs |
-| Health | http://localhost:8000/healthz |
+| Readiness probe | http://localhost:8000/readyz |
+| Health check | http://localhost:8000/healthz |
 
-Run a scan from the CLI without the UI:
+Run a scan from the CLI inside the container:
 
 ```bash
-docker compose exec api python run_qa.py --url https://example.com
+docker compose exec api python run_qa.py https://nepalbusiness.org --max-pages 5
 ```
 
-## 5. Local development (no Docker)
+## 5. Local development and execution guide
 
-Prerequisites: Python 3.12, Node.js 18+, Redis.
+Follow these steps to run the complete stack locally (FastAPI backend, Celery worker, PostgreSQL, Redis, and Next.js frontend).
+
+### Prerequisites
+
+- **Python**: 3.12+
+- **Node.js**: 18+ (Node 20+ recommended)
+- **Docker & Docker Compose**: (used to run PostgreSQL and Redis services locally)
+
+### Step 1: Clone the repository and configure environment variables
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+git clone https://github.com/jay-sambhu/QA-For-lms.git
+cd QA-For-lms
+```
+
+Create `.env` in the project root:
+
+```env
+# AI Model and API Keys
+GEMINI_API_KEY=your_gemini_api_key_here
+GOOGLE_API_KEY=your_gemini_api_key_here
+
+# Database & Broker (Connecting to local Docker containers)
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ai_qa_db
+REDIS_URL=redis://localhost:6379/0
+
+# Supabase Auth Integration
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
+
+# Application Security & Origins
+ALLOW_LOCAL_TARGETS=true
+ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,https://jasuss.tech,https://www.jasuss.tech
+```
+
+Create `web/.env.local` for the frontend:
+
+```env
+API_URL=http://localhost:8000
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
+```
+
+### Step 2: Start PostgreSQL and Redis infrastructure
+
+Launch the database and Redis broker containers in the background:
+
+```bash
+docker compose up -d redis db
+```
+
+Verify that both containers are running and healthy:
+
+```bash
+docker compose ps
+```
+
+### Step 3: Set up Python virtual environment and dependencies
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-playwright install --with-deps chromium
-npm install --prefix web
-alembic upgrade head
-chmod +x start.sh && ./start.sh      # API :8000, web :3000, worker
+playwright install chromium
 ```
+
+### Step 4: Install frontend dependencies
+
+```bash
+npm install --prefix web
+```
+
+### Step 5: Run database migrations
+
+Apply the latest schema migrations to PostgreSQL:
+
+```bash
+alembic upgrade head
+```
+
+### Step 6: Launch all services
+
+You can launch the stack either using the all-in-one script or in separate terminals for live debugging.
+
+#### Option A: All-in-one launcher
+
+```bash
+chmod +x start.sh
+./start.sh
+```
+
+In a separate terminal, launch the Celery task queue worker:
+
+```bash
+source .venv/bin/activate
+celery -A worker.celery_app worker --loglevel=info -Q qa_queue,priority_queue -c 2
+```
+
+#### Option B: Individual services (recommended for debugging)
+
+- **Terminal 1 — FastAPI Backend**:
+
+  ```bash
+  source .venv/bin/activate
+  uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+  ```
+
+- **Terminal 2 — Celery Worker**:
+
+  ```bash
+  source .venv/bin/activate
+  celery -A worker.celery_app worker --loglevel=info -Q qa_queue,priority_queue -c 2
+  ```
+
+- **Terminal 3 — Next.js Web Frontend**:
+
+  ```bash
+  npm run dev --prefix web
+  ```
+
+- **Terminal 4 — Watchdog Microservice** (optional, pings health every 15 min):
+
+  ```bash
+  source .venv/bin/activate
+  API_BASE_URL=http://localhost:8000 PING_INTERVAL=900 python worker/watchdog.py
+  ```
+
+### Step 7: Verify connectivity
+
+Check backend system readiness:
+
+```bash
+curl http://localhost:8000/readyz
+# Response: {"status":"ok","database":"connected","redis":"connected"}
+```
+
+Open the application:
+
+- **Web Dashboard**: [http://localhost:3000](http://localhost:3000)
+- **Interactive API Swagger Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+### Step 8: Trigger an automated QA scan
+
+#### Via the Web Dashboard
+
+1. Navigate to [http://localhost:3000/dashboard](http://localhost:3000/dashboard).
+2. Enter the target website URL (e.g., `https://nepalbusiness.org`).
+3. Configure the maximum page limit and authenticated credentials if applicable.
+4. Click **Start Automated QA Scan**.
+5. Monitor multi-viewport discovery (Desktop Chrome, iPhone 13, iPad) in real time and inspect generated bug tickets and reports.
+
+#### Via CLI / Terminal
+
+You can also run the QA engine standalone:
+
+```bash
+source .venv/bin/activate
+python run_qa.py https://nepalbusiness.org --max-pages 5 --run-id my-first-scan
+```
+
+Reports will be generated in `./results/`:
+
+- `final_qa_report_my-first-scan.json`
+- `final_qa_report_my-first-scan.md`
 
 ## 6. Configuration
 
