@@ -677,30 +677,47 @@ async def get_scan_status(scan_id: UUID, user=Depends(require_user)):
 
     response = dict(scan)
     
-    if scan.get("status") in ("running", "pending", "failed"):
-        user_dir = os.path.join(ROOT_DIR, "user_data", str(scan.get("user_id", "")))
-        progress_candidates = [
-            os.path.join(user_dir, "results", f"progress_{scan_id}.json"),
-            os.path.join(ROOT_DIR, "results", f"progress_{scan_id}.json"),
-        ]
-        for progress_path in progress_candidates:
-            if os.path.exists(progress_path):
-                try:
-                    with open(progress_path, "r", encoding="utf-8") as f:
-                        response["progress"] = json.load(f)
-                except Exception:
-                    pass
-                break
-
-    if scan.get("status") == "completed" and scan.get("json_path"):
-        response["results"] = None
-        resolved = _resolve_report_path(scan["json_path"])
-        if resolved and os.path.isfile(resolved):
+    user_dir = os.path.join(ROOT_DIR, "user_data", str(scan.get("user_id", "")))
+    progress_candidates = [
+        os.path.join(user_dir, "results", f"progress_{scan_id}.json"),
+        os.path.join(ROOT_DIR, "results", f"progress_{scan_id}.json"),
+    ]
+    for progress_path in progress_candidates:
+        if os.path.exists(progress_path):
             try:
-                with open(resolved, "r", encoding="utf-8") as f:
-                    response["results"] = json.load(f)
-            except (OSError, json.JSONDecodeError) as error:
-                logger.error("Could not read report for scan %s: %s", scan_id, error)
+                with open(progress_path, "r", encoding="utf-8") as f:
+                    response["progress"] = json.load(f)
+            except Exception:
+                pass
+            break
+
+    if "progress" not in response and scan.get("status") == "completed":
+        response["progress"] = {
+            "scan_id": str(scan_id),
+            "stage": "COMPLETED",
+            "percent": 100,
+            "message": "Scan completed successfully.",
+        }
+
+    if scan.get("status") == "completed":
+        response["results"] = None
+        report_candidates = []
+        if scan.get("json_path"):
+            resolved = _resolve_report_path(scan["json_path"])
+            if resolved:
+                report_candidates.append(resolved)
+        report_candidates.extend([
+            os.path.join(user_dir, "results", f"final_qa_report_{scan_id}.json"),
+            os.path.join(ROOT_DIR, "results", f"final_qa_report_{scan_id}.json"),
+        ])
+        for report_path in report_candidates:
+            if os.path.isfile(report_path):
+                try:
+                    with open(report_path, "r", encoding="utf-8") as f:
+                        response["results"] = json.load(f)
+                    break
+                except (OSError, json.JSONDecodeError) as error:
+                    logger.error("Could not read report for scan %s from %s: %s", scan_id, report_path, error)
 
     return response
 

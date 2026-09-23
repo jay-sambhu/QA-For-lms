@@ -55,13 +55,19 @@ export interface QAReport {
     };
     cross_device_metrics?: {
       devices_tested: number;
-      pages_tested: number;
+      pages_tested?: number;
+      pages_crawled?: number;
       responsive_findings: number;
       device_breakdown: {
         desktop: number;
         iphone: number;
         ipad: number;
       };
+    };
+    quality_score?: {
+      score: number;
+      grade: string;
+      summary: string;
     };
   };
   summary: {
@@ -74,39 +80,58 @@ export interface QAReport {
     analysis_failures?: number;
   };
   qa_metrics?: {
-    quality_score: number;
-    letter_grade: string;
-    verdict: string;
-    test_cases: {
+    quality_score?: number | {
+      score: number;
+      grade: string;
+      summary: string;
+    };
+    letter_grade?: string;
+    verdict?: string;
+    duration_seconds?: number;
+    test_cases?: {
       total: number;
       passed: number;
       failed: number;
-      skipped: number;
-      blocked: number;
-      errored: number;
-      pass_rate: number;
-      fail_rate: number;
+      skipped?: number;
+      blocked?: number;
+      errored?: number;
+      pass_rate?: number;
+      fail_rate?: number;
     };
-    findings: {
-      total: number;
-      confirmed_bugs: number;
-      critical: number;
-      high: number;
-      medium: number;
-      low: number;
-      info: number;
+    findings?: {
+      total?: number;
+      confirmed_bugs?: number;
+      critical?: number;
+      high?: number;
+      medium?: number;
+      low?: number;
+      info?: number;
+      by_classification?: {
+        confirmed_bug?: number;
+        high_confidence_candidate?: number;
+        needs_manual_review?: number;
+        expected_behavior?: number;
+        informational?: number;
+        duplicate?: number;
+        ignored?: number;
+      };
+      by_severity?: Record<string, number>;
+      by_priority?: Record<string, number>;
+      by_regression?: Record<string, number>;
+      critical_high?: number;
+      analysis_failures?: number;
     };
-    crawl: {
+    crawl?: {
       pages_crawled: number;
-      pages_attempted: number;
-      http_errors: number;
-      network_failures: number;
-      console_errors: number;
-      devices_tested: number;
+      pages_attempted?: number;
+      http_errors?: number;
+      network_failures?: number;
+      console_errors?: number;
+      devices_tested?: number;
     };
-    duration: {
-      duration_seconds: number;
-      formatted_duration: string;
+    duration?: {
+      duration_seconds?: number;
+      formatted_duration?: string;
     };
   };
   triage_metrics?: {

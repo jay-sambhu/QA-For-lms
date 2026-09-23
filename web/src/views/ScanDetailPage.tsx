@@ -18,6 +18,7 @@ export const ScanDetailPage: React.FC = () => {
   const { session, sessionLoaded } = useAuth();
 
   const [status, setStatus] = useState<ScanStatus>('pending');
+  const [initialLoading, setInitialLoading] = useState(true);
   const [targetUrl, setTargetUrl] = useState('');
   const [progress, setProgress] = useState<ProgressPayload | null>(null);
   const [results, setResults] = useState<QAReport | null>(null);
@@ -138,6 +139,7 @@ export const ScanDetailPage: React.FC = () => {
             return;
           }
           stopPolling();
+          setInitialLoading(false);
           setError('Scan not found or has expired.');
           setStatus('error');
           return;
@@ -155,6 +157,7 @@ export const ScanDetailPage: React.FC = () => {
             } catch {}
           }
           stopPolling();
+          setInitialLoading(false);
           setError('Session expired or unauthorized. Please sign in again.');
           setStatus('error');
           return;
@@ -163,6 +166,7 @@ export const ScanDetailPage: React.FC = () => {
         // Forbidden
         if (res.status === 403) {
           stopPolling();
+          setInitialLoading(false);
           setError('You do not have permission to view this scan.');
           setStatus('error');
           return;
@@ -173,6 +177,7 @@ export const ScanDetailPage: React.FC = () => {
           consecutiveErrorsRef.current += 1;
           if (consecutiveErrorsRef.current >= 10) {
             stopPolling();
+            setInitialLoading(false);
             setError(
               res.status === 502
                 ? 'Backend service is temporarily restarting (502 Bad Gateway). Please retry in a few moments.'
@@ -191,6 +196,7 @@ export const ScanDetailPage: React.FC = () => {
         consecutiveErrorsRef.current = 0;
         const data = await res.json();
         if (!isMounted) return;
+        setInitialLoading(false);
 
         if (data.url) setTargetUrl(data.url);
         setStatus(data.status);
@@ -201,6 +207,7 @@ export const ScanDetailPage: React.FC = () => {
 
         // Terminal state: Completed
         if (data.status === 'completed') {
+          setStatus('completed');
           if (data.results) {
             setResults(data.results);
             stopPolling();
@@ -235,6 +242,7 @@ export const ScanDetailPage: React.FC = () => {
         consecutiveErrorsRef.current += 1;
         if (consecutiveErrorsRef.current >= 5) {
           stopPolling();
+          setInitialLoading(false);
           setError('Network connection error while checking scan status. Please retry.');
           setStatus('error');
           return;
@@ -254,11 +262,13 @@ export const ScanDetailPage: React.FC = () => {
     };
   }, [scanId, session?.access_token, sessionLoaded, retryCount]);
 
-  if (!sessionLoaded) {
+  if (!sessionLoaded || (initialLoading && !error)) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
         <Loader2 size={36} className="pulse" color="#6366f1" />
-        <p style={{ color: '#94a3b8' }}>Loading verification context...</p>
+        <p style={{ color: '#94a3b8' }}>
+          {!sessionLoaded ? 'Loading verification context...' : 'Loading automated QA report...'}
+        </p>
       </div>
     );
   }
@@ -308,6 +318,24 @@ export const ScanDetailPage: React.FC = () => {
             sessionToken={session?.access_token}
             onNewScan={() => router.push('/dashboard')}
           />
+        </motion.div>
+      )}
+
+      {/* Completed state while report is generating / finalizing */}
+      {status === 'completed' && !results && (
+        <motion.div
+          className={styles.actionPanel}
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          style={{ textAlign: 'center', padding: '60px 24px' }}
+        >
+          <Loader2 size={40} className="pulse" color="#818cf8" style={{ margin: '0 auto 16px' }} />
+          <h3 style={{ fontSize: '1.4rem', color: '#f8fafc' }}>
+            Finalizing Quality Synthesis & Report...
+          </h3>
+          <p style={{ color: '#94a3b8', maxWidth: '500px', margin: '8px auto 0' }}>
+            Multi-viewport execution is complete. Generating compliance grading and executive findings.
+          </p>
         </motion.div>
       )}
 

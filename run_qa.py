@@ -50,19 +50,21 @@ async def ensure_playwright_ready():
 async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_dir=None,
                        login_url=None, username=None, password=None, **kwargs):
     """Executes the complete autonomous quality engineering pipeline end-to-end."""
-    await ensure_playwright_ready()
     run_id = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
     base_dir = os.path.abspath(output_dir) if output_dir else ROOT_DIR
     results_dir = os.path.join(base_dir, "results")
     os.makedirs(results_dir, exist_ok=True)
 
+    # Initialize State Machine & Agent Orchestrator immediately so progress is visible
+    sm = PipelineStateMachine(run_id, results_dir)
+    orchestrator = AgentOrchestrator(run_id, results_dir)
+    sm.update_progress(5, "Verifying browser environments and initializing pipeline...")
+
+    await ensure_playwright_ready()
+
     print(f"Starting JASUSS Autonomous Quality Engineering Pipeline for: {url}")
     print(f"Run ID: {run_id}")
     print("=" * 70)
-
-    # Initialize State Machine & Agent Orchestrator
-    sm = PipelineStateMachine(run_id, results_dir)
-    orchestrator = AgentOrchestrator(run_id, results_dir)
 
     # 1. DISCOVERING STAGE
     sm.transition_to(PipelineStage.DISCOVERING, "Starting resumable autonomous discovery engine...")

@@ -153,6 +153,10 @@ class TestDatabaseStatusLifecycle(unittest.TestCase):
     def test_status_lifecycle_transitions(self):
         scan_id = "lifecycle-scan-001"
         with SessionLocal() as db:
+            from models import User
+            user = User(id="user-lifecycle", email="user-lifecycle@example.com")
+            db.merge(user)
+            db.commit()
             scan = Scan(
                 id=scan_id,
                 user_id="user-lifecycle",

@@ -32,11 +32,27 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
     if (typeof raw === 'number' && Number.isFinite(raw)) {
       return Math.max(0, Math.min(100, Math.round(raw)));
     }
+    if (raw && typeof raw === 'object' && typeof (raw as any).score === 'number' && Number.isFinite((raw as any).score)) {
+      return Math.max(0, Math.min(100, Math.round((raw as any).score)));
+    }
+    const metaScore = (results?.report_metadata?.quality_score as any)?.score;
+    if (typeof metaScore === 'number' && Number.isFinite(metaScore)) {
+      return Math.max(0, Math.min(100, Math.round(metaScore)));
+    }
     return 100;
-  }, [results?.qa_metrics?.quality_score]);
+  }, [results?.qa_metrics?.quality_score, results?.report_metadata?.quality_score]);
 
-  const letterGrade = results?.qa_metrics?.letter_grade || 'A+';
-  const verdictText = results?.qa_metrics?.verdict || 'EXCELLENT - Production Ready';
+  const letterGrade =
+    (results?.qa_metrics?.quality_score as any)?.grade ||
+    (results?.report_metadata?.quality_score as any)?.grade ||
+    results?.qa_metrics?.letter_grade ||
+    'A+';
+
+  const verdictText =
+    (results?.qa_metrics?.quality_score as any)?.summary ||
+    (results?.report_metadata?.quality_score as any)?.summary ||
+    results?.qa_metrics?.verdict ||
+    'EXCELLENT - Production Ready';
 
   const findingsCount = results.findings?.length ?? 0;
   const testCasesCount = results.test_cases?.length ?? 0;
