@@ -8,6 +8,7 @@ import { Loader2, AlertTriangle, ArrowLeft, RefreshCw } from 'lucide-react';
 import { useAuth, supabase } from '../context/AuthContext';
 import { ScanMonitor } from '../components/scan/ScanMonitor';
 import { ScanResults } from '../components/scan/ScanResults';
+import { AdBanner } from '../components/ads/AdBanner';
 import { QAReport, ProgressPayload, ScanStatus } from '../types/qa';
 import styles from '../app/page.module.css';
 
@@ -29,6 +30,7 @@ export const ScanDetailPage: React.FC = () => {
   ]);
 
   const [retryCount, setRetryCount] = useState(0);
+  const [adCycleCount, setAdCycleCount] = useState(0);
 
   // Keep track of consecutive polling errors to avoid console flood and handle backoff
   const consecutiveErrorsRef = useRef(0);
@@ -311,6 +313,11 @@ export const ScanDetailPage: React.FC = () => {
             logFeed={logFeed}
             onStop={handleStopScan}
           />
+          {/* Ad banner — only for logged-in users during scan wait */}
+          <AdBanner
+            isAuthenticated={!!session?.access_token}
+            onCycleComplete={(cycle) => setAdCycleCount(cycle)}
+          />
         </motion.div>
       )}
 
@@ -336,7 +343,7 @@ export const ScanDetailPage: React.FC = () => {
           className={styles.actionPanel}
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
-          style={{ textAlign: 'center', padding: '60px 24px' }}
+          style={{ textAlign: 'center', padding: '40px 24px 24px' }}
         >
           <Loader2 size={40} className="pulse" color="#818cf8" style={{ margin: '0 auto 16px' }} />
           <h3 style={{ fontSize: '1.4rem', color: '#f8fafc' }}>
@@ -345,6 +352,11 @@ export const ScanDetailPage: React.FC = () => {
           <p style={{ color: '#94a3b8', maxWidth: '500px', margin: '8px auto 0' }}>
             Multi-viewport execution is complete. Generating compliance grading and executive findings.
           </p>
+          {/* Ad banner — keep user engaged while report finalizes */}
+          <AdBanner
+            isAuthenticated={!!session?.access_token}
+            onCycleComplete={(cycle) => setAdCycleCount(cycle)}
+          />
         </motion.div>
       )}
 
