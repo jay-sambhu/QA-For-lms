@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { ExternalLink, ChevronRight, Volume2, VolumeX } from "lucide-react";
+import { ExternalLink, ChevronRight, Volume2, VolumeX, ShieldCheck } from "lucide-react";
+import { GoogleAdSenseUnit } from "./GoogleAdSenseUnit";
 
 // ─── Ad data ─────────────────────────────────────────────────────────────────
 export interface AdCreative {
@@ -59,7 +60,6 @@ function trackImpression(adId: string) {
   if (typeof window !== "undefined") {
     const key = `ad_impressions_${adId}`;
     localStorage.setItem(key, String(parseInt(localStorage.getItem(key) || "0", 10) + 1));
-    // TODO: POST /api/v1/ads/impression { ad_id: adId }
   }
 }
 
@@ -67,7 +67,6 @@ function trackClick(adId: string) {
   if (typeof window !== "undefined") {
     const key = `ad_clicks_${adId}`;
     localStorage.setItem(key, String(parseInt(localStorage.getItem(key) || "0", 10) + 1));
-    // TODO: POST /api/v1/ads/click { ad_id: adId }
   }
 }
 
@@ -85,6 +84,7 @@ export const AdBanner: React.FC<AdBannerProps> = ({ isAuthenticated, onCycleComp
   const [isMuted, setIsMuted] = useState(true);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const adClient = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID || "ca-pub-5491187467665243";
   const currentAd = ADS[adIndex % ADS.length];
   const adNumber = (adIndex % ADS.length) + 1;
   const progress = ((AD_DURATION_SECONDS - timeLeft) / AD_DURATION_SECONDS) * 100;
@@ -131,17 +131,27 @@ export const AdBanner: React.FC<AdBannerProps> = ({ isAuthenticated, onCycleComp
       <div style={S.header}>
         <div style={S.adLabel}>
           <span style={S.adDot} />
-          ADVERTISEMENT
+          ADVERTISEMENT · GOOGLE ADSENSE
         </div>
         <div style={S.headerRight}>
-          <span style={{ ...S.sponsorBadge, background: currentAd.badgeColor, color: currentAd.accentColor }}>
-            Sponsored · {currentAd.sponsor}
+          <span style={S.adsenseBadge}>
+            <ShieldCheck size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />
+            AdSense · {adClient}
           </span>
-          <span style={S.adCount}>{adNumber} / {ADS.length}</span>
+          <span style={S.adCount}>{adNumber} / {ADS.length} (30s)</span>
         </div>
       </div>
 
-      {/* Card */}
+      {/* Embedded Google AdSense Tag Container */}
+      <div style={S.adsenseContainer}>
+        <GoogleAdSenseUnit
+          client={adClient}
+          refreshKey={adIndex}
+          style={{ minHeight: "60px" }}
+        />
+      </div>
+
+      {/* Sponsor Creative Card */}
       <div style={S.card}>
         {/* Image */}
         <div style={S.imageWrapper}>
@@ -155,7 +165,12 @@ export const AdBanner: React.FC<AdBannerProps> = ({ isAuthenticated, onCycleComp
 
         {/* Copy */}
         <div style={S.copy}>
-          <p style={S.sponsorName}>{currentAd.sponsor}</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <p style={S.sponsorName}>{currentAd.sponsor}</p>
+            <span style={{ ...S.sponsorPill, background: currentAd.badgeColor, color: currentAd.accentColor }}>
+              Featured
+            </span>
+          </div>
           <h3 style={S.headline}>{currentAd.headline}</h3>
           <p style={S.subline}>{currentAd.subline}</p>
           <a
@@ -201,7 +216,7 @@ export const AdBanner: React.FC<AdBannerProps> = ({ isAuthenticated, onCycleComp
 
       {/* Disclaimer */}
       <p style={S.disclaimer}>
-        Your free scan is powered by sponsor ads.{" "}
+        Ads powered by Google AdSense & certified partners. Scan continues in the background.{" "}
         <a href="/pricing" style={{ color: "#818cf8", textDecoration: "none" }}>Upgrade to Pro</a>
         {" "}for an ad-free experience.
       </p>
@@ -235,11 +250,13 @@ function CountdownRing({ timeLeft, total, accent }: { timeLeft: number; total: n
 const S: Record<string, React.CSSProperties> = {
   wrapper: { background: "rgba(15,23,42,0.88)", border: "1px solid rgba(99,102,241,0.18)", borderRadius: 16, padding: "16px 20px 14px", backdropFilter: "blur(14px)", marginTop: 18 },
   header: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
-  adLabel: { display: "flex", alignItems: "center", gap: 6, fontSize: "0.63rem", fontWeight: 700, letterSpacing: "0.13em", color: "#64748b", textTransform: "uppercase" },
-  adDot: { width: 7, height: 7, borderRadius: "50%", background: "#f59e0b", boxShadow: "0 0 6px #f59e0b" },
+  adLabel: { display: "flex", alignItems: "center", gap: 6, fontSize: "0.63rem", fontWeight: 700, letterSpacing: "0.13em", color: "#94a3b8", textTransform: "uppercase" },
+  adDot: { width: 7, height: 7, borderRadius: "50%", background: "#4285f4", boxShadow: "0 0 6px #4285f4" },
   headerRight: { display: "flex", alignItems: "center", gap: 10 },
-  sponsorBadge: { fontSize: "0.71rem", fontWeight: 600, padding: "3px 10px", borderRadius: 20 },
-  adCount: { fontSize: "0.71rem", color: "#475569" },
+  adsenseBadge: { fontSize: "0.71rem", fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "rgba(66,133,244,0.12)", color: "#93c5fd", border: "1px solid rgba(66,133,244,0.25)", display: "inline-flex", alignItems: "center" },
+  sponsorPill: { fontSize: "0.65rem", fontWeight: 600, padding: "1px 7px", borderRadius: 12 },
+  adCount: { fontSize: "0.71rem", color: "#64748b" },
+  adsenseContainer: { marginBottom: 12, borderRadius: 8, overflow: "hidden" },
   card: { display: "flex", gap: 16, alignItems: "center" },
   imageWrapper: { position: "relative", flexShrink: 0, width: 280, height: 158, borderRadius: 10, overflow: "hidden", border: "1px solid rgba(255,255,255,0.07)" },
   image: { width: "100%", height: "100%", objectFit: "cover" },
