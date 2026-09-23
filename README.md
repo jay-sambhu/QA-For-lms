@@ -22,7 +22,7 @@ Powered by the **Nexus Engine**.
 6. [Configuration](#6-configuration)
 7. [API overview](#7-api-overview)
 8. [Plans and billing](#8-plans-and-billing)
-9. [Testing and quality gates](#9-testing-and-quality-gates)
+9. [Testing and  gates](#9-testing-and-quality-gates)
 10. [Production readiness checklist](#10-production-readiness-checklist)
 11. [Repository structure](#11-repository-structure)
 12. [Contributing](#12-contributing)
