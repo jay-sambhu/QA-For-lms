@@ -84,7 +84,7 @@ export const AdBanner: React.FC<AdBannerProps> = ({ isAuthenticated, onCycleComp
   const [isMuted, setIsMuted] = useState(true);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const adClient = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID || "ca-pub-5491187467665243";
+  const adClient = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID || "ca-pub-9888591397038663";
   const currentAd = ADS[adIndex % ADS.length];
   const adNumber = (adIndex % ADS.length) + 1;
   const progress = ((AD_DURATION_SECONDS - timeLeft) / AD_DURATION_SECONDS) * 100;

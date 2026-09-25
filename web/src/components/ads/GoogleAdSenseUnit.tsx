@@ -27,7 +27,7 @@ export const GoogleAdSenseUnit: React.FC<GoogleAdSenseUnitProps> = ({
   className = "",
   refreshKey,
 }) => {
-  const adClient = client || process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID || "ca-pub-0000000000000000";
+  const adClient = client || process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID || "ca-pub-9888591397038663";
   const adSlot = slot || process.env.NEXT_PUBLIC_ADSENSE_SLOT_ID || "";
   const adRef = useRef<HTMLModElement | null>(null);
   const [adLoaded, setAdLoaded] = useState(false);
