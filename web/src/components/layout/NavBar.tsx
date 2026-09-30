@@ -1,14 +1,16 @@
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  RiShieldFlashFill,
   RiHome5Line,
   RiShieldUserLine,
   RiLoginCircleLine,
   RiUser3Line,
+  RiArticleLine,
+  RiMenu3Line,
+  RiCloseLine,
 } from 'react-icons/ri';
 import { TbDashboard, TbCreditCard } from 'react-icons/tb';
 import { HiSparkles } from 'react-icons/hi2';
@@ -18,15 +20,23 @@ import styles from '../../app/page.module.css';
 export const NavBar: React.FC = () => {
   const pathname = usePathname();
   const { session, userPlan, userRole, openAuthModal, openProfileModal } = useAuth();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const isHome = pathname === '/';
   const isDashboard = pathname.startsWith('/dashboard');
   const isPricing = pathname === '/pricing';
+  const isBlog = pathname.startsWith('/blog');
   const isAdmin = pathname === '/admin';
 
+  // Automatically close mobile menu whenever route changes
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
   return (
-    <header className={styles.header}>
-      <Link href="/" className={styles.logo}>
+    <header className={styles.header} style={{ position: 'relative', zIndex: 100 }}>
+      {/* Brand Logo */}
+      <Link href="/" className={styles.logo} onClick={() => setMobileMenuOpen(false)}>
         <div className={styles.logoIconWrapper} style={{ overflow: 'hidden', padding: 0 }}>
           <img
             src="/logo.png"
@@ -42,7 +52,8 @@ export const NavBar: React.FC = () => {
         </div>
       </Link>
 
-      <div className={styles.headerRight}>
+      {/* Desktop Navigation Links */}
+      <nav className={styles.headerRight} aria-label="Main Navigation">
         <Link
           href="/"
           className={`${styles.navLink} ${isHome ? styles.navLinkActive : ''}`}
@@ -67,6 +78,14 @@ export const NavBar: React.FC = () => {
           <span>Pricing</span>
         </Link>
 
+        <Link
+          href="/blog"
+          className={`${styles.navLink} ${isBlog ? styles.navLinkActive : ''}`}
+        >
+          <RiArticleLine size={17} />
+          <span>Blog</span>
+        </Link>
+
         {/* Admin Link ONLY visible if user has admin role */}
         {userRole === 'admin' && (
           <Link
@@ -85,7 +104,6 @@ export const NavBar: React.FC = () => {
 
         {session ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {/* Clickable User Avatar Button - opens profile & settings */}
             <button
               onClick={openProfileModal}
               className={styles.userBadge}
@@ -126,7 +144,140 @@ export const NavBar: React.FC = () => {
             </button>
           </div>
         )}
+      </nav>
+
+      {/* Mobile & Tablet Controls (Right aligned on <= 900px) */}
+      <div className={styles.mobileHeaderControls}>
+        {session ? (
+          <button
+            onClick={openProfileModal}
+            className={styles.userBadge}
+            style={{ cursor: 'pointer', padding: '4px 8px' }}
+            title="Profile"
+          >
+            <div className={styles.userAvatar} style={{ width: 26, height: 26, fontSize: '0.75rem' }}>
+              {session.user?.email ? session.user.email[0].toUpperCase() : <RiUser3Line size={13} />}
+            </div>
+            <span
+              className={`${styles.tierPill} ${
+                userPlan === 'pro'
+                  ? styles.tierPro
+                  : userPlan === 'enterprise'
+                  ? styles.tierEnterprise
+                  : styles.tierFree
+              }`}
+              style={{ fontSize: '0.65rem', padding: '1px 6px' }}
+            >
+              {userPlan.toUpperCase()}
+            </span>
+          </button>
+        ) : (
+          <button
+            onClick={() => openAuthModal('signin')}
+            className={styles.mobileSignInBtn}
+          >
+            Sign In
+          </button>
+        )}
+
+        {/* Hamburger Toggle Button */}
+        <button
+          onClick={() => setMobileMenuOpen((prev) => !prev)}
+          className={styles.mobileMenuToggle}
+          aria-label={mobileMenuOpen ? 'Close Navigation Menu' : 'Open Navigation Menu'}
+          aria-expanded={mobileMenuOpen}
+        >
+          {mobileMenuOpen ? <RiCloseLine size={24} /> : <RiMenu3Line size={24} />}
+        </button>
       </div>
+
+      {/* Mobile & Tablet Dropdown Drawer */}
+      {mobileMenuOpen && (
+        <div className={styles.mobileNavDrawer}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <Link
+              href="/"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`${styles.mobileNavLink} ${isHome ? styles.mobileNavLinkActive : ''}`}
+            >
+              <RiHome5Line size={18} />
+              <span>Home</span>
+            </Link>
+
+            <Link
+              href="/dashboard"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`${styles.mobileNavLink} ${isDashboard ? styles.mobileNavLinkActive : ''}`}
+            >
+              <TbDashboard size={18} />
+              <span>Dashboard</span>
+            </Link>
+
+            <Link
+              href="/pricing"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`${styles.mobileNavLink} ${isPricing ? styles.mobileNavLinkActive : ''}`}
+            >
+              <TbCreditCard size={18} />
+              <span>Pricing &amp; Plans</span>
+            </Link>
+
+            <Link
+              href="/blog"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`${styles.mobileNavLink} ${isBlog ? styles.mobileNavLinkActive : ''}`}
+            >
+              <RiArticleLine size={18} />
+              <span>Engineering Blog</span>
+            </Link>
+
+            {userRole === 'admin' && (
+              <Link
+                href="/admin"
+                onClick={() => setMobileMenuOpen(false)}
+                className={`${styles.mobileNavLink} ${isAdmin ? styles.mobileNavLinkActive : ''}`}
+              >
+                <RiShieldUserLine size={18} />
+                <span>Admin Console</span>
+              </Link>
+            )}
+          </div>
+
+          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className={styles.engineStatusPill} style={{ width: '100%', justifyContent: 'center', marginBottom: '12px' }}>
+              <div className={styles.engineStatusDot} />
+              <span>Nexus Engine Online · 99.9%</span>
+            </div>
+
+            {!session && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    openAuthModal('signin');
+                  }}
+                  className={styles.headerSignInBtn}
+                  style={{ width: '100%', justifyContent: 'center' }}
+                >
+                  <RiLoginCircleLine size={16} />
+                  <span>Sign In</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    openAuthModal('signup');
+                  }}
+                  className={styles.headerGetStartedBtn}
+                  style={{ width: '100%', justifyContent: 'center' }}
+                >
+                  <HiSparkles size={16} />
+                  <span>Get Started</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </header>
   );
 };
