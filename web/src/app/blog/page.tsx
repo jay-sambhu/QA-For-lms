@@ -1,7 +1,8 @@
 import React from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { RiArticleLine, RiTimeLine, RiCalendarLine, RiArrowRightLine, RiSparklesLine } from "react-icons/ri";
+import { RiArticleLine, RiTimeLine, RiCalendarLine, RiArrowRightLine } from "react-icons/ri";
+import { HiSparkles } from "react-icons/hi2";
 import { BLOG_POSTS } from "../../data/blogPosts";
 
 export const metadata: Metadata = {
@@ -29,7 +30,7 @@ export default function BlogIndexPage() {
       {/* Header */}
       <header style={S.header}>
         <div style={S.badge}>
-          <RiSparklesLine size={15} style={{ marginRight: 6 }} />
+          <HiSparkles size={15} style={{ marginRight: 6 }} />
           ENGINEERING &amp; ARCHITECTURE BLOG
         </div>
         <h1 style={S.title}>
