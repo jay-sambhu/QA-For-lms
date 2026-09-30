@@ -12,6 +12,7 @@ import { PipelineInspector } from '../components/admin/PipelineInspector';
 import { SystemTelemetry } from '../components/admin/SystemTelemetry';
 import { AIProviderConfig } from '../components/admin/AIProviderConfig';
 import { ApiKeyManager } from '../components/admin/ApiKeyManager';
+import { BlogManager } from '../components/admin/BlogManager';
 import styles from '../app/page.module.css';
 
 export const AdminPage: React.FC = () => {
@@ -140,6 +141,9 @@ export const AdminPage: React.FC = () => {
 
       {/* Gemini API Key Manager */}
       <ApiKeyManager />
+
+      {/* Dynamic Blog Management & Publishing Engine */}
+      <BlogManager />
 
       {/* Host System Telemetry */}
       <SystemTelemetry system={system} />

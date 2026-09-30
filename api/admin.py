@@ -7,9 +7,11 @@ from typing import Dict, Any
 from datetime import datetime, timezone
 import os
 import psutil
+import json
+import re
 
 from db import SessionLocal
-from models import User, Scan, Subscription, PaymentTransaction, ApiKey
+from models import User, Scan, Subscription, PaymentTransaction, ApiKey, BlogPost
 from core.ai_config import (
     get_ai_providers_state,
     update_ai_provider_config,
@@ -296,3 +298,210 @@ async def delete_api_key(key_id: str) -> Dict[str, Any]:
         db.delete(key)
         db.commit()
         return {"message": "API key deleted successfully"}
+
+
+# ---------------------------------------------------------------------------
+# Dynamic Admin Blog Management Endpoints
+# ---------------------------------------------------------------------------
+
+def _slugify(text: str) -> str:
+    text = text.lower().strip()
+    text = re.sub(r"[^\w\s-]", "", text)
+    text = re.sub(r"[\s_-]+", "-", text)
+    text = re.sub(r"^-+|-+$", "", text)
+    return text or "article"
+
+
+@admin_router.get("/blogs")
+async def list_admin_blogs() -> Dict[str, Any]:
+    """List all blog posts (published & drafts) with status counts."""
+    with SessionLocal() as db:
+        posts = db.query(BlogPost).order_by(BlogPost.created_at.desc()).all()
+        published_count = sum(1 for p in posts if p.status == "published")
+        draft_count = sum(1 for p in posts if p.status == "draft")
+        return {
+            "blogs": [p.to_dict() for p in posts],
+            "stats": {
+                "total": len(posts),
+                "published": published_count,
+                "drafts": draft_count,
+            },
+        }
+
+
+@admin_router.post("/blogs")
+async def create_blog_post(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Admin creates a new dynamic blog post."""
+    title = (payload.get("title") or "").strip()
+    excerpt = (payload.get("excerpt") or "").strip()
+    raw_content = payload.get("content") or ""
+    category = (payload.get("category") or "AI & Automation").strip()
+    reading_time = (payload.get("reading_time") or payload.get("readingTime") or "5 min read").strip()
+    author_name = (payload.get("author_name") or (payload.get("author") or {}).get("name") or "Nexus Core Engineering").strip()
+    author_role = (payload.get("author_role") or (payload.get("author") or {}).get("role") or "Platform Architecture Team").strip()
+    author_avatar = (payload.get("author_avatar") or (payload.get("author") or {}).get("avatar") or "/logo.png").strip()
+    status = payload.get("status") if payload.get("status") in ["published", "draft"] else "published"
+
+    if not title:
+        raise HTTPException(status_code=400, detail="Article title is required.")
+    if not excerpt:
+        raise HTTPException(status_code=400, detail="Article excerpt is required.")
+    if not raw_content:
+        raise HTTPException(status_code=400, detail="Article content is required.")
+
+    # Format content
+    if isinstance(raw_content, list):
+        content_str = json.dumps(raw_content)
+    else:
+        content_str = str(raw_content)
+
+    # Format tags
+    raw_tags = payload.get("tags") or []
+    if isinstance(raw_tags, list):
+        tags_str = json.dumps([str(t).strip() for t in raw_tags if str(t).strip()])
+    else:
+        tags_str = str(raw_tags)
+
+    with SessionLocal() as db:
+        # Determine slug
+        candidate_slug = (payload.get("slug") or "").strip().lower()
+        if not candidate_slug:
+            candidate_slug = _slugify(title)
+
+        existing = db.query(BlogPost).filter(BlogPost.slug == candidate_slug).first()
+        suffix = 2
+        final_slug = candidate_slug
+        while existing:
+            final_slug = f"{candidate_slug}-{suffix}"
+            existing = db.query(BlogPost).filter(BlogPost.slug == final_slug).first()
+            suffix += 1
+
+        new_post = BlogPost(
+            slug=final_slug,
+            title=title,
+            excerpt=excerpt,
+            content=content_str,
+            category=category,
+            tags=tags_str,
+            author_name=author_name,
+            author_role=author_role,
+            author_avatar=author_avatar,
+            reading_time=reading_time,
+            status=status,
+            published_at=datetime.now(timezone.utc) if status == "published" else None,
+        )
+        db.add(new_post)
+        db.commit()
+        db.refresh(new_post)
+
+        return {
+            "message": "Blog post created successfully",
+            "blog": new_post.to_dict(),
+        }
+
+
+@admin_router.put("/blogs/{blog_id}")
+async def update_blog_post(blog_id: str, payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Admin updates an existing blog post."""
+    with SessionLocal() as db:
+        post = db.query(BlogPost).filter(BlogPost.id == blog_id).first()
+        if not post:
+            raise HTTPException(status_code=404, detail="Blog post not found.")
+
+        if "title" in payload and payload["title"]:
+            post.title = str(payload["title"]).strip()
+
+        if "slug" in payload and payload["slug"]:
+            new_slug = _slugify(str(payload["slug"]))
+            # Check unique if changed
+            if new_slug != post.slug:
+                conflict = db.query(BlogPost).filter(BlogPost.slug == new_slug, BlogPost.id != blog_id).first()
+                if conflict:
+                    raise HTTPException(status_code=400, detail="Slug already in use by another article.")
+                post.slug = new_slug
+
+        if "excerpt" in payload:
+            post.excerpt = str(payload["excerpt"]).strip()
+
+        if "content" in payload:
+            c = payload["content"]
+            post.content = json.dumps(c) if isinstance(c, list) else str(c)
+
+        if "category" in payload:
+            post.category = str(payload["category"]).strip()
+
+        if "tags" in payload:
+            t = payload["tags"]
+            post.tags = json.dumps([str(x).strip() for x in t if str(x).strip()]) if isinstance(t, list) else str(t)
+
+        if "reading_time" in payload or "readingTime" in payload:
+            post.reading_time = str(payload.get("reading_time") or payload.get("readingTime")).strip()
+
+        if "author" in payload and isinstance(payload["author"], dict):
+            if "name" in payload["author"]:
+                post.author_name = str(payload["author"]["name"]).strip()
+            if "role" in payload["author"]:
+                post.author_role = str(payload["author"]["role"]).strip()
+            if "avatar" in payload["author"]:
+                post.author_avatar = str(payload["author"]["avatar"]).strip()
+        else:
+            if "author_name" in payload:
+                post.author_name = str(payload["author_name"]).strip()
+            if "author_role" in payload:
+                post.author_role = str(payload["author_role"]).strip()
+
+        if "status" in payload:
+            new_status = payload["status"]
+            if new_status in ["published", "draft"]:
+                if new_status == "published" and post.status != "published" and not post.published_at:
+                    post.published_at = datetime.now(timezone.utc)
+                post.status = new_status
+
+        db.commit()
+        db.refresh(post)
+
+        return {
+            "message": "Blog post updated successfully",
+            "blog": post.to_dict(),
+        }
+
+
+@admin_router.patch("/blogs/{blog_id}/status")
+async def toggle_blog_status(blog_id: str, payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Toggle or set blog post status ('published' or 'draft')."""
+    target_status = payload.get("status")
+    with SessionLocal() as db:
+        post = db.query(BlogPost).filter(BlogPost.id == blog_id).first()
+        if not post:
+            raise HTTPException(status_code=404, detail="Blog post not found.")
+
+        if target_status in ["published", "draft"]:
+            post.status = target_status
+        else:
+            # Toggle
+            post.status = "draft" if post.status == "published" else "published"
+
+        if post.status == "published" and not post.published_at:
+            post.published_at = datetime.now(timezone.utc)
+
+        db.commit()
+        db.refresh(post)
+        return {
+            "message": f"Article status set to {post.status}",
+            "status": post.status,
+            "blog": post.to_dict(),
+        }
+
+
+@admin_router.delete("/blogs/{blog_id}")
+async def delete_blog_post(blog_id: str) -> Dict[str, Any]:
+    """Admin permanently deletes a blog post."""
+    with SessionLocal() as db:
+        post = db.query(BlogPost).filter(BlogPost.id == blog_id).first()
+        if not post:
+            raise HTTPException(status_code=404, detail="Blog post not found.")
+
+        db.delete(post)
+        db.commit()
+        return {"message": "Blog post deleted successfully", "id": blog_id}
+

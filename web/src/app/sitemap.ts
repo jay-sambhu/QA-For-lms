@@ -1,9 +1,23 @@
 import type { MetadataRoute } from "next";
-import { BLOG_POSTS } from "../data/blogPosts";
+import { BLOG_POSTS, type BlogPost } from "../data/blogPosts";
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.jasuss.tech";
+  const apiUrl = (process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
   const currentDate = new Date();
+
+  let posts: BlogPost[] = BLOG_POSTS;
+  try {
+    const res = await fetch(`${apiUrl}/api/v1/blogs?limit=200`, { next: { revalidate: 60 } });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.posts) && data.posts.length > 0) {
+        posts = data.posts;
+      }
+    }
+  } catch (err) {
+    console.error("Sitemap dynamic blog fetch fallback:", err);
+  }
 
   const coreRoutes: MetadataRoute.Sitemap = [
     {
@@ -38,9 +52,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
   ];
 
-  const blogPostRoutes: MetadataRoute.Sitemap = BLOG_POSTS.map((post) => ({
+  const blogPostRoutes: MetadataRoute.Sitemap = posts.map((post) => ({
     url: `${baseUrl}/blog/${post.slug}`,
-    lastModified: new Date(post.publishedAt),
+    lastModified: post.publishedAt ? new Date(post.publishedAt) : currentDate,
     changeFrequency: "weekly",
     priority: 0.7,
   }));

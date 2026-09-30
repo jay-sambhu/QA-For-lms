@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { RiArticleLine, RiTimeLine, RiCalendarLine, RiArrowRightLine } from "react-icons/ri";
 import { HiSparkles } from "react-icons/hi2";
-import { BLOG_POSTS } from "../../data/blogPosts";
+import { BLOG_POSTS, type BlogPost } from "../../data/blogPosts";
 
 export const metadata: Metadata = {
   title: "Engineering Blog | Autonomous Web QA & Regression Testing Insights",
@@ -22,8 +22,29 @@ export const metadata: Metadata = {
   },
 };
 
-export default function BlogIndexPage() {
-  const [featured, ...recentPosts] = BLOG_POSTS;
+export const dynamic = "force-dynamic";
+
+async function getDynamicBlogPosts(): Promise<BlogPost[]> {
+  const apiUrl = (process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
+  try {
+    const res = await fetch(`${apiUrl}/api/v1/blogs?limit=50`, {
+      next: { revalidate: 10 },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.posts) && data.posts.length > 0) {
+        return data.posts;
+      }
+    }
+  } catch (err) {
+    console.error("Failed to fetch dynamic blogs from backend:", err);
+  }
+  return BLOG_POSTS;
+}
+
+export default async function BlogIndexPage() {
+  const posts = await getDynamicBlogPosts();
+  const [featured, ...recentPosts] = posts;
 
   return (
     <div style={S.container}>

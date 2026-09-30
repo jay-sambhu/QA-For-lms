@@ -25,11 +25,11 @@ from supabase import create_client, Client
 
 try:
     from db import SessionLocal, engine
-    from models import Scan, Base, User
+    from models import Scan, Base, User, BlogPost
     from worker.tasks import process_query_task
 except ImportError:
     from ..db import SessionLocal, engine
-    from ..models import Scan, Base
+    from ..models import Scan, Base, BlogPost
 
 try:
     from .rate_limiter import rate_limit_dependency
@@ -42,8 +42,11 @@ except ImportError:
 
 try:
     Base.metadata.create_all(bind=engine)
-except Exception:
-    pass
+    from api.blogs import seed_default_blogs_if_empty
+    seed_default_blogs_if_empty()
+except Exception as e:
+    print(f"[STARTUP DB INIT] Notice: {e}")
+
 
 # Diagnostics go through logging, not print: background tasks fail where nobody
 # is watching stdout, and an operator needs the traceback to tell "expired
@@ -90,9 +93,12 @@ app.add_middleware(
 # Register Domain Routers
 from api.billing import billing_router
 from api.admin import admin_router
+from api.blogs import blogs_router
 
 app.include_router(billing_router)
 app.include_router(admin_router)
+app.include_router(blogs_router)
+
 
 supabase_url = (os.environ.get("NEXT_PUBLIC_SUPABASE_URL") or "").strip()
 supabase_anon_key = (os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY") or "").strip()

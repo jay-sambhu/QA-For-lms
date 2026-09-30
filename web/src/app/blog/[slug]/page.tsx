@@ -4,7 +4,28 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { RiArrowLeftLine, RiTimeLine, RiCalendarLine, RiShareForwardLine } from "react-icons/ri";
 import { TbSparkles, TbArrowRight } from "react-icons/tb";
-import { BLOG_POSTS } from "../../../data/blogPosts";
+import { BLOG_POSTS, type BlogPost } from "../../../data/blogPosts";
+
+export const dynamicParams = true;
+export const revalidate = 15;
+
+async function getPostBySlug(slug: string): Promise<BlogPost | null> {
+  const apiUrl = (process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
+  try {
+    const res = await fetch(`${apiUrl}/api/v1/blogs/${encodeURIComponent(slug)}`, {
+      next: { revalidate: 10 },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.post) {
+        return data.post;
+      }
+    }
+  } catch (err) {
+    console.error(`Failed to fetch dynamic blog for ${slug}:`, err);
+  }
+  return BLOG_POSTS.find((p) => p.slug === slug) || null;
+}
 
 interface BlogPostPageProps {
   params: Promise<{
@@ -13,6 +34,18 @@ interface BlogPostPageProps {
 }
 
 export async function generateStaticParams() {
+  const apiUrl = (process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
+  try {
+    const res = await fetch(`${apiUrl}/api/v1/blogs?limit=100`, { next: { revalidate: 60 } });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.posts) && data.posts.length > 0) {
+        return data.posts.map((post: BlogPost) => ({ slug: post.slug }));
+      }
+    }
+  } catch {
+    // fallback to static list
+  }
   return BLOG_POSTS.map((post) => ({
     slug: post.slug,
   }));
@@ -20,7 +53,7 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: BlogPostPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const post = BLOG_POSTS.find((p) => p.slug === slug);
+  const post = await getPostBySlug(slug);
 
   if (!post) {
     return {
@@ -58,7 +91,7 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
 
 export default async function BlogPostPage({ params }: BlogPostPageProps) {
   const { slug } = await params;
-  const post = BLOG_POSTS.find((p) => p.slug === slug);
+  const post = await getPostBySlug(slug);
 
   if (!post) {
     notFound();
