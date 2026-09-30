@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
@@ -87,6 +87,13 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  themeColor: "#060911",
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -108,7 +115,7 @@ export default function RootLayout({
         />
         <AuthProvider>
           <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-            <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "0 24px", width: "100%", flex: 1, display: "flex", flexDirection: "column" }}>
+            <div className="siteContainer">
               <NavBar />
               <main style={{ flex: 1 }}>{children}</main>
               <Footer />
