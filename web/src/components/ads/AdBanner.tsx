@@ -95,18 +95,19 @@ export const AdBanner: React.FC<AdBannerProps> = ({ isAuthenticated, onCycleComp
     trackImpression(currentAd.id);
   }, [adIndex, isAuthenticated, currentAd.id]);
 
+  // Safely notify parent when a full ad cycle completes, outside the render phase
+  useEffect(() => {
+    const currentCycle = Math.floor(adIndex / ADS.length);
+    if (currentCycle > cycleCount) {
+      setCycleCount(currentCycle);
+      onCycleComplete?.(currentCycle);
+    }
+  }, [adIndex, cycleCount, onCycleComplete]);
+
   const advanceAd = useCallback(() => {
-    setAdIndex((prev) => {
-      const next = prev + 1;
-      const nextCycle = Math.floor(next / ADS.length);
-      if (nextCycle > cycleCount) {
-        setCycleCount(nextCycle);
-        onCycleComplete?.(nextCycle);
-      }
-      return next;
-    });
+    setAdIndex((prev) => prev + 1);
     setTimeLeft(AD_DURATION_SECONDS);
-  }, [cycleCount, onCycleComplete]);
+  }, []);
 
   // 1-second countdown
   useEffect(() => {
