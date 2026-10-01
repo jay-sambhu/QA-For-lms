@@ -82,7 +82,6 @@ export const AdBanner: React.FC<AdBannerProps> = ({ isAuthenticated, onCycleComp
   const [timeLeft, setTimeLeft] = useState(AD_DURATION_SECONDS);
   const [cycleCount, setCycleCount] = useState(0);
   const [isMuted, setIsMuted] = useState(true);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const adClient = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID || "ca-pub-9888591397038663";
   const currentAd = ADS[adIndex % ADS.length];
@@ -96,13 +95,18 @@ export const AdBanner: React.FC<AdBannerProps> = ({ isAuthenticated, onCycleComp
   }, [adIndex, isAuthenticated, currentAd.id]);
 
   // Safely notify parent when a full ad cycle completes, outside the render phase
+  const onCycleCompleteRef = useRef(onCycleComplete);
+  useEffect(() => {
+    onCycleCompleteRef.current = onCycleComplete;
+  }, [onCycleComplete]);
+
   useEffect(() => {
     const currentCycle = Math.floor(adIndex / ADS.length);
     if (currentCycle > cycleCount) {
       setCycleCount(currentCycle);
-      onCycleComplete?.(currentCycle);
+      onCycleCompleteRef.current?.(currentCycle);
     }
-  }, [adIndex, cycleCount, onCycleComplete]);
+  }, [adIndex, cycleCount]);
 
   const advanceAd = useCallback(() => {
     setAdIndex((prev) => prev + 1);
@@ -112,17 +116,18 @@ export const AdBanner: React.FC<AdBannerProps> = ({ isAuthenticated, onCycleComp
   // 1-second countdown
   useEffect(() => {
     if (!isAuthenticated) return;
-    timerRef.current = setInterval(() => {
-      setTimeLeft((t) => {
-        if (t <= 1) {
-          advanceAd();
-          return AD_DURATION_SECONDS;
-        }
-        return t - 1;
-      });
+    const interval = setInterval(() => {
+      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [isAuthenticated, advanceAd]);
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
+
+  // Auto-advance ad when timer reaches 0
+  useEffect(() => {
+    if (timeLeft === 0) {
+      advanceAd();
+    }
+  }, [timeLeft, advanceAd]);
 
   if (!isAuthenticated) return null;
 

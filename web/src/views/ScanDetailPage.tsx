@@ -30,7 +30,6 @@ export const ScanDetailPage: React.FC = () => {
   ]);
 
   const [retryCount, setRetryCount] = useState(0);
-  const [adCycleCount, setAdCycleCount] = useState(0);
 
   // Keep track of consecutive polling errors to avoid console flood and handle backoff
   const consecutiveErrorsRef = useRef(0);
@@ -314,7 +313,6 @@ export const ScanDetailPage: React.FC = () => {
           {/* Ad banner — only for logged-in users during scan wait */}
           <AdBanner
             isAuthenticated={!!session?.access_token}
-            onCycleComplete={(cycle) => setAdCycleCount(cycle)}
           />
         </motion.div>
       )}
@@ -363,7 +361,6 @@ export const ScanDetailPage: React.FC = () => {
           {/* Ad banner — keep user engaged while report finalizes */}
           <AdBanner
             isAuthenticated={!!session?.access_token}
-            onCycleComplete={(cycle) => setAdCycleCount(cycle)}
           />
         </motion.div>
       )}
