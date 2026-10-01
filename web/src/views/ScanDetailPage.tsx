@@ -273,13 +273,11 @@ export const ScanDetailPage: React.FC = () => {
     };
   }, [scanId, session?.access_token, sessionLoaded, retryCount]);
 
-  if (!sessionLoaded || (initialLoading && !error)) {
+  if (!sessionLoaded) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
         <Loader2 size={36} className="pulse" color="#6366f1" />
-        <p style={{ color: '#94a3b8' }}>
-          {!sessionLoaded ? 'Loading verification context...' : 'Loading automated QA report...'}
-        </p>
+        <p style={{ color: '#94a3b8' }}>Loading verification context...</p>
       </div>
     );
   }
@@ -349,9 +347,19 @@ export const ScanDetailPage: React.FC = () => {
           <h3 style={{ fontSize: '1.4rem', color: '#f8fafc' }}>
             Finalizing Quality Synthesis & Report...
           </h3>
-          <p style={{ color: '#94a3b8', maxWidth: '500px', margin: '8px auto 0' }}>
+          <p style={{ color: '#94a3b8', maxWidth: '500px', margin: '8px auto 16px' }}>
             Multi-viewport execution is complete. Generating compliance grading and executive findings.
           </p>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginBottom: '16px' }}>
+            <button
+              type="button"
+              onClick={handleManualRetry}
+              className="btn btn-secondary"
+              style={{ padding: '8px 16px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              <RefreshCw size={14} /> Refresh Report Status
+            </button>
+          </div>
           {/* Ad banner — keep user engaged while report finalizes */}
           <AdBanner
             isAuthenticated={!!session?.access_token}

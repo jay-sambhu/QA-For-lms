@@ -316,6 +316,69 @@ def require_user(authorization: str = Header(None)):
 
     return user
 
+
+class ApiKeyUpdateRequest(BaseModel):
+    api_key: str
+
+
+@app.get("/api/v1/user/api-key")
+async def get_user_gemini_api_key(user=Depends(require_user)):
+    """Retrieve whether the current user has configured their Gemini API key, with masked preview."""
+    user_id_val = str(getattr(user, "id", user))
+    with SessionLocal() as db:
+        db_user = db.query(User).filter(User.id == user_id_val).first()
+        if not db_user or not db_user.gemini_api_key:
+            return {"has_key": False, "masked_key": None}
+        key = db_user.gemini_api_key.strip()
+        masked = f"{key[:6]}...{key[-4:]}" if len(key) >= 12 else "••••••••"
+        return {"has_key": True, "masked_key": masked}
+
+
+@app.post("/api/v1/user/api-key")
+@app.put("/api/v1/user/api-key")
+async def update_user_gemini_api_key(payload: ApiKeyUpdateRequest, user=Depends(require_user)):
+    """Update the current user's Google Gemini API key used for QA report generation."""
+    key = (payload.api_key or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="Gemini API Key cannot be empty.")
+    if len(key) < 15:
+        raise HTTPException(status_code=400, detail="Invalid Gemini API key format. Expected a valid Google AI Studio key.")
+
+    user_id_val = str(getattr(user, "id", user))
+    with SessionLocal() as db:
+        db_user = db.query(User).filter(User.id == user_id_val).first()
+        if not db_user:
+            db_user = User(
+                id=user_id_val,
+                email=getattr(user, "email", f"user_{user_id_val}@example.com"),
+                role="user",
+                plan_tier="free"
+            )
+            db.add(db_user)
+        db_user.gemini_api_key = key
+        db.commit()
+
+    masked = f"{key[:6]}...{key[-4:]}" if len(key) >= 12 else "••••••••"
+    return {
+        "status": "success",
+        "has_key": True,
+        "masked_key": masked,
+        "message": "Google Gemini API key saved successfully."
+    }
+
+
+@app.delete("/api/v1/user/api-key")
+async def delete_user_gemini_api_key(user=Depends(require_user)):
+    """Remove current user's Google Gemini API key."""
+    user_id_val = str(getattr(user, "id", user))
+    with SessionLocal() as db:
+        db_user = db.query(User).filter(User.id == user_id_val).first()
+        if db_user:
+            db_user.gemini_api_key = None
+            db.commit()
+    return {"status": "success", "has_key": False, "masked_key": None, "message": "Gemini API key removed."}
+
+
 def get_scan(scan_id: str):
     """Retrieve a Scan record by ID using SQLAlchemy."""
     try:
@@ -399,13 +462,24 @@ def run_qa_pipeline(
     login_url: Optional[str] = None,
     username: Optional[str] = None,
     password: Optional[str] = None,
+    gemini_api_key: Optional[str] = None,
 ):
-    """Run the QA pipeline as a background subprocess."""
+    """Run the QA pipeline as a background subprocess using user's isolated API key."""
     try:
         update_scan(scan_id, "running")
     except Exception as error:
         logger.exception("Failed to update scan %s to running: %s", scan_id, error)
         return
+
+    # If key wasn't explicitly passed, retrieve it from the user's database record
+    if not gemini_api_key:
+        try:
+            with SessionLocal() as db:
+                db_u = db.query(User).filter(User.id == str(user_id)).first()
+                if db_u and db_u.gemini_api_key:
+                    gemini_api_key = db_u.gemini_api_key.strip()
+        except Exception as e:
+            logger.warning("Could not fetch gemini_api_key from DB for user %s: %s", user_id, e)
 
     # --run-id namespaces this scan's output files, so concurrent scans cannot
     # pick up each other's results.
@@ -424,6 +498,9 @@ def run_qa_pipeline(
     os.makedirs(user_dir, exist_ok=True)
     cmd.extend(["--output-dir", user_dir])
 
+    if gemini_api_key:
+        cmd.extend(["--api-key", gemini_api_key])
+
     if auth_token:
         # Sanitize auth_token: strip newlines to prevent argument injection
         safe_token = (auth_token or "").replace("\n", "").replace("\r", "")
@@ -436,10 +513,15 @@ def run_qa_pipeline(
     if username:
         cmd.extend(["--username", username])
 
-    # Pass password via isolated transient environment variable to avoid process-table leakage
+    # Pass password and user API key via isolated transient environment variables
     sub_env = dict(os.environ)
     if password:
         sub_env["QA_AUTH_PASSWORD"] = password
+    if gemini_api_key:
+        sub_env["GEMINI_API_KEY"] = gemini_api_key
+    else:
+        # PRODUCTION ENFORCEMENT: Never fallback to ambient developer / super-admin key
+        sub_env.pop("GEMINI_API_KEY", None)
 
     try:
         process = subprocess.Popen(
@@ -452,14 +534,15 @@ def run_qa_pipeline(
         )
         
         stdout_lines = []
-        # Display every action log in the console, but hide secret credentials
+        # Display every action log in the console, but hide secret credentials and API keys
         for line in process.stdout:
             stdout_lines.append(line)
-            if password and password in line:
-                safe_line = line.replace(password, "[REDACTED_PASSWORD]")
-                sys.stdout.write(safe_line)
-            else:
-                sys.stdout.write(line)
+            safe_line = line
+            if password and password in safe_line:
+                safe_line = safe_line.replace(password, "[REDACTED_PASSWORD]")
+            if gemini_api_key and gemini_api_key in safe_line:
+                safe_line = safe_line.replace(gemini_api_key, "[REDACTED_GEMINI_KEY]")
+            sys.stdout.write(safe_line)
             sys.stdout.flush()
 
         process.wait(timeout=PIPELINE_TIMEOUT_SECONDS)
@@ -551,6 +634,14 @@ async def create_scan(
     with SessionLocal() as db:
         db_user_check = db.query(_User).filter(_User.id == user_id_val).first()
         user_plan = getattr(db_user_check, "plan_tier", "free") if db_user_check else "free"
+        user_gemini_api_key = getattr(db_user_check, "gemini_api_key", None) if db_user_check else None
+
+    # Strict BYOK enforcement: User must supply their personal Gemini API key in Profile
+    if not user_gemini_api_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Google Gemini API key is required to generate the AI QA report. Please enter your Gemini API key in your Profile settings before launching a scan."
+        )
 
     plan_max_pages = _get_plan_max_pages(user_plan)
     if request.max_pages > plan_max_pages:
@@ -595,31 +686,20 @@ async def create_scan(
         _apply_fn = getattr(process_query_task, "apply_async", None)
         is_mocked = _apply_fn is not None and type(_apply_fn).__name__ in ("MagicMock", "Mock", "AsyncMock")
         if is_mocked or _can_use_celery():
-            if login_url or username or password_raw:
-                process_query_task.apply_async(
-                    args=[
-                        scan_id,
-                        user_id_val,
-                        request.url,
-                        request.max_pages,
-                        request.auth_token,
-                        login_url,
-                        username,
-                        password_raw,
-                    ],
-                    task_id=scan_id,
-                )
-            else:
-                process_query_task.apply_async(
-                    args=[
-                        scan_id,
-                        user_id_val,
-                        request.url,
-                        request.max_pages,
-                        request.auth_token,
-                    ],
-                    task_id=scan_id,
-                )
+            process_query_task.apply_async(
+                args=[
+                    scan_id,
+                    user_id_val,
+                    request.url,
+                    request.max_pages,
+                    request.auth_token,
+                    login_url,
+                    username,
+                    password_raw,
+                    user_gemini_api_key,
+                ],
+                task_id=scan_id,
+            )
             enqueued = True
         else:
             logger.info("Celery broker/worker unavailable; running scan %s via background task", scan_id)
@@ -638,6 +718,7 @@ async def create_scan(
             login_url,
             username,
             password_raw,
+            user_gemini_api_key,
         )
 
     return {
@@ -715,13 +796,21 @@ async def get_scan_status(scan_id: UUID, user=Depends(require_user)):
         report_candidates.extend([
             os.path.join(user_dir, "results", f"final_qa_report_{scan_id}.json"),
             os.path.join(ROOT_DIR, "results", f"final_qa_report_{scan_id}.json"),
+            os.path.join(user_dir, "results", f"gemini_qa_report_{scan_id}.json"),
+            os.path.join(ROOT_DIR, "results", f"gemini_qa_report_{scan_id}.json"),
         ])
+        import glob
+        report_candidates.extend(glob.glob(os.path.join(user_dir, "results", f"*{scan_id}*.json")))
+        report_candidates.extend(glob.glob(os.path.join(ROOT_DIR, "results", f"*{scan_id}*.json")))
+
         for report_path in report_candidates:
-            if os.path.isfile(report_path):
+            if report_path and os.path.isfile(report_path):
                 try:
                     with open(report_path, "r", encoding="utf-8") as f:
-                        response["results"] = json.load(f)
-                    break
+                        data = json.load(f)
+                        if isinstance(data, dict) and ("summary" in data or "findings" in data or "url" in data or "score" in data):
+                            response["results"] = data
+                            break
                 except (OSError, json.JSONDecodeError) as error:
                     logger.error("Could not read report for scan %s from %s: %s", scan_id, report_path, error)
 

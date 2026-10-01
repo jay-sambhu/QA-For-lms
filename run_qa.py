@@ -48,7 +48,7 @@ async def ensure_playwright_ready():
 
 
 async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_dir=None,
-                       login_url=None, username=None, password=None, **kwargs):
+                       login_url=None, username=None, password=None, api_key=None, **kwargs):
     """Executes the complete autonomous quality engineering pipeline end-to-end."""
     run_id = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
     base_dir = os.path.abspath(output_dir) if output_dir else ROOT_DIR
@@ -145,7 +145,13 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
     # 8. SCORING STAGE
     sm.transition_to(PipelineStage.SCORING, "Computing quality gate & generating report...")
     findings_file = raw_findings_dict["output_file"] if raw_findings_dict else crawl_file
-    gemini_result = await generate_report(findings_file=findings_file, results_dir=results_dir, run_id=run_id)
+    user_gemini_key = api_key or os.environ.get("GEMINI_API_KEY")
+    gemini_result = await generate_report(
+        findings_file=findings_file,
+        results_dir=results_dir,
+        run_id=run_id,
+        api_key=user_gemini_key,
+    )
     if not gemini_result:
         sm.transition_to(PipelineStage.FAILED, "Gemini report generation failed.")
         return None
@@ -181,6 +187,7 @@ async def main():
     parser.add_argument("--login-url", help="Optional Login URL")
     parser.add_argument("--username", help="Optional Username")
     parser.add_argument("--password", help="Optional Password")
+    parser.add_argument("--api-key", help="User's Google Gemini API key for AI QA report generation")
     parser.add_argument("--run-id", help="Identifier for output files")
     parser.add_argument("--output-dir", help="Base directory for output")
     parser.add_argument("--ci", action="store_true", help="Run in CI mode with exit status")
@@ -191,6 +198,7 @@ async def main():
         parser.error("--max-pages must be at least 1")
 
     password = args.password or os.environ.get("QA_AUTH_PASSWORD")
+    user_api_key = args.api_key or os.environ.get("GEMINI_API_KEY")
     try:
         result = await run_pipeline(
             args.url,
@@ -201,6 +209,7 @@ async def main():
             login_url=args.login_url,
             username=args.username,
             password=password,
+            api_key=user_api_key,
             ci_mode=args.ci,
             baseline_file=args.baseline,
         )

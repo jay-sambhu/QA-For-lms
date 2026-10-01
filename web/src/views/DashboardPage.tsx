@@ -5,18 +5,34 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { RiRefreshLine } from 'react-icons/ri';
-import { TbLoader2, TbArrowRight, TbChecklist } from 'react-icons/tb';
+import { TbLoader2, TbArrowRight, TbChecklist, TbKey } from 'react-icons/tb';
 import { useAuth } from '../context/AuthContext';
 import { ScanForm } from '../components/scan/ScanForm';
 import styles from '../app/page.module.css';
 
 export const DashboardPage: React.FC = () => {
   const router = useRouter();
-  const { session, sessionLoaded, openAuthModal } = useAuth();
+  const { session, sessionLoaded, openAuthModal, openProfileModal } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [recentScans, setRecentScans] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
+
+  const checkApiKey = useCallback(async () => {
+    if (!session?.access_token) return;
+    try {
+      const res = await fetch('/api/v1/user/api-key', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setHasApiKey(!!data.has_key);
+      }
+    } catch {
+      // Ignore background network errors
+    }
+  }, [session?.access_token]);
 
   const fetchScanHistory = useCallback(async () => {
     if (!session?.access_token) return;
@@ -39,8 +55,9 @@ export const DashboardPage: React.FC = () => {
   useEffect(() => {
     if (session) {
       fetchScanHistory();
+      checkApiKey();
     }
-  }, [session, fetchScanHistory]);
+  }, [session, fetchScanHistory, checkApiKey]);
 
   const handleStartScan = async (data: {
     url: string;
@@ -78,6 +95,10 @@ export const DashboardPage: React.FC = () => {
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
+        if (res.status === 400 && errData.detail?.includes('Gemini API key')) {
+          setHasApiKey(false);
+          openProfileModal();
+        }
         throw new Error(errData.detail || `Scan request failed with status ${res.status}`);
       }
 
@@ -99,7 +120,7 @@ export const DashboardPage: React.FC = () => {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', padding: '20px 0 60px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', padding: '20px 0 60px' }}>
       <div className={styles.adminTopBar}>
         <div className={styles.adminTitleBlock}>
           <h2>QA Automation Dashboard</h2>
@@ -114,6 +135,45 @@ export const DashboardPage: React.FC = () => {
           <RiRefreshLine size={16} className={loadingHistory ? 'pulse' : ''} /> Refresh History
         </button>
       </div>
+
+      {/* Reminder if user has not yet configured their Gemini API key */}
+      {session && hasApiKey === false && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '16px',
+            padding: '16px 20px',
+            background: 'rgba(99, 102, 241, 0.08)',
+            border: '1px solid rgba(99, 102, 241, 0.3)',
+            borderRadius: '14px',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <TbKey size={22} color="#818cf8" />
+            <div>
+              <div style={{ fontSize: '0.94rem', fontWeight: 700, color: '#f8fafc' }}>
+                Google Gemini API Key Required for QA Reports
+              </div>
+              <div style={{ fontSize: '0.82rem', color: '#94a3b8', marginTop: '2px' }}>
+                Scans execute exclusively using your personal API key. Enter your Gemini API key in Profile settings to begin scanning.
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={openProfileModal}
+            className="btn btn-primary"
+            style={{ padding: '8px 16px', fontSize: '0.82rem', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <TbKey size={15} /> Configure API Key
+          </button>
+        </motion.div>
+      )}
 
       {/* New Scan Launch Card */}
       <motion.div

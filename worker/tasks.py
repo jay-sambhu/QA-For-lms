@@ -41,24 +41,23 @@ def process_query_task(
     login_url: Optional[str] = None,
     username: Optional[str] = None,
     password: Optional[str] = None,
+    gemini_api_key: Optional[str] = None,
 ):
     """Celery task wrapper for the QA pipeline.
     This runs in a separate worker process, keeping the API request thread fast.
     """
     try:
-        if login_url is not None or username is not None or password is not None:
-            run_qa_pipeline(
-                scan_id,
-                user_id,
-                url,
-                max_pages,
-                auth_token,
-                login_url,
-                username,
-                password,
-            )
-        else:
-            run_qa_pipeline(scan_id, user_id, url, max_pages, auth_token)
+        run_qa_pipeline(
+            scan_id,
+            user_id,
+            url,
+            max_pages,
+            auth_token,
+            login_url,
+            username,
+            password,
+            gemini_api_key=gemini_api_key,
+        )
     except Exception as exc:
         logger.exception("Task failed for scan %s: %s", scan_id, exc)
         # If the pipeline fails, mark the scan as failed.

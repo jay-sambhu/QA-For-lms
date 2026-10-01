@@ -63,7 +63,11 @@ class GeminiQAAnalyzer:
         self.model_name = model_name
         self.api_key = api_key
         
-        if self.api_key is None:
+        if not self.api_key:
+            import os
+            self.api_key = os.environ.get("GEMINI_API_KEY")
+
+        if not self.api_key:
             self._load_active_key()
 
     def _load_active_key(self):
@@ -98,9 +102,8 @@ class GeminiQAAnalyzer:
             self._fallback_to_env()
 
     def _fallback_to_env(self):
-        load_dotenv(dotenv_path=MODULE_DIR / ".env")
-        from config import settings
-        self.api_key = settings.gemini_key
+        # Strict user isolation: never fallback to ambient developer / super-admin key
+        self.api_key = None
 
     def _rotate_key(self):
         if not self.api_key:
@@ -550,7 +553,7 @@ class GeminiQAAnalyzer:
         return "\n".join(lines) + "\n"
 
 
-async def generate_report(findings_file=None, results_dir="results", run_id=None):
+async def generate_report(findings_file=None, results_dir="results", run_id=None, api_key=None):
     """
     Run the Gemini analysis stage.
 
@@ -560,6 +563,7 @@ async def generate_report(findings_file=None, results_dir="results", run_id=None
             single-run/CLI usage.
         results_dir: Directory to read from and write to.
         run_id: Suffix for output filenames. Defaults to a timestamp.
+        api_key: User's personal Google Gemini API key.
     """
     path = (
         Path(findings_file)
@@ -572,7 +576,7 @@ async def generate_report(findings_file=None, results_dir="results", run_id=None
 
     data = GeminiQAAnalyzer.load_findings(path)
     data["source_file"] = str(path)
-    analyzer = GeminiQAAnalyzer()
+    analyzer = GeminiQAAnalyzer(api_key=api_key)
     result = await analyzer.analyze(data)
 
     results_path = Path(results_dir)
