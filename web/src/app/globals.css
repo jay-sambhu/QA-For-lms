@@ -208,3 +208,194 @@ button {
   }
 }
 
+/* ─── Dual Side Ad Rails (Left & Right Flank for Free Tier) ────────── */
+.sideAdRailsContainer {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  position: relative;
+  min-height: 100vh;
+}
+
+.sideAdMainContent {
+  flex: 1;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Hidden by default on laptops/tablets/mobile to prevent any layout squeeze */
+.sideAdRail {
+  display: none;
+}
+
+/* Display elegant sidebar ad rails only on wide screens */
+@media (min-width: 1480px) {
+  .sideAdRail {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 210px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 80px;
+    height: fit-content;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    padding: 14px 12px;
+    background: rgba(14, 20, 36, 0.65);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    z-index: 40;
+    margin-top: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  }
+
+  .sideAdRailLeft {
+    margin-left: 16px;
+    margin-right: 14px;
+  }
+
+  .sideAdRailRight {
+    margin-right: 16px;
+    margin-left: 14px;
+  }
+}
+
+.sideAdRailHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.sideAdBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #cbd5e1;
+  letter-spacing: 0.04em;
+}
+
+.sideAdCloseBtn {
+  color: #64748b;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: color 0.2s;
+  display: flex;
+  align-items: center;
+}
+
+.sideAdCloseBtn:hover {
+  color: #f87171;
+}
+
+.sideAdCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.sideAdCard:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(99, 102, 241, 0.4);
+  transform: translateY(-2px);
+}
+
+.sideAdCardTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sideAdIconBox {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sideAdCategory {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+}
+
+.sideAdCardTitle {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin: 0;
+}
+
+.sideAdCardDesc {
+  font-size: 0.73rem;
+  color: #94a3b8;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.sideAdAction {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #818cf8;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.sideAdUnitBox {
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.sideAdUnitLabel {
+  display: block;
+  font-size: 0.62rem;
+  color: #64748b;
+  letter-spacing: 0.08em;
+  text-align: center;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.sideAdFooter {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: center;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.sideAdUpgradeLink {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #a5b4fc;
+  text-decoration: none;
+}
+
+.sideAdUpgradeLink:hover {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+

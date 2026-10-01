@@ -136,7 +136,7 @@ export const AdBanner: React.FC<AdBannerProps> = ({ isAuthenticated, onCycleComp
         <div style={S.headerRight}>
           <span style={S.adsenseBadge}>
             <ShieldCheck size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />
-            AdSense · {adClient}
+            Verified Partner · AdSense
           </span>
           <span style={S.adCount}>{adNumber} / {ADS.length} (30s)</span>
         </div>

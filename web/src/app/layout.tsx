@@ -8,6 +8,7 @@ import { Footer } from "../components/layout/Footer";
 import { AuthModal } from "../components/auth/AuthModal";
 import { UserProfileModal } from "../components/auth/UserProfileModal";
 import { AdBlockerDetector } from "../components/ads/AdBlockerDetector";
+import { SideAdRails } from "../components/ads/SideAdRails";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -114,13 +115,15 @@ export default function RootLayout({
           strategy="afterInteractive"
         />
         <AuthProvider>
-          <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-            <div className="siteContainer">
-              <NavBar />
-              <main style={{ flex: 1 }}>{children}</main>
-              <Footer />
+          <SideAdRails>
+            <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+              <div className="siteContainer">
+                <NavBar />
+                <main style={{ flex: 1 }}>{children}</main>
+                <Footer />
+              </div>
             </div>
-          </div>
+          </SideAdRails>
           <AuthModal />
           <UserProfileModal />
           <AdBlockerDetector />
