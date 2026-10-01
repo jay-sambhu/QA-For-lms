@@ -10,6 +10,7 @@ class User(Base):
     email = Column(String, unique=True, nullable=False, index=True)
     role = Column(String, nullable=False, server_default="user")  # 'user', 'admin'
     plan_tier = Column(String, nullable=False, server_default="free")  # 'free', 'pro', 'enterprise'
+    gemini_api_key = Column(String, nullable=True)  # User's own Gemini API key for AI QA report generation
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     scans = relationship("Scan", back_populates="user", cascade="all, delete-orphan")
