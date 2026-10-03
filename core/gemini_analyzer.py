@@ -56,19 +56,39 @@ REQUEST_TIMEOUT_SECONDS = 120
 
 
 class GeminiQAAnalyzer:
-    """Analyze grouped candidates while keeping deterministic evidence authoritative."""
+    """Analyze grouped candidates with multi-AI provider support and automatic key failover."""
 
-    def __init__(self, api_key=None, model_client=None, model_name="gemini-3-flash-preview"):
+    def __init__(
+        self,
+        api_key=None,
+        model_client=None,
+        model_name="gemini-3-flash-preview",
+        provider_id="gemini",
+        endpoint=None,
+        key_pool=None,
+    ):
         self.model_client = model_client
-        self.model_name = model_name
+        self.provider_id = (provider_id or "gemini").lower()
+        self.model_name = model_name or "gemini-3-flash-preview"
         self.api_key = api_key
-        
-        if not self.api_key:
-            import os
-            self.api_key = os.environ.get("GEMINI_API_KEY")
+        self.endpoint = endpoint
+        self.key_pool = list(key_pool or [])
+        self.current_key_idx = 0
 
-        if not self.api_key:
-            self._load_active_key()
+        # If a multi-key pool is provided, initialize active credentials from the first pool item
+        if self.key_pool and len(self.key_pool) > 0:
+            first_key = self.key_pool[0]
+            self.api_key = first_key.get("api_key")
+            self.provider_id = (first_key.get("provider_id") or "gemini").lower()
+            self.model_name = first_key.get("model") or self.model_name
+            self.endpoint = first_key.get("endpoint") or self.endpoint
+        else:
+            if self.api_key is None:
+                import os
+                self.api_key = os.environ.get("GEMINI_API_KEY")
+
+            if self.api_key is None:
+                self._load_active_key()
 
     def _load_active_key(self):
         try:
@@ -104,6 +124,31 @@ class GeminiQAAnalyzer:
     def _fallback_to_env(self):
         # Strict user isolation: never fallback to ambient developer / super-admin key
         self.api_key = None
+
+    def _failover_to_next_key(self):
+        """Seamlessly fail over to the next available API key in the user's multi-key pool."""
+        if self.key_pool and (self.current_key_idx + 1) < len(self.key_pool):
+            old_p = self.provider_id
+            old_m = self.model_name
+            self.current_key_idx += 1
+            next_cfg = self.key_pool[self.current_key_idx]
+
+            self.api_key = next_cfg.get("api_key")
+            self.provider_id = (next_cfg.get("provider_id") or "gemini").lower()
+            self.model_name = next_cfg.get("model") or (
+                "gemini-2.5-flash" if self.provider_id == "gemini" else "gpt-4o"
+            )
+            self.endpoint = next_cfg.get("endpoint")
+
+            print(
+                f"\n[AI_FAILOVER] Rate limit or quota error on {old_p.upper()} ({old_m}). "
+                f"Seamlessly failing over to backup key #{self.current_key_idx + 1} "
+                f"({self.provider_id.upper()}, model: {self.model_name}) without scan interruption..."
+            )
+            return True
+
+        # Fallback to rotating system admin keys
+        return self._rotate_key()
 
     def _rotate_key(self):
         if not self.api_key:
@@ -414,7 +459,7 @@ class GeminiQAAnalyzer:
         rec = triage.get('recommendation', {})
         
         result = {
-            "classification": triage.get("classification", "needs_manual_review"),
+            "classification": "needs_manual_review",
             "severity": candidate.get("severity", "medium"),
             "confidence": triage.get("confidence", "low"),
             "title": candidate.get("title", "Gemini analysis unavailable"),
