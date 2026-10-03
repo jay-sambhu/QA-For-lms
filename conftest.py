@@ -1,6 +1,9 @@
 import os
 import sys
 
+os.environ.setdefault("NEXT_PUBLIC_SUPABASE_URL", "http://mock-supabase.local")
+os.environ.setdefault("NEXT_PUBLIC_SUPABASE_ANON_KEY", "mock-anon-key")
+
 # Ensure repository root and core package are in sys.path for test discovery and modular imports
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 if ROOT_DIR not in sys.path:
