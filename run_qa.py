@@ -8,6 +8,7 @@ Regression Memory, API Testing, Accessibility/Performance Auditing, and Quality 
 
 import argparse
 import asyncio
+import json
 import os
 import sys
 from datetime import datetime
@@ -145,15 +146,24 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
     # 8. SCORING STAGE
     sm.transition_to(PipelineStage.SCORING, "Computing quality gate & generating report...")
     findings_file = raw_findings_dict["output_file"] if raw_findings_dict else crawl_file
-    user_gemini_key = api_key or os.environ.get("GEMINI_API_KEY")
+    user_ai_key = api_key or os.environ.get("GEMINI_API_KEY")
+    pool = kwargs.get("ai_keys_pool")
+    provider = kwargs.get("provider_id") or "gemini"
+    model = kwargs.get("model_name")
+    ep = kwargs.get("endpoint")
+
     gemini_result = await generate_report(
         findings_file=findings_file,
         results_dir=results_dir,
         run_id=run_id,
-        api_key=user_gemini_key,
+        api_key=user_ai_key,
+        ai_keys_pool=pool,
+        provider_id=provider,
+        model_name=model,
+        endpoint=ep,
     )
     if not gemini_result:
-        sm.transition_to(PipelineStage.FAILED, "Gemini report generation failed.")
+        sm.transition_to(PipelineStage.FAILED, "AI report generation failed.")
         return None
 
     # Report Generation
@@ -187,7 +197,11 @@ async def main():
     parser.add_argument("--login-url", help="Optional Login URL")
     parser.add_argument("--username", help="Optional Username")
     parser.add_argument("--password", help="Optional Password")
-    parser.add_argument("--api-key", help="User's Google Gemini API key for AI QA report generation")
+    parser.add_argument("--api-key", help="User's primary AI API key for report generation")
+    parser.add_argument("--ai-keys-pool", help="JSON string containing list of available API keys for automatic failover")
+    parser.add_argument("--provider", default="gemini", help="AI provider (gemini, openai, anthropic, deepseek, local_llm)")
+    parser.add_argument("--model", help="AI model name")
+    parser.add_argument("--endpoint", help="Custom AI endpoint URL")
     parser.add_argument("--run-id", help="Identifier for output files")
     parser.add_argument("--output-dir", help="Base directory for output")
     parser.add_argument("--ci", action="store_true", help="Run in CI mode with exit status")
@@ -199,6 +213,14 @@ async def main():
 
     password = args.password or os.environ.get("QA_AUTH_PASSWORD")
     user_api_key = args.api_key or os.environ.get("GEMINI_API_KEY")
+
+    ai_keys_pool = None
+    if args.ai_keys_pool:
+        try:
+            ai_keys_pool = json.loads(args.ai_keys_pool)
+        except Exception as e:
+            print(f"[WARNING] Failed to parse --ai-keys-pool JSON: {e}")
+
     try:
         result = await run_pipeline(
             args.url,
@@ -210,6 +232,10 @@ async def main():
             username=args.username,
             password=password,
             api_key=user_api_key,
+            ai_keys_pool=ai_keys_pool,
+            provider_id=args.provider,
+            model_name=args.model,
+            endpoint=args.endpoint,
             ci_mode=args.ci,
             baseline_file=args.baseline,
         )

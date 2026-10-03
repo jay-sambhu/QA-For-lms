@@ -42,6 +42,10 @@ def process_query_task(
     username: Optional[str] = None,
     password: Optional[str] = None,
     gemini_api_key: Optional[str] = None,
+    ai_keys_pool: Optional[list] = None,
+    provider_id: Optional[str] = None,
+    model_name: Optional[str] = None,
+    endpoint: Optional[str] = None,
 ):
     """Celery task wrapper for the QA pipeline.
     This runs in a separate worker process, keeping the API request thread fast.
@@ -57,6 +61,10 @@ def process_query_task(
             username,
             password,
             gemini_api_key=gemini_api_key,
+            ai_keys_pool=ai_keys_pool,
+            provider_id=provider_id,
+            model_name=model_name,
+            endpoint=endpoint,
         )
     except Exception as exc:
         logger.exception("Task failed for scan %s: %s", scan_id, exc)
