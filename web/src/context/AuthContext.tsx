@@ -167,16 +167,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signOut = async () => {
-    if (supabase) {
-      await supabase.auth.signOut();
+    try {
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
+    } catch (e) {
+      console.error('Error during signOut:', e);
     }
     if (typeof window !== 'undefined') {
       localStorage.removeItem('jasuss_session');
     }
     setSession(null);
+    setUserProfile(null);
     setUserPlan('free');
     setUserRole('user');
     setProfileModalOpen(false);
+    setAuthModalOpen(false);
+    if (typeof window !== 'undefined') {
+      window.location.href = '/';
+    }
   };
 
   return (

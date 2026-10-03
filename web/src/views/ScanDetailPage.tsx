@@ -272,11 +272,27 @@ export const ScanDetailPage: React.FC = () => {
     };
   }, [scanId, session?.access_token, sessionLoaded, retryCount]);
 
+  // Route Authentication Guard: Unauthenticated users are bounced to home
+  useEffect(() => {
+    if (sessionLoaded && !session) {
+      router.replace('/');
+    }
+  }, [sessionLoaded, session, router]);
+
   if (!sessionLoaded) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
         <Loader2 size={36} className="pulse" color="#6366f1" />
         <p style={{ color: '#94a3b8' }}>Loading verification context...</p>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
+        <Loader2 size={36} className="pulse" color="#6366f1" />
+        <p style={{ color: '#94a3b8' }}>Session unauthenticated. Redirecting to home...</p>
       </div>
     );
   }

@@ -143,6 +143,13 @@ export const DashboardPage: React.FC = () => {
     });
   }, [recentScans, searchQuery, statusFilter]);
 
+  // Route Authentication Guard: Unauthenticated users are bounced to home
+  useEffect(() => {
+    if (sessionLoaded && !session) {
+      router.replace('/');
+    }
+  }, [sessionLoaded, session, router]);
+
   // Calculated KPI metrics
   const totalScansCount = recentScans.length;
   const completedCount = recentScans.filter((s) => s.status === 'completed').length;
@@ -154,6 +161,15 @@ export const DashboardPage: React.FC = () => {
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
         <TbLoader2 size={36} className="pulse" color="#6366f1" />
         <p style={{ color: '#94a3b8' }}>Loading workspace...</p>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
+        <TbLoader2 size={36} className="pulse" color="#6366f1" />
+        <p style={{ color: '#94a3b8' }}>Session unauthenticated. Redirecting to home...</p>
       </div>
     );
   }

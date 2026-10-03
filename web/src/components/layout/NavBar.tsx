@@ -12,6 +12,7 @@ import {
   RiArticleLine,
   RiMenu3Line,
   RiCloseLine,
+  RiLogoutBoxRLine,
 } from 'react-icons/ri';
 import { TbDashboard, TbCreditCard } from 'react-icons/tb';
 import { HiSparkles } from 'react-icons/hi2';
@@ -20,7 +21,7 @@ import styles from '../../app/page.module.css';
 
 export const NavBar: React.FC = () => {
   const pathname = usePathname();
-  const { session, userPlan, userRole, isAdmin: authIsAdmin, openAuthModal, openProfileModal } = useAuth();
+  const { session, userPlan, userRole, isAdmin: authIsAdmin, openAuthModal, openProfileModal, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const userIsAdmin = authIsAdmin || userRole === 'admin';
@@ -321,7 +322,39 @@ export const NavBar: React.FC = () => {
               <span>Nexus Engine Online · 99.9%</span>
             </div>
 
-            {!session && (
+            {session ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    openProfileModal();
+                  }}
+                  className="btn btn-secondary"
+                  style={{ width: '100%', justifyContent: 'center', fontSize: '0.85rem' }}
+                >
+                  <RiUser3Line size={16} />
+                  <span>Account &amp; API Key</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    signOut();
+                  }}
+                  className="btn btn-secondary"
+                  style={{
+                    width: '100%',
+                    justifyContent: 'center',
+                    fontSize: '0.85rem',
+                    color: '#f87171',
+                    borderColor: 'rgba(239, 68, 68, 0.3)',
+                    background: 'rgba(239, 68, 68, 0.06)',
+                  }}
+                >
+                  <RiLogoutBoxRLine size={16} />
+                  <span>Log Out</span>
+                </button>
+              </div>
+            ) : (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <button
                   onClick={() => {

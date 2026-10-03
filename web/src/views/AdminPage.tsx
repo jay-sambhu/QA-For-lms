@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -33,6 +34,7 @@ import styles from '../app/page.module.css';
 type AdminTab = 'overview' | 'users' | 'scans' | 'blogs' | 'ai' | 'system';
 
 export const AdminPage: React.FC = () => {
+  const router = useRouter();
   const { session, sessionLoaded, userRole, isAdmin, openAuthModal } = useAuth();
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [metrics, setMetrics] = useState<any>(null);
@@ -71,6 +73,17 @@ export const AdminPage: React.FC = () => {
     }
   }, [session?.access_token]);
 
+  // Route Authentication & Authorization Guard
+  useEffect(() => {
+    if (sessionLoaded) {
+      if (!session) {
+        router.replace('/');
+      } else if (!isAdmin && userRole !== 'admin') {
+        router.replace('/dashboard');
+      }
+    }
+  }, [sessionLoaded, session, isAdmin, userRole, router]);
+
   useEffect(() => {
     if (isAdmin || userRole === 'admin') {
       fetchAdminData();
@@ -86,64 +99,21 @@ export const AdminPage: React.FC = () => {
     );
   }
 
-  // Access Control Guard: Non-admin users are restricted
+  if (!session) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
+        <TbLoader2 size={36} className="pulse" color="#6366f1" />
+        <p style={{ color: '#94a3b8' }}>Session unauthenticated. Redirecting to home...</p>
+      </div>
+    );
+  }
+
+  // Access Control Guard: Non-admin users are restricted and bounced to dashboard
   if (!isAdmin && userRole !== 'admin') {
     return (
-      <div
-        style={{
-          maxWidth: '540px',
-          margin: '80px auto',
-          textAlign: 'center',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '18px',
-          padding: '40px 24px',
-          background: 'rgba(18, 25, 44, 0.75)',
-          border: '1px solid rgba(239, 68, 68, 0.3)',
-          borderRadius: '24px',
-          backdropFilter: 'blur(20px)',
-          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
-        }}
-      >
-        <div
-          style={{
-            width: '64px',
-            height: '64px',
-            borderRadius: '20px',
-            background: 'rgba(239, 68, 68, 0.12)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#ef4444',
-          }}
-        >
-          <RiLockPasswordFill size={32} />
-        </div>
-        <h2 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#f8fafc' }}>
-          Administrator Privileges Required
-        </h2>
-        <p style={{ color: '#94a3b8', fontSize: '0.95rem', lineHeight: 1.6 }}>
-          Your current account is authenticated as a standard tenant. This section is strictly reserved for platform administrators.
-        </p>
-
-        <div style={{ display: 'flex', gap: '12px', marginTop: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
-          <Link
-            href="/dashboard"
-            className="btn btn-primary"
-            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-          >
-            <TbArrowLeft size={16} /> Open User QA Dashboard
-          </Link>
-          {!session && (
-            <button
-              onClick={() => openAuthModal('signin')}
-              className="btn btn-secondary"
-            >
-              Sign In with Admin Account
-            </button>
-          )}
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
+        <TbLoader2 size={36} className="pulse" color="#6366f1" />
+        <p style={{ color: '#94a3b8' }}>Administrator privileges required. Redirecting to dashboard...</p>
       </div>
     );
   }
