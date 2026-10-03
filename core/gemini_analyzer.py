@@ -344,20 +344,50 @@ class GeminiQAAnalyzer:
             return getattr(response, "content", response)
 
         if not self.api_key:
-            raise RuntimeError("Gemini API key unavailable")
+            raise RuntimeError(f"{self.provider_id.upper()} API key unavailable")
 
-        url = f"{GEMINI_ENDPOINT}/{self.model_name}:generateContent"
+        p = (self.provider_id or "gemini").lower()
+        if p == "gemini":
+            url = f"{GEMINI_ENDPOINT}/{self.model_name}:generateContent"
+            headers = {
+                "Content-Type": "application/json",
+                "x-goog-api-key": self.api_key,
+            }
+            data = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.0},
+            }
+        elif p == "anthropic":
+            url = self.endpoint or "https://api.anthropic.com/v1/messages"
+            headers = {
+                "Content-Type": "application/json",
+                "x-api-key": self.api_key,
+                "anthropic-version": "2023-06-01",
+            }
+            data = {
+                "model": self.model_name or "claude-3-5-sonnet-20241022",
+                "max_tokens": 4096,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.0,
+            }
+        else:
+            # openai, deepseek, local_llm (OpenAI compatible chat completions)
+            if p == "deepseek":
+                url = self.endpoint or "https://api.deepseek.com/chat/completions"
+            elif p == "local_llm":
+                url = self.endpoint or "http://localhost:11434/v1/chat/completions"
+            else:
+                url = self.endpoint or "https://api.openai.com/v1/chat/completions"
 
-        # The key goes in a header, not the query string. A key in the URL is
-        # echoed into exception messages, proxy logs, and stack traces.
-        headers = {
-            "Content-Type": "application/json",
-            "x-goog-api-key": self.api_key,
-        }
-        data = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.0},
-        }
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+            }
+            data = {
+                "model": self.model_name or ("deepseek-chat" if p == "deepseek" else "gpt-4o"),
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.0,
+            }
 
         request = urllib.request.Request(
             url,
@@ -373,46 +403,63 @@ class GeminiQAAnalyzer:
                 ) as response:
                     return json.loads(response.read().decode("utf-8"))
             except urllib.error.HTTPError as error:
-                # Surface the status code so the caller can detect 429/quota.
                 detail = ""
                 try:
                     detail = error.read().decode("utf-8", "replace")[:500]
                 except Exception:
                     pass
-                
-                if error.code == 429:
-                    raise RuntimeError(f"HTTP_429_RATE_LIMIT: {detail}") from None
+
+                is_quota_or_rate = error.code == 429 or any(
+                    kw in detail.lower()
+                    for kw in ["quota", "rate_limit", "resource_exhausted", "tokens_exceeded"]
+                )
+                if is_quota_or_rate:
+                    raise RuntimeError(f"HTTP_RATE_LIMIT_{error.code}: {detail}") from None
 
                 raise RuntimeError(
-                    f"Gemini API returned HTTP {error.code}: {detail}"
+                    f"{self.provider_id.upper()} API returned HTTP {error.code}: {detail}"
                 ) from None
 
         try:
             response_data = await asyncio.to_thread(fetch)
         except RuntimeError as e:
-            if "HTTP_429_RATE_LIMIT" in str(e):
-                rotated = await asyncio.to_thread(self._rotate_key)
-                if rotated and retries < 2:
+            if "HTTP_RATE_LIMIT" in str(e) or "HTTP_429" in str(e):
+                rotated = await asyncio.to_thread(self._failover_to_next_key)
+                max_retries = max(len(self.key_pool or []) + 2, 3)
+                if rotated and retries < max_retries:
                     return await self._call_model(prompt, retries=retries + 1)
-                raise RuntimeError("Gemini quota limit reached across all available keys.") from None
+                raise RuntimeError(f"{self.provider_id.upper()} quota or rate limit reached across all available keys.") from None
             raise
         except Exception as error:
             # Redact before re-raising: the message ends up in the report.
             raise RuntimeError(
-                f"Gemini API request failed: {self._redact(str(error))}"
+                f"{self.provider_id.upper()} API request failed: {self._redact(str(error))}"
             ) from None
 
         try:
-            candidates = response_data["candidates"]
-            if not candidates:
-                # An empty candidate list usually means the prompt was blocked.
-                feedback = response_data.get("promptFeedback", {})
-                raise RuntimeError(f"Gemini returned no candidates: {feedback}")
-            parts = candidates[0]["content"]["parts"]
-            return "".join(part.get("text", "") for part in parts)
+            if p == "gemini":
+                candidates = response_data.get("candidates", [])
+                if not candidates:
+                    feedback = response_data.get("promptFeedback", {})
+                    raise RuntimeError(f"Gemini returned no candidates: {feedback}")
+                parts = candidates[0].get("content", {}).get("parts", [])
+                return "".join(part.get("text", "") for part in parts)
+            elif p == "anthropic":
+                content = response_data.get("content", [])
+                if not content:
+                    raise RuntimeError(f"Anthropic returned no content: {response_data}")
+                return "".join(
+                    block.get("text", "") for block in content if block.get("type") == "text"
+                )
+            else:
+                choices = response_data.get("choices", [])
+                if not choices:
+                    raise RuntimeError(f"{self.provider_id.upper()} returned no choices: {response_data}")
+                msg = choices[0].get("message", {})
+                return msg.get("content", "")
         except (KeyError, IndexError, TypeError) as error:
             raise RuntimeError(
-                f"Unexpected Gemini response shape: {error}"
+                f"Unexpected {self.provider_id.upper()} response shape: {error}"
             ) from None
 
     @staticmethod
@@ -598,9 +645,18 @@ class GeminiQAAnalyzer:
         return "\n".join(lines) + "\n"
 
 
-async def generate_report(findings_file=None, results_dir="results", run_id=None, api_key=None):
+async def generate_report(
+    findings_file=None,
+    results_dir="results",
+    run_id=None,
+    api_key=None,
+    ai_keys_pool=None,
+    provider_id="gemini",
+    model_name=None,
+    endpoint=None,
+):
     """
-    Run the Gemini analysis stage.
+    Run the AI analysis stage using Gemini, OpenAI, Claude, DeepSeek, or Local LLM.
 
     Args:
         findings_file: Explicit path to a qa_findings_*.json file. When omitted
@@ -608,7 +664,11 @@ async def generate_report(findings_file=None, results_dir="results", run_id=None
             single-run/CLI usage.
         results_dir: Directory to read from and write to.
         run_id: Suffix for output filenames. Defaults to a timestamp.
-        api_key: User's personal Google Gemini API key.
+        api_key: User's primary personal API key.
+        ai_keys_pool: Optional list of backup key dictionaries for automatic failover.
+        provider_id: AI provider ("gemini", "openai", "anthropic", "deepseek", "local_llm").
+        model_name: Model name.
+        endpoint: Custom endpoint URL.
     """
     path = (
         Path(findings_file)
@@ -621,7 +681,13 @@ async def generate_report(findings_file=None, results_dir="results", run_id=None
 
     data = GeminiQAAnalyzer.load_findings(path)
     data["source_file"] = str(path)
-    analyzer = GeminiQAAnalyzer(api_key=api_key)
+    analyzer = GeminiQAAnalyzer(
+        api_key=api_key,
+        provider_id=provider_id,
+        model_name=model_name,
+        endpoint=endpoint,
+        key_pool=ai_keys_pool,
+    )
     result = await analyzer.analyze(data)
 
     results_path = Path(results_dir)
