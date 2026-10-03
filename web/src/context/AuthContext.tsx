@@ -9,9 +9,21 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 export const supabase =
   supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
+export interface UserProfile {
+  id: string;
+  email: string;
+  role: string;
+  is_admin: boolean;
+  plan_tier: string;
+  has_gemini_key: boolean;
+  dashboard_url: string;
+}
+
 interface AuthContextType {
   session: Session | null;
   sessionLoaded: boolean;
+  userProfile: UserProfile | null;
+  isAdmin: boolean;
   authModalOpen: boolean;
   authMode: 'signin' | 'signup';
   userPlan: string;
@@ -23,11 +35,14 @@ interface AuthContextType {
   closeProfileModal: () => void;
   signOut: () => Promise<void>;
   refreshPlan: () => Promise<void>;
+  fetchUserProfile: (token?: string) => Promise<UserProfile | null>;
 }
 
 const AuthContext = createContext<AuthContextType>({
   session: null,
   sessionLoaded: false,
+  userProfile: null,
+  isAdmin: false,
   authModalOpen: false,
   authMode: 'signin',
   userPlan: 'free',
@@ -39,46 +54,64 @@ const AuthContext = createContext<AuthContextType>({
   closeProfileModal: () => {},
   signOut: async () => {},
   refreshPlan: async () => {},
+  fetchUserProfile: async () => null,
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(!supabase);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [userPlan, setUserPlan] = useState<string>('free');
   const [userRole, setUserRole] = useState<string>('user');
 
-  const checkUserRoleAndPlan = (s: Session | null) => {
-    if (!s || !s.user) {
-      setUserPlan('free');
-      setUserRole('user');
-      return;
-    }
-    const email = (s.user.email || '').toLowerCase();
-    const appRole = s.user.app_metadata?.role || s.user.user_metadata?.role;
-    
-    if (appRole === 'admin' || email.startsWith('admin@') || email.includes('admin') || email.endsWith('@admin.jasuss.io')) {
-      setUserRole('admin');
-    } else {
-      setUserRole('user');
-    }
-  };
+  const isAdmin = userRole === 'admin' || userProfile?.is_admin === true;
 
-  const fetchUserSubscription = async (accessToken?: string, currentSession?: Session | null) => {
-    checkUserRoleAndPlan(currentSession || session);
-    if (!accessToken) return;
+  const fetchUserProfile = async (accessToken?: string): Promise<UserProfile | null> => {
+    const token = accessToken || session?.access_token;
+    if (!token) {
+      setUserProfile(null);
+      setUserRole('user');
+      setUserPlan('free');
+      return null;
+    }
+
     try {
-      const res = await fetch('/api/v1/billing/subscription', {
-        headers: { Authorization: `Bearer ${accessToken}` },
+      const res = await fetch('/api/v1/auth/me', {
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        const data = await res.json();
-        setUserPlan(data?.plan?.id || 'free');
+        const data: UserProfile = await res.json();
+        setUserProfile(data);
+        setUserRole(data.role || (data.is_admin ? 'admin' : 'user'));
+        setUserPlan(data.plan_tier || 'free');
+        return data;
       }
-    } catch {
-      // fallback default
+    } catch (e) {
+      console.warn('Backend user profile check failed, using fallback:', e);
+    }
+
+    // Safety fallback if backend is momentarily unreachable
+    if (session?.user) {
+      const email = (session.user.email || '').toLowerCase();
+      const appRole = session.user.app_metadata?.role || session.user.user_metadata?.role;
+      const derivedRole =
+        appRole === 'admin' ||
+        email === 'dellizulter@gmail.com' ||
+        email.startsWith('admin@') ||
+        email.endsWith('@admin.jasuss.io')
+          ? 'admin'
+          : 'user';
+      setUserRole(derivedRole);
+    }
+    return null;
+  };
+
+  const refreshPlan = async () => {
+    if (session?.access_token) {
+      await fetchUserProfile(session.access_token);
     }
   };
 
@@ -90,10 +123,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     supabase.auth
       .getSession()
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => {
         if (!error && data.session) {
           setSession(data.session);
-          fetchUserSubscription(data.session.access_token, data.session);
+          await fetchUserProfile(data.session.access_token);
         }
       })
       .finally(() => {
@@ -102,11 +135,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
       setSession(nextSession);
       if (nextSession) {
-        fetchUserSubscription(nextSession.access_token, nextSession);
+        await fetchUserProfile(nextSession.access_token);
       } else {
+        setUserProfile(null);
         setUserPlan('free');
         setUserRole('user');
       }
@@ -145,17 +179,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setProfileModalOpen(false);
   };
 
-  const refreshPlan = async () => {
-    if (session?.access_token) {
-      await fetchUserSubscription(session.access_token, session);
-    }
-  };
-
   return (
     <AuthContext.Provider
       value={{
         session,
         sessionLoaded,
+        userProfile,
+        isAdmin,
         authModalOpen,
         authMode,
         userPlan,
@@ -167,6 +197,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         closeProfileModal,
         signOut,
         refreshPlan,
+        fetchUserProfile,
       }}
     >
       {children}

@@ -2,9 +2,24 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
-import { RiRefreshLine, RiShieldUserFill, RiLockPasswordFill } from 'react-icons/ri';
-import { TbLoader2, TbArrowLeft } from 'react-icons/tb';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  RiRefreshLine,
+  RiShieldUserFill,
+  RiLockPasswordFill,
+  RiArticleLine,
+  RiDashboardLine,
+  RiCpuLine,
+  RiKey2Line,
+} from 'react-icons/ri';
+import {
+  TbLoader2,
+  TbArrowLeft,
+  TbUsers,
+  TbActivity,
+  TbArrowRight,
+  TbBrain,
+} from 'react-icons/tb';
 import { useAuth } from '../context/AuthContext';
 import { AdminMetrics } from '../components/admin/AdminMetrics';
 import { TenantTable } from '../components/admin/TenantTable';
@@ -15,8 +30,11 @@ import { ApiKeyManager } from '../components/admin/ApiKeyManager';
 import { BlogManager } from '../components/admin/BlogManager';
 import styles from '../app/page.module.css';
 
+type AdminTab = 'overview' | 'users' | 'scans' | 'blogs' | 'ai' | 'system';
+
 export const AdminPage: React.FC = () => {
-  const { session, sessionLoaded, userRole, openAuthModal } = useAuth();
+  const { session, sessionLoaded, userRole, isAdmin, openAuthModal } = useAuth();
+  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [metrics, setMetrics] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [scans, setScans] = useState<any[]>([]);
@@ -54,39 +72,68 @@ export const AdminPage: React.FC = () => {
   }, [session?.access_token]);
 
   useEffect(() => {
-    if (userRole === 'admin') {
+    if (isAdmin || userRole === 'admin') {
       fetchAdminData();
     }
-  }, [userRole, fetchAdminData]);
+  }, [isAdmin, userRole, fetchAdminData]);
 
   if (!sessionLoaded) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
         <TbLoader2 size={36} className="pulse" color="#6366f1" />
-        <p style={{ color: '#94a3b8' }}>Verifying admin authorization...</p>
+        <p style={{ color: '#94a3b8' }}>Verifying administrator credentials...</p>
       </div>
     );
   }
 
   // Access Control Guard: Non-admin users are restricted
-  if (userRole !== 'admin') {
+  if (!isAdmin && userRole !== 'admin') {
     return (
-      <div style={{ maxWidth: '540px', margin: '80px auto', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '18px', padding: '40px 24px', background: 'rgba(18, 25, 44, 0.85)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '24px', backdropFilter: 'blur(16px)' }}>
-        <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'rgba(239, 68, 68, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}>
+      <div
+        style={{
+          maxWidth: '540px',
+          margin: '80px auto',
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '18px',
+          padding: '40px 24px',
+          background: 'rgba(18, 25, 44, 0.75)',
+          border: '1px solid rgba(239, 68, 68, 0.3)',
+          borderRadius: '24px',
+          backdropFilter: 'blur(20px)',
+          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
+        }}
+      >
+        <div
+          style={{
+            width: '64px',
+            height: '64px',
+            borderRadius: '20px',
+            background: 'rgba(239, 68, 68, 0.12)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#ef4444',
+          }}
+        >
           <RiLockPasswordFill size={32} />
         </div>
-        <h2 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#f8fafc' }}>Administrator Access Restricted</h2>
+        <h2 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#f8fafc' }}>
+          Administrator Privileges Required
+        </h2>
         <p style={{ color: '#94a3b8', fontSize: '0.95rem', lineHeight: 1.6 }}>
-          This section is restricted to administrative personnel with elevated platform governance privileges.
+          Your current account is authenticated as a standard tenant. This section is strictly reserved for platform administrators.
         </p>
 
-        <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+        <div style={{ display: 'flex', gap: '12px', marginTop: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
           <Link
             href="/dashboard"
             className="btn btn-primary"
             style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
           >
-            <TbArrowLeft size={16} /> Return to QA Dashboard
+            <TbArrowLeft size={16} /> Open User QA Dashboard
           </Link>
           {!session && (
             <button
@@ -101,58 +148,261 @@ export const AdminPage: React.FC = () => {
     );
   }
 
+  const tabs: { id: AdminTab; label: string; icon: React.ReactNode; count?: number }[] = [
+    { id: 'overview', label: 'Overview', icon: <RiDashboardLine size={16} /> },
+    { id: 'users', label: 'Tenants & Roles', icon: <TbUsers size={16} />, count: users.length },
+    { id: 'scans', label: 'Global Scans', icon: <TbActivity size={16} />, count: scans.length },
+    { id: 'blogs', label: 'Dynamic Blog CMS', icon: <RiArticleLine size={16} /> },
+    { id: 'ai', label: 'AI Reasoning & Keys', icon: <TbBrain size={16} /> },
+    { id: 'system', label: 'Cluster Telemetry', icon: <RiCpuLine size={16} /> },
+  ];
+
   return (
     <motion.div
       className={styles.adminView}
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
-      style={{ padding: '20px 0 60px', display: 'flex', flexDirection: 'column', gap: '28px' }}
+      style={{ padding: '20px 0 60px', display: 'flex', flexDirection: 'column', gap: '24px' }}
     >
-      <div className={styles.adminTopBar}>
+      {/* Top Glass Header */}
+      <div
+        className={styles.adminTopBar}
+        style={{
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(168, 85, 247, 0.25)',
+          borderRadius: '20px',
+          padding: '24px',
+          boxShadow: '0 10px 30px rgba(0, 0, 0, 0.35)',
+        }}
+      >
         <div className={styles.adminTitleBlock}>
-          <h2>
-            <RiShieldUserFill size={26} color="#6366f1" style={{ display: 'inline', marginRight: '8px' }} />
-            JASUSS Admin & Cluster Telemetry
-          </h2>
-          <p>Global platform oversight, revenue metrics, active tenants, and worker nodes.</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div
+              style={{
+                width: '42px',
+                height: '42px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(99, 102, 241, 0.3))',
+                border: '1px solid rgba(168, 85, 247, 0.4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#c084fc',
+              }}
+            >
+              <RiShieldUserFill size={24} />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h2 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 800 }}>Admin Operations Console</h2>
+                <span
+                  style={{
+                    padding: '2px 8px',
+                    borderRadius: '999px',
+                    fontSize: '0.7rem',
+                    fontWeight: 800,
+                    letterSpacing: '0.05em',
+                    background: 'rgba(168, 85, 247, 0.2)',
+                    color: '#c084fc',
+                    border: '1px solid rgba(168, 85, 247, 0.4)',
+                  }}
+                >
+                  SUPER ADMIN
+                </span>
+              </div>
+              <p style={{ margin: '2px 0 0', fontSize: '0.86rem', color: '#94a3b8' }}>
+                System-wide governance, user role promotion, cluster health, and dynamic content.
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div className={styles.adminActions}>
+        <div className={styles.adminActions} style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <Link
+            href="/dashboard"
+            className="btn btn-secondary"
+            style={{
+              padding: '8px 16px',
+              fontSize: '0.84rem',
+              borderRadius: '10px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: 'rgba(99, 102, 241, 0.1)',
+              borderColor: 'rgba(99, 102, 241, 0.3)',
+              color: '#818cf8',
+            }}
+          >
+            <span>Launch QA Scanner (User View)</span>
+            <TbArrowRight size={14} />
+          </Link>
+
           <button
             onClick={fetchAdminData}
             className={styles.exportBtn}
             disabled={loading}
+            style={{ padding: '8px 16px', fontSize: '0.84rem' }}
           >
             <RiRefreshLine size={16} className={loading ? 'pulse' : ''} /> Refresh Telemetry
           </button>
         </div>
       </div>
 
-      {/* 4 Admin KPI Cards */}
-      <AdminMetrics
-        metrics={metrics}
-        usersCount={users.length}
-        scansCount={scans.length}
-      />
+      {/* Glassmorphic Navigation Tabs */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '8px',
+          overflowX: 'auto',
+          padding: '6px',
+          background: 'rgba(15, 23, 42, 0.6)',
+          backdropFilter: 'blur(16px)',
+          borderRadius: '14px',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+        }}
+      >
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '9px 18px',
+                borderRadius: '10px',
+                fontSize: '0.86rem',
+                fontWeight: 600,
+                color: isActive ? '#ffffff' : '#94a3b8',
+                background: isActive
+                  ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.4) 0%, rgba(168, 85, 247, 0.4) 100%)'
+                  : 'transparent',
+                border: `1px solid ${isActive ? 'rgba(168, 85, 247, 0.5)' : 'transparent'}`,
+                boxShadow: isActive ? '0 4px 15px rgba(99, 102, 241, 0.25)' : 'none',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              {tab.icon}
+              <span>{tab.label}</span>
+              {typeof tab.count === 'number' && (
+                <span
+                  style={{
+                    padding: '1px 6px',
+                    borderRadius: '999px',
+                    fontSize: '0.72rem',
+                    background: isActive ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.08)',
+                    color: isActive ? '#fff' : '#64748b',
+                  }}
+                >
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
 
-      {/* Multi-AI Provider & Engine Setup */}
-      <AIProviderConfig />
+      {/* Tab Panels */}
+      <AnimatePresence mode="wait">
+        {activeTab === 'overview' && (
+          <motion.div
+            key="overview"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+            style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}
+          >
+            {/* KPI Cards */}
+            <AdminMetrics
+              metrics={metrics}
+              usersCount={users.length}
+              scansCount={scans.length}
+            />
 
-      {/* Gemini API Key Manager */}
-      <ApiKeyManager />
+            {/* Quick Summary Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+              <SystemTelemetry system={system} />
+              <AIProviderConfig />
+            </div>
 
-      {/* Dynamic Blog Management & Publishing Engine */}
-      <BlogManager />
+            {/* Scans Snippet */}
+            <PipelineInspector scans={scans.slice(0, 10)} />
+          </motion.div>
+        )}
 
-      {/* Host System Telemetry */}
-      <SystemTelemetry system={system} />
+        {activeTab === 'users' && (
+          <motion.div
+            key="users"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+          >
+            <TenantTable
+              users={users}
+              sessionToken={session?.access_token}
+              onRoleUpdated={fetchAdminData}
+            />
+          </motion.div>
+        )}
 
-      {/* Tenant Directory */}
-      <TenantTable users={users} />
+        {activeTab === 'scans' && (
+          <motion.div
+            key="scans"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+          >
+            <PipelineInspector scans={scans} />
+          </motion.div>
+        )}
 
-      {/* Pipeline Inspector */}
-      <PipelineInspector scans={scans} />
+        {activeTab === 'blogs' && (
+          <motion.div
+            key="blogs"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+          >
+            <BlogManager />
+          </motion.div>
+        )}
+
+        {activeTab === 'ai' && (
+          <motion.div
+            key="ai"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+            style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}
+          >
+            <AIProviderConfig />
+            <ApiKeyManager />
+          </motion.div>
+        )}
+
+        {activeTab === 'system' && (
+          <motion.div
+            key="system"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+          >
+            <SystemTelemetry system={system} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };

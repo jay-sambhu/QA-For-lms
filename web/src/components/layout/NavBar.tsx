@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   RiHome5Line,
   RiShieldUserLine,
+  RiShieldUserFill,
   RiLoginCircleLine,
   RiUser3Line,
   RiArticleLine,
@@ -19,8 +20,10 @@ import styles from '../../app/page.module.css';
 
 export const NavBar: React.FC = () => {
   const pathname = usePathname();
-  const { session, userPlan, userRole, openAuthModal, openProfileModal } = useAuth();
+  const { session, userPlan, userRole, isAdmin: authIsAdmin, openAuthModal, openProfileModal } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const userIsAdmin = authIsAdmin || userRole === 'admin';
 
   const isHome = pathname === '/';
   const isDashboard = pathname.startsWith('/dashboard');
@@ -87,12 +90,13 @@ export const NavBar: React.FC = () => {
         </Link>
 
         {/* Admin Link ONLY visible if user has admin role */}
-        {userRole === 'admin' && (
+        {userIsAdmin && (
           <Link
             href="/admin"
             className={`${styles.navLink} ${isAdmin ? styles.navLinkActive : ''}`}
+            style={{ color: '#c084fc' }}
           >
-            <RiShieldUserLine size={17} />
+            <RiShieldUserFill size={17} />
             <span>Admin</span>
           </Link>
         )}
@@ -103,26 +107,84 @@ export const NavBar: React.FC = () => {
         </div>
 
         {session ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {/* Quick direct dashboard navigation pill */}
+            {userIsAdmin ? (
+              <Link
+                href="/admin"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 14px',
+                  borderRadius: '10px',
+                  background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(99, 102, 241, 0.25))',
+                  border: '1px solid rgba(168, 85, 247, 0.45)',
+                  color: '#e9d5ff',
+                  fontSize: '0.82rem',
+                  fontWeight: 700,
+                  boxShadow: '0 0 16px rgba(168, 85, 247, 0.25)',
+                  transition: 'all 0.2s ease',
+                  textDecoration: 'none',
+                }}
+              >
+                <RiShieldUserFill size={15} color="#c084fc" />
+                <span>Admin Console</span>
+              </Link>
+            ) : (
+              <Link
+                href="/dashboard"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 14px',
+                  borderRadius: '10px',
+                  background: 'rgba(99, 102, 241, 0.15)',
+                  border: '1px solid rgba(99, 102, 241, 0.35)',
+                  color: '#818cf8',
+                  fontSize: '0.82rem',
+                  fontWeight: 700,
+                  transition: 'all 0.2s ease',
+                  textDecoration: 'none',
+                }}
+              >
+                <TbDashboard size={15} color="#818cf8" />
+                <span>My Dashboard</span>
+              </Link>
+            )}
+
             <button
               onClick={openProfileModal}
               className={styles.userBadge}
               style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
-              title="Click to view Profile & Settings"
+              title="Click to view Account & Settings"
             >
               <div className={styles.userAvatar}>
                 {session.user?.email ? session.user.email[0].toUpperCase() : <RiUser3Line size={14} />}
               </div>
               <span
                 className={`${styles.tierPill} ${
-                  userPlan === 'pro'
+                  userIsAdmin
+                    ? styles.tierEnterprise
+                    : userPlan === 'pro'
                     ? styles.tierPro
                     : userPlan === 'enterprise'
                     ? styles.tierEnterprise
                     : styles.tierFree
                 }`}
+                style={
+                  userIsAdmin
+                    ? {
+                        background: 'rgba(168, 85, 247, 0.2)',
+                        color: '#c084fc',
+                        border: '1px solid rgba(168, 85, 247, 0.4)',
+                        fontWeight: 800,
+                      }
+                    : undefined
+                }
               >
-                {userPlan.toUpperCase()}
+                {userIsAdmin ? 'ADMIN' : userPlan.toUpperCase()}
               </span>
             </button>
           </div>
@@ -160,15 +222,24 @@ export const NavBar: React.FC = () => {
             </div>
             <span
               className={`${styles.tierPill} ${
-                userPlan === 'pro'
+                userIsAdmin
+                  ? styles.tierEnterprise
+                  : userPlan === 'pro'
                   ? styles.tierPro
                   : userPlan === 'enterprise'
                   ? styles.tierEnterprise
                   : styles.tierFree
               }`}
-              style={{ fontSize: '0.65rem', padding: '1px 6px' }}
+              style={{
+                fontSize: '0.65rem',
+                padding: '1px 6px',
+                background: userIsAdmin ? 'rgba(168, 85, 247, 0.2)' : undefined,
+                color: userIsAdmin ? '#c084fc' : undefined,
+                border: userIsAdmin ? '1px solid rgba(168, 85, 247, 0.4)' : undefined,
+                fontWeight: 800,
+              }}
             >
-              {userPlan.toUpperCase()}
+              {userIsAdmin ? 'ADMIN' : userPlan.toUpperCase()}
             </span>
           </button>
         ) : (
@@ -231,13 +302,14 @@ export const NavBar: React.FC = () => {
               <span>Engineering Blog</span>
             </Link>
 
-            {userRole === 'admin' && (
+            {userIsAdmin && (
               <Link
                 href="/admin"
                 onClick={() => setMobileMenuOpen(false)}
                 className={`${styles.mobileNavLink} ${isAdmin ? styles.mobileNavLinkActive : ''}`}
+                style={{ color: '#c084fc' }}
               >
-                <RiShieldUserLine size={18} />
+                <RiShieldUserFill size={18} />
                 <span>Admin Console</span>
               </Link>
             )}

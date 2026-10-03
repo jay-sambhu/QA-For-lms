@@ -317,6 +317,59 @@ def require_user(authorization: str = Header(None)):
     return user
 
 
+ADMIN_EMAILS = {
+    e.strip().lower()
+    for e in os.environ.get(
+        "ADMIN_EMAILS",
+        "dellizulter@gmail.com,admin@jasuss.tech,admin@jasuss.io",
+    ).split(",")
+    if e.strip()
+}
+
+
+@app.get("/api/v1/auth/me")
+@app.get("/api/v1/user/me")
+async def get_current_user_profile(user=Depends(require_user)):
+    """
+    Retrieve authenticated user profile, resolved directly from backend database.
+    Checks and returns whether user is 'admin' or 'user' to govern routing and permissions.
+    """
+    user_id_val = str(getattr(user, "id", user))
+    user_email = (getattr(user, "email", "") or "").lower()
+
+    with SessionLocal() as db:
+        db_user = db.query(User).filter(User.id == user_id_val).first()
+        if not db_user:
+            initial_role = "admin" if (user_email in ADMIN_EMAILS or user_email.startswith("admin@") or user_email.endswith("@admin.jasuss.io")) else "user"
+            db_user = User(
+                id=user_id_val,
+                email=user_email or f"user_{user_id_val}@example.com",
+                role=initial_role,
+                plan_tier="free"
+            )
+            db.add(db_user)
+            db.commit()
+            db.refresh(db_user)
+        else:
+            # Synchronize admin status for recognized admin emails if not yet set
+            if (user_email in ADMIN_EMAILS or user_email.startswith("admin@") or user_email.endswith("@admin.jasuss.io")) and db_user.role != "admin":
+                db_user.role = "admin"
+                db.commit()
+                db.refresh(db_user)
+
+        is_admin = db_user.role == "admin"
+        return {
+            "id": db_user.id,
+            "email": db_user.email,
+            "role": db_user.role,
+            "is_admin": is_admin,
+            "plan_tier": db_user.plan_tier or "free",
+            "has_gemini_key": bool(db_user.gemini_api_key),
+            "created_at": db_user.created_at.isoformat() if db_user.created_at else None,
+            "dashboard_url": "/admin" if is_admin else "/dashboard",
+        }
+
+
 class ApiKeyUpdateRequest(BaseModel):
     api_key: str
 

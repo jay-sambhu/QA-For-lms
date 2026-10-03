@@ -42,12 +42,33 @@ export default function AuthCallbackPage() {
 
     let redirected = false;
 
+    const routeUserByRole = async (token?: string) => {
+      if (redirected) return;
+      redirected = true;
+      setIsProcessing(false);
+      let target = "/dashboard";
+      if (token) {
+        try {
+          const res = await fetch("/api/v1/auth/me", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const profile = await res.json();
+            if (profile.is_admin || profile.role === "admin") {
+              target = "/admin";
+            }
+          }
+        } catch {
+          // fallback to /dashboard
+        }
+      }
+      router.replace(target);
+    };
+
     // 2. Active auth listener to capture SIGNED_IN or USER_UPDATED events
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (session && !redirected) {
-        redirected = true;
-        setIsProcessing(false);
-        router.replace("/dashboard");
+        routeUserByRole(session.access_token);
       }
     });
 
@@ -61,9 +82,7 @@ export default function AuthCallbackPage() {
           return;
         }
         if (data.session && !redirected) {
-          redirected = true;
-          setIsProcessing(false);
-          router.replace("/dashboard");
+          routeUserByRole(data.session.access_token);
         }
       })
       .catch((err) => {

@@ -7,6 +7,8 @@ import {
   RiUser3Fill,
   RiCloseLine,
   RiShieldUserLine,
+  RiShieldUserFill,
+  RiDashboardLine,
   RiLogoutBoxRLine,
 } from 'react-icons/ri';
 import {
@@ -19,12 +21,15 @@ import {
   TbExternalLink,
   TbTrash,
   TbAlertCircle,
+  TbDashboard,
+  TbArrowRight,
 } from 'react-icons/tb';
 import { useAuth } from '../../context/AuthContext';
 import styles from '../../app/page.module.css';
 
 export const UserProfileModal: React.FC = () => {
-  const { session, userPlan, userRole, profileModalOpen, closeProfileModal, signOut } = useAuth();
+  const { session, userPlan, userRole, isAdmin: authIsAdmin, profileModalOpen, closeProfileModal, signOut } = useAuth();
+  const userIsAdmin = authIsAdmin || userRole === 'admin';
   const [copiedId, setCopiedId] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [defaultViewport, setDefaultViewport] = useState('all');
@@ -163,7 +168,7 @@ export const UserProfileModal: React.FC = () => {
           <div className={styles.modalHeader}>
             <div className={styles.modalLogo}>
               <RiUser3Fill size={20} color="#6366f1" />
-              <span>User Profile & Settings</span>
+              <span>Account &amp; Workspace Hub</span>
             </div>
             <button
               type="button"
@@ -178,22 +183,34 @@ export const UserProfileModal: React.FC = () => {
           <div className={styles.modalBody} style={{ gap: '18px' }}>
             {/* User Identity Card */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px', background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px' }}>
-              <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: 'linear-gradient(135deg, #6366f1, #a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#fff', boxShadow: '0 0 20px rgba(99, 102, 241, 0.4)' }}>
+              <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: userIsAdmin ? 'linear-gradient(135deg, #a855f7, #6366f1)' : 'linear-gradient(135deg, #6366f1, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#fff', boxShadow: '0 0 20px rgba(99, 102, 241, 0.4)' }}>
                 {avatarChar}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc' }}>{email}</span>
                   <span
                     className={`${styles.tierPill} ${
-                      userPlan === 'pro'
+                      userIsAdmin
+                        ? styles.tierEnterprise
+                        : userPlan === 'pro'
                         ? styles.tierPro
                         : userPlan === 'enterprise'
                         ? styles.tierEnterprise
                         : styles.tierFree
                     }`}
+                    style={
+                      userIsAdmin
+                        ? {
+                            background: 'rgba(168, 85, 247, 0.2)',
+                            color: '#c084fc',
+                            border: '1px solid rgba(168, 85, 247, 0.4)',
+                            fontWeight: 800,
+                          }
+                        : undefined
+                    }
                   >
-                    {userPlan.toUpperCase()}
+                    {userIsAdmin ? 'ADMIN' : userPlan.toUpperCase()}
                   </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: '#64748b' }}>
@@ -203,6 +220,85 @@ export const UserProfileModal: React.FC = () => {
                   </button>
                 </div>
               </div>
+            </div>
+
+            {/* Direct Dashboard Launchpad */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b' }}>
+                Quick Dashboard Navigation
+              </div>
+
+              {userIsAdmin ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <Link
+                    href="/admin"
+                    onClick={closeProfileModal}
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: '12px',
+                      background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.22), rgba(99, 102, 241, 0.22))',
+                      border: '1px solid rgba(168, 85, 247, 0.45)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                      textDecoration: 'none',
+                      boxShadow: '0 4px 15px rgba(168, 85, 247, 0.15)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#e9d5ff', fontWeight: 700, fontSize: '0.88rem' }}>
+                      <RiShieldUserFill size={16} color="#c084fc" /> Admin Console
+                    </div>
+                    <span style={{ fontSize: '0.72rem', color: '#c4b5fd' }}>Role governance, telemetry &amp; CMS</span>
+                  </Link>
+
+                  <Link
+                    href="/dashboard"
+                    onClick={closeProfileModal}
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: '12px',
+                      background: 'rgba(99, 102, 241, 0.12)',
+                      border: '1px solid rgba(99, 102, 241, 0.3)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#818cf8', fontWeight: 700, fontSize: '0.88rem' }}>
+                      <TbDashboard size={16} /> QA Dashboard
+                    </div>
+                    <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Multi-device autonomous scans</span>
+                  </Link>
+                </div>
+              ) : (
+                <Link
+                  href="/dashboard"
+                  onClick={closeProfileModal}
+                  style={{
+                    padding: '14px 16px',
+                    borderRadius: '12px',
+                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(79, 70, 229, 0.2))',
+                    border: '1px solid rgba(99, 102, 241, 0.4)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    textDecoration: 'none',
+                    boxShadow: '0 4px 18px rgba(99, 102, 241, 0.2)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(99, 102, 241, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#818cf8' }}>
+                      <TbDashboard size={20} />
+                    </div>
+                    <div>
+                      <div style={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem' }}>Open QA Automation Dashboard</div>
+                      <div style={{ color: '#94a3b8', fontSize: '0.78rem' }}>Launch multi-device crawl runs &amp; inspect reports</div>
+                    </div>
+                  </div>
+                  <TbArrowRight size={18} color="#818cf8" />
+                </Link>
+              )}
             </div>
 
             {/* Google Gemini API Key Configuration Section */}
@@ -369,17 +465,6 @@ export const UserProfileModal: React.FC = () => {
                 </select>
               </div>
             </div>
-
-            {/* Admin console link if admin role */}
-            {userRole === 'admin' && (
-              <Link
-                href="/admin"
-                onClick={closeProfileModal}
-                style={{ padding: '10px 14px', background: 'rgba(168, 85, 247, 0.12)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '10px', color: '#c084fc', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', fontWeight: 600 }}
-              >
-                <RiShieldUserLine size={16} /> Open Admin & Telemetry Console →
-              </Link>
-            )}
 
             {/* Log Out Button */}
             <button

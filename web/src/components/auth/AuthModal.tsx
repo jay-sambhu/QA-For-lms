@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   RiShieldFlashFill,
@@ -19,7 +20,8 @@ import { useAuth, supabase } from '../../context/AuthContext';
 import styles from '../../app/page.module.css';
 
 export const AuthModal: React.FC = () => {
-  const { authModalOpen, authMode, closeAuthModal, openAuthModal } = useAuth();
+  const router = useRouter();
+  const { authModalOpen, authMode, closeAuthModal, openAuthModal, fetchUserProfile } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -162,7 +164,7 @@ export const AuthModal: React.FC = () => {
     setError('');
     setSuccess('');
     try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
@@ -170,6 +172,15 @@ export const AuthModal: React.FC = () => {
       closeAuthModal();
       setEmail('');
       setPassword('');
+
+      let targetUrl = '/dashboard';
+      if (signInData.session?.access_token) {
+        const profile = await fetchUserProfile(signInData.session.access_token);
+        if (profile?.is_admin || profile?.role === 'admin') {
+          targetUrl = '/admin';
+        }
+      }
+      router.push(targetUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign in failed.');
     } finally {
@@ -209,6 +220,8 @@ export const AuthModal: React.FC = () => {
         setEmail('');
         setPassword('');
         setConfirmPassword('');
+        const profile = await fetchUserProfile(data.session.access_token);
+        router.push(profile?.is_admin || profile?.role === 'admin' ? '/admin' : '/dashboard');
       } else {
         setSuccess('Account created! Please check your email to confirm and sign in.');
       }

@@ -40,7 +40,7 @@ def require_admin(authorization: str = Header(None)):
     is_admin = (
         user_meta.get("role") == "admin"
         or app_meta.get("role") == "admin"
-        or str(getattr(user, "role", "")).lower() == "admin"
+        or user_email in ["dellizulter@gmail.com", "admin@jasuss.tech", "admin@jasuss.io"]
         or user_email.startswith("admin@")
         or user_email.endswith("@admin.jasuss.io")
     )
@@ -139,6 +139,21 @@ async def list_admin_users(limit: int = 50) -> Dict[str, Any]:
                 "created_at": u.created_at.isoformat() if u.created_at else None,
             })
         return {"users": user_list, "total": len(user_list)}
+
+
+@admin_router.patch("/users/{user_id}/role")
+async def update_user_role(user_id: str, payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Elevate or demote user role between 'user' and 'admin'."""
+    new_role = payload.get("role")
+    if new_role not in ["user", "admin"]:
+        raise HTTPException(status_code=400, detail="Invalid role. Must be 'user' or 'admin'.")
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found.")
+        user.role = new_role
+        db.commit()
+        return {"status": "success", "user_id": user_id, "role": user.role}
 
 
 @admin_router.get("/scans")
