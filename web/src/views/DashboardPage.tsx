@@ -26,6 +26,7 @@ import {
 } from 'react-icons/tb';
 import { useAuth } from '../context/AuthContext';
 import { ScanForm } from '../components/scan/ScanForm';
+import { ApiKeyManager } from '../components/dashboard/ApiKeyManager';
 import styles from '../app/page.module.css';
 
 export const DashboardPage: React.FC = () => {
@@ -89,6 +90,15 @@ export const DashboardPage: React.FC = () => {
       checkApiKey();
     }
   }, [session, fetchScanHistory, checkApiKey]);
+
+  const scrollToAiManager = () => {
+    const el = document.getElementById('ai-models-manager');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      openProfileModal();
+    }
+  };
 
   const handleStartScan = async (data: {
     url: string;
@@ -325,7 +335,7 @@ export const DashboardPage: React.FC = () => {
 
         {/* Card 3: AI Engine BYOK Status */}
         <div
-          onClick={openProfileModal}
+          onClick={scrollToAiManager}
           style={{
             padding: '20px',
             borderRadius: '16px',
@@ -359,7 +369,7 @@ export const DashboardPage: React.FC = () => {
             {hasApiKey ? `${apiKeysCount} ${apiKeysCount === 1 ? 'Key' : 'Keys'} Active` : 'Key Required'}
           </div>
           <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
-            {hasApiKey ? 'Click to manage multi-model keys' : 'Click to configure AI API Key →'}
+            {hasApiKey ? 'Click to manage multi-model keys ↓' : 'Click to configure AI API Key ↓'}
           </div>
         </div>
 
@@ -434,7 +444,7 @@ export const DashboardPage: React.FC = () => {
           </div>
           <button
             type="button"
-            onClick={openProfileModal}
+            onClick={scrollToAiManager}
             className="btn btn-primary"
             style={{
               padding: '9px 18px',
@@ -447,9 +457,14 @@ export const DashboardPage: React.FC = () => {
               borderColor: 'rgba(255, 255, 255, 0.2)',
             }}
           >
-            <TbKey size={16} /> Enter API Key Now
+            <TbKey size={16} /> Configure API Keys Below ↓
           </button>
         </motion.div>
+      )}
+
+      {/* Dedicated Multi-AI Provider & Model Integration Hub */}
+      {session && (
+        <ApiKeyManager onKeysUpdated={checkApiKey} />
       )}
 
       {/* New Scan Launch Card */}
