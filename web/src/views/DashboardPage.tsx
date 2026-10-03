@@ -36,18 +36,29 @@ export const DashboardPage: React.FC = () => {
   const [recentScans, setRecentScans] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
+  const [apiKeysCount, setApiKeysCount] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'running' | 'failed'>('all');
 
   const checkApiKey = useCallback(async () => {
     if (!session?.access_token) return;
     try {
-      const res = await fetch('/api/v1/user/api-key', {
+      const res = await fetch('/api/v1/user/api-keys', {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       if (res.ok) {
         const data = await res.json();
-        setHasApiKey(!!data.has_key);
+        setHasApiKey(data.count > 0);
+        setApiKeysCount(data.count || 0);
+      } else {
+        const legacyRes = await fetch('/api/v1/user/api-key', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (legacyRes.ok) {
+          const lData = await legacyRes.json();
+          setHasApiKey(!!lData.has_key);
+          setApiKeysCount(lData.has_key ? 1 : 0);
+        }
       }
     } catch {
       // Ignore background network errors
@@ -332,7 +343,7 @@ export const DashboardPage: React.FC = () => {
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#94a3b8' }}>BYOK Gemini Engine</span>
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#94a3b8' }}>AI Models & BYOK</span>
             <TbKey size={20} color={hasApiKey ? '#34d399' : '#f87171'} />
           </div>
           <div style={{ fontSize: '1.25rem', fontWeight: 800, color: hasApiKey ? '#34d399' : '#f87171', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -345,10 +356,10 @@ export const DashboardPage: React.FC = () => {
                 boxShadow: hasApiKey ? '0 0 10px #10b981' : '0 0 10px #ef4444',
               }}
             />
-            {hasApiKey ? 'Key Active' : 'Key Required'}
+            {hasApiKey ? `${apiKeysCount} ${apiKeysCount === 1 ? 'Key' : 'Keys'} Active` : 'Key Required'}
           </div>
           <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
-            {hasApiKey ? 'Click to manage key' : 'Click to configure Gemini API Key →'}
+            {hasApiKey ? 'Click to manage multi-model keys' : 'Click to configure AI API Key →'}
           </div>
         </div>
 
@@ -379,7 +390,7 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Reminder if user has not yet configured their Gemini API key */}
+      {/* Reminder if user has not yet configured their AI API key */}
       {session && hasApiKey === false && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
@@ -414,10 +425,10 @@ export const DashboardPage: React.FC = () => {
             </div>
             <div>
               <div style={{ fontSize: '0.98rem', fontWeight: 700, color: '#f8fafc' }}>
-                Google Gemini API Key Required for AI QA Analysis
+                AI API Key Required for AI QA Analysis
               </div>
               <div style={{ fontSize: '0.84rem', color: '#94a3b8', marginTop: '3px' }}>
-                Your tests crawl freely, but generating AI defect reports requires your personal Gemini API key.
+                Your tests crawl freely, but generating AI defect reports requires an active AI API key (Gemini, OpenAI, Claude, DeepSeek, or Local LLM).
               </div>
             </div>
           </div>

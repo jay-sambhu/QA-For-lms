@@ -16,6 +16,38 @@ class User(Base):
     scans = relationship("Scan", back_populates="user", cascade="all, delete-orphan")
     subscriptions = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
     transactions = relationship("PaymentTransaction", back_populates="user", cascade="all, delete-orphan")
+    api_keys = relationship("UserApiKey", back_populates="user", cascade="all, delete-orphan")
+
+
+class UserApiKey(Base):
+    __tablename__ = "user_api_keys"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider_id = Column(String, nullable=False, server_default="gemini")  # 'gemini', 'openai', 'anthropic', 'deepseek', 'local_llm'
+    key_name = Column(String, nullable=True)
+    api_key = Column(Text, nullable=False)
+    model = Column(String, nullable=True)
+    endpoint = Column(String, nullable=True)
+    is_default = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    user = relationship("User", back_populates="api_keys")
+
+    def to_dict(self):
+        key = self.api_key or ""
+        masked = f"{key[:6]}...{key[-4:]}" if len(key) >= 12 else "••••••••"
+        return {
+            "id": self.id,
+            "provider_id": self.provider_id,
+            "key_name": self.key_name or f"{self.provider_id.capitalize()} Key",
+            "model": self.model,
+            "endpoint": self.endpoint,
+            "masked_key": masked,
+            "is_default": self.is_default,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
 
 
 class Scan(Base):

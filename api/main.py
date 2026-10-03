@@ -25,11 +25,16 @@ from supabase import create_client, Client
 
 try:
     from db import SessionLocal, engine
-    from models import Scan, Base, User, BlogPost
+    from models import Scan, Base, User, BlogPost, UserApiKey
     from worker.tasks import process_query_task
 except ImportError:
     from ..db import SessionLocal, engine
-    from ..models import Scan, Base, BlogPost
+    from ..models import Scan, Base, User, BlogPost, UserApiKey
+
+try:
+    from core.ai_config import AI_PROVIDERS_REGISTRY
+except ImportError:
+    from ..core.ai_config import AI_PROVIDERS_REGISTRY
 
 try:
     from .rate_limiter import rate_limit_dependency
@@ -374,15 +379,202 @@ class ApiKeyUpdateRequest(BaseModel):
     api_key: str
 
 
+class UserApiKeyCreateRequest(BaseModel):
+    provider_id: str = "gemini"
+    api_key: str
+    key_name: Optional[str] = None
+    model: Optional[str] = None
+    endpoint: Optional[str] = None
+    is_default: Optional[bool] = False
+
+
+@app.get("/api/v1/user/api-keys")
+async def list_user_api_keys(user=Depends(require_user)):
+    """Retrieve all multi-model API keys configured by the user, with provider info, plan quota, and limit status."""
+    user_id_val = str(getattr(user, "id", user))
+    with SessionLocal() as db:
+        db_user = db.query(User).filter(User.id == user_id_val).first()
+        plan_tier = (db_user.plan_tier or "free").lower() if db_user else "free"
+        is_paid = plan_tier in ["pro", "enterprise", "team", "growth"] or (db_user and db_user.role == "admin")
+
+        # If user has a legacy gemini_api_key on the User record but nothing in user_api_keys, auto-migrate it
+        existing_keys = db.query(UserApiKey).filter(UserApiKey.user_id == user_id_val).order_by(UserApiKey.created_at.asc()).all()
+        if not existing_keys and db_user and db_user.gemini_api_key:
+            legacy_key = UserApiKey(
+                user_id=user_id_val,
+                provider_id="gemini",
+                key_name="Google Gemini Studio",
+                api_key=db_user.gemini_api_key,
+                model="gemini-2.5-flash",
+                is_default=True,
+            )
+            db.add(legacy_key)
+            db.commit()
+            db.refresh(legacy_key)
+            existing_keys = [legacy_key]
+
+        max_allowed = 999 if is_paid else 3
+        count = len(existing_keys)
+
+        return {
+            "keys": [k.to_dict() for k in existing_keys],
+            "count": count,
+            "max_allowed": max_allowed,
+            "plan_tier": plan_tier,
+            "is_paid": is_paid,
+            "can_add_more": is_paid or count < 3,
+            "has_key": count > 0,
+            "supported_providers": [
+                {
+                    "id": pid,
+                    "name": meta.name,
+                    "description": meta.description,
+                    "models": meta.models,
+                    "default_model": meta.default_model,
+                    "requires_endpoint": meta.requires_endpoint,
+                    "default_endpoint": meta.default_endpoint,
+                }
+                for pid, meta in AI_PROVIDERS_REGISTRY.items()
+            ],
+        }
+
+
+@app.post("/api/v1/user/api-keys")
+async def create_user_api_key(payload: UserApiKeyCreateRequest, user=Depends(require_user)):
+    """
+    Add a new AI provider API key for the current user.
+    Enforces subscription paywall: Free users cannot add more than 3 API keys.
+    """
+    key_str = (payload.api_key or "").strip()
+    provider_id = (payload.provider_id or "gemini").lower()
+
+    if not key_str and provider_id != "local_llm":
+        raise HTTPException(status_code=400, detail="API Key cannot be empty.")
+
+    if provider_id not in AI_PROVIDERS_REGISTRY:
+        raise HTTPException(status_code=400, detail=f"Unsupported AI provider: {provider_id}")
+
+    user_id_val = str(getattr(user, "id", user))
+    with SessionLocal() as db:
+        db_user = db.query(User).filter(User.id == user_id_val).first()
+        if not db_user:
+            db_user = User(
+                id=user_id_val,
+                email=getattr(user, "email", f"user_{user_id_val}@example.com"),
+                role="user",
+                plan_tier="free"
+            )
+            db.add(db_user)
+            db.commit()
+
+        # Check existing count
+        existing_count = db.query(UserApiKey).filter(UserApiKey.user_id == user_id_val).count()
+        plan_tier = (db_user.plan_tier or "free").lower()
+        is_paid = plan_tier in ["pro", "enterprise", "team", "growth"] or db_user.role == "admin"
+
+        if existing_count >= 3 and not is_paid:
+            raise HTTPException(
+                status_code=403,
+                detail="API Key limit reached (3/3). Free tier accounts are limited to a maximum of 3 API keys. Please start a subscription plan to add unlimited API integrations."
+            )
+
+        provider_meta = AI_PROVIDERS_REGISTRY[provider_id]
+        model = payload.model or provider_meta.default_model
+
+        is_first = existing_count == 0
+        should_be_default = payload.is_default or is_first
+
+        if should_be_default:
+            db.query(UserApiKey).filter(UserApiKey.user_id == user_id_val).update({"is_default": False})
+
+        new_key = UserApiKey(
+            user_id=user_id_val,
+            provider_id=provider_id,
+            key_name=payload.key_name or f"{provider_meta.name} Key",
+            api_key=key_str,
+            model=model,
+            endpoint=payload.endpoint or provider_meta.default_endpoint,
+            is_default=should_be_default,
+        )
+        db.add(new_key)
+
+        # Synchronize legacy gemini_api_key if this is gemini or default
+        if provider_id == "gemini" or should_be_default:
+            db_user.gemini_api_key = key_str
+
+        db.commit()
+        db.refresh(new_key)
+
+        return {
+            "status": "success",
+            "message": f"Successfully integrated {provider_meta.name} API key.",
+            "key": new_key.to_dict(),
+        }
+
+
+@app.put("/api/v1/user/api-keys/{key_id}/default")
+async def set_default_user_api_key(key_id: str, user=Depends(require_user)):
+    """Set a specific API key as the default for QA report generation."""
+    user_id_val = str(getattr(user, "id", user))
+    with SessionLocal() as db:
+        db_user = db.query(User).filter(User.id == user_id_val).first()
+        target_key = db.query(UserApiKey).filter(UserApiKey.id == key_id, UserApiKey.user_id == user_id_val).first()
+        if not target_key:
+            raise HTTPException(status_code=404, detail="API Key not found.")
+
+        db.query(UserApiKey).filter(UserApiKey.user_id == user_id_val).update({"is_default": False})
+        target_key.is_default = True
+
+        if db_user:
+            db_user.gemini_api_key = target_key.api_key
+        db.commit()
+
+        return {"status": "success", "message": f"{target_key.key_name} is now your active default API key."}
+
+
+@app.delete("/api/v1/user/api-keys/{key_id}")
+async def delete_user_api_key_by_id(key_id: str, user=Depends(require_user)):
+    """Delete an API key integration."""
+    user_id_val = str(getattr(user, "id", user))
+    with SessionLocal() as db:
+        db_user = db.query(User).filter(User.id == user_id_val).first()
+        target_key = db.query(UserApiKey).filter(UserApiKey.id == key_id, UserApiKey.user_id == user_id_val).first()
+        if not target_key:
+            raise HTTPException(status_code=404, detail="API Key not found.")
+
+        was_default = target_key.is_default
+        db.delete(target_key)
+        db.commit()
+
+        remaining = db.query(UserApiKey).filter(UserApiKey.user_id == user_id_val).order_by(UserApiKey.created_at.desc()).all()
+        if was_default:
+            if remaining:
+                remaining[0].is_default = True
+                if db_user:
+                    db_user.gemini_api_key = remaining[0].api_key
+            else:
+                if db_user:
+                    db_user.gemini_api_key = None
+            db.commit()
+
+        return {"status": "success", "message": "API Key removed successfully."}
+
+
 @app.get("/api/v1/user/api-key")
 async def get_user_gemini_api_key(user=Depends(require_user)):
     """Retrieve whether the current user has configured their Gemini API key, with masked preview."""
     user_id_val = str(getattr(user, "id", user))
     with SessionLocal() as db:
         db_user = db.query(User).filter(User.id == user_id_val).first()
-        if not db_user or not db_user.gemini_api_key:
+        key = db_user.gemini_api_key.strip() if db_user and db_user.gemini_api_key else None
+        if not key:
+            default_k = db.query(UserApiKey).filter(UserApiKey.user_id == user_id_val, UserApiKey.is_default == True).first()
+            if not default_k:
+                default_k = db.query(UserApiKey).filter(UserApiKey.user_id == user_id_val).first()
+            if default_k:
+                key = default_k.api_key.strip()
+        if not key:
             return {"has_key": False, "masked_key": None}
-        key = db_user.gemini_api_key.strip()
         masked = f"{key[:6]}...{key[-4:]}" if len(key) >= 12 else "••••••••"
         return {"has_key": True, "masked_key": masked}
 
@@ -409,6 +601,23 @@ async def update_user_gemini_api_key(payload: ApiKeyUpdateRequest, user=Depends(
             )
             db.add(db_user)
         db_user.gemini_api_key = key
+
+        # Synchronize with UserApiKey
+        existing_gemini = db.query(UserApiKey).filter(UserApiKey.user_id == user_id_val, UserApiKey.provider_id == "gemini").first()
+        if existing_gemini:
+            existing_gemini.api_key = key
+            existing_gemini.is_default = True
+        else:
+            new_k = UserApiKey(
+                user_id=user_id_val,
+                provider_id="gemini",
+                key_name="Google Gemini Studio",
+                api_key=key,
+                model="gemini-2.5-flash",
+                is_default=True,
+            )
+            db.add(new_k)
+
         db.commit()
 
     masked = f"{key[:6]}...{key[-4:]}" if len(key) >= 12 else "••••••••"
@@ -428,7 +637,8 @@ async def delete_user_gemini_api_key(user=Depends(require_user)):
         db_user = db.query(User).filter(User.id == user_id_val).first()
         if db_user:
             db_user.gemini_api_key = None
-            db.commit()
+        db.query(UserApiKey).filter(UserApiKey.user_id == user_id_val, UserApiKey.provider_id == "gemini").delete()
+        db.commit()
     return {"status": "success", "has_key": False, "masked_key": None, "message": "Gemini API key removed."}
 
 
@@ -688,12 +898,18 @@ async def create_scan(
         db_user_check = db.query(_User).filter(_User.id == user_id_val).first()
         user_plan = getattr(db_user_check, "plan_tier", "free") if db_user_check else "free"
         user_gemini_api_key = getattr(db_user_check, "gemini_api_key", None) if db_user_check else None
+        if not user_gemini_api_key and db_user_check:
+            active_k = db.query(UserApiKey).filter(UserApiKey.user_id == user_id_val, UserApiKey.is_default == True).first()
+            if not active_k:
+                active_k = db.query(UserApiKey).filter(UserApiKey.user_id == user_id_val).first()
+            if active_k:
+                user_gemini_api_key = active_k.api_key
 
-    # Strict BYOK enforcement: User must supply their personal Gemini API key in Profile
+    # Strict BYOK enforcement: User must supply their personal Gemini or AI API key in Profile
     if not user_gemini_api_key:
         raise HTTPException(
             status_code=400,
-            detail="Google Gemini API key is required to generate the AI QA report. Please enter your Gemini API key in your Profile settings before launching a scan."
+            detail="Google Gemini API key is required to generate the AI QA report. Please configure your Gemini or AI provider API key in your Workspace Profile settings before launching a scan."
         )
 
     plan_max_pages = _get_plan_max_pages(user_plan)
