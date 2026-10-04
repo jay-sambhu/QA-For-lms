@@ -1192,6 +1192,7 @@ async def get_scan_status(scan_id: UUID, user=Depends(require_user)):
 
     if scan.get("status") == "completed":
         response["results"] = None
+        response["has_cloud_report"] = False
         report_candidates = []
         if scan.get("json_path"):
             resolved = _resolve_report_path(scan["json_path"])
@@ -1214,9 +1215,37 @@ async def get_scan_status(scan_id: UUID, user=Depends(require_user)):
                         data = json.load(f)
                         if isinstance(data, dict) and ("summary" in data or "findings" in data or "url" in data or "score" in data):
                             response["results"] = data
+                            response["has_cloud_report"] = True
                             break
                 except (OSError, json.JSONDecodeError) as error:
                     logger.error("Could not read report for scan %s from %s: %s", scan_id, report_path, error)
+
+        # Fallback: load report JSON from Supabase Storage if not on local disk
+        if not response.get("results"):
+            try:
+                from core.supabase_storage import get_scan_report_file
+                cloud_bytes = get_scan_report_file(user_id_val, str(scan_id), "json")
+                if cloud_bytes:
+                    data = json.loads(cloud_bytes.decode("utf-8"))
+                    if isinstance(data, dict) and ("summary" in data or "findings" in data or "url" in data or "score" in data):
+                        response["results"] = data
+                        response["has_cloud_report"] = True
+                    else:
+                        # File exists in Supabase but is not a valid JSON report
+                        response["has_cloud_report"] = True
+            except Exception as e:
+                logger.debug("Could not fetch report from Supabase Storage for scan %s: %s", scan_id, e)
+                # Even if download failed, check if the file listing says it exists
+                try:
+                    from core.supabase_storage import get_supabase_client, BUCKET_NAME
+                    sb = get_supabase_client()
+                    if sb:
+                        folder = f"{user_id_val}/{str(scan_id)}"
+                        items = sb.storage.from_(BUCKET_NAME).list(folder)
+                        if items and len(items) > 0:
+                            response["has_cloud_report"] = True
+                except Exception:
+                    pass
 
     return response
 

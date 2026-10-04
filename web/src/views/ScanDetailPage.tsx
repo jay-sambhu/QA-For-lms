@@ -28,11 +28,16 @@ export const ScanDetailPage: React.FC = () => {
   const [logFeed, setLogFeed] = useState<string[]>([
     'Initializing isolated browser environments across viewports...',
   ]);
+  // When a scan is completed but the report data isn't available inline,
+  // show cloud download buttons instead of looping forever.
+  const [reportUnavailable, setReportUnavailable] = useState(false);
 
   const [retryCount, setRetryCount] = useState(0);
 
   // Keep track of consecutive polling errors to avoid console flood and handle backoff
   const consecutiveErrorsRef = useRef(0);
+  // How many times we've seen status=completed with no results payload yet
+  const completedNoResultsRef = useRef(0);
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isPollingRef = useRef(false);
 
@@ -75,6 +80,8 @@ export const ScanDetailPage: React.FC = () => {
   // Manual retry handler
   const handleManualRetry = () => {
     consecutiveErrorsRef.current = 0;
+    completedNoResultsRef.current = 0;
+    setReportUnavailable(false);
     setError('');
     setStatus('pending');
     setRetryCount((c) => c + 1);
@@ -219,12 +226,28 @@ export const ScanDetailPage: React.FC = () => {
         if (data.status === 'completed') {
           setStatus('completed');
           if (data.results) {
+            // Report data arrived inline — render it immediately
+            completedNoResultsRef.current = 0;
             setResults(data.results);
             stopPolling();
             return;
           }
-          // If status is completed but results file is still finalizing, poll once more with short delay
-          scheduleNextPoll(1000);
+          // The backend confirmed the report is in Supabase but too large to serve inline
+          if (data.has_cloud_report) {
+            stopPolling();
+            setInitialLoading(false);
+            setReportUnavailable(true);
+            return;
+          }
+          // Report not yet available anywhere — poll a few more times then show download UI
+          completedNoResultsRef.current += 1;
+          if (completedNoResultsRef.current >= 5) {
+            stopPolling();
+            setInitialLoading(false);
+            setReportUnavailable(true);
+            return;
+          }
+          scheduleNextPoll(2000);
           return;
         }
 
@@ -349,8 +372,8 @@ export const ScanDetailPage: React.FC = () => {
         </motion.div>
       )}
 
-      {/* Completed state while report is generating / finalizing */}
-      {status === 'completed' && !results && (
+      {/* Completed state while report is finalizing — transient, max ~10 s */}
+      {status === 'completed' && !results && !reportUnavailable && (
         <motion.div
           className={styles.actionPanel}
           initial={{ opacity: 0, scale: 0.98 }}
@@ -374,10 +397,84 @@ export const ScanDetailPage: React.FC = () => {
               <RefreshCw size={14} /> Refresh Report Status
             </button>
           </div>
-          {/* Ad banner — keep user engaged while report finalizes */}
-          <AdBanner
-            isAuthenticated={!!session?.access_token}
-          />
+          <AdBanner isAuthenticated={!!session?.access_token} />
+        </motion.div>
+      )}
+
+      {/* Completed but report not available inline — offer direct cloud downloads */}
+      {status === 'completed' && !results && reportUnavailable && (
+        <motion.div
+          className={styles.actionPanel}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{ textAlign: 'center', padding: '48px 24px' }}
+        >
+          <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>📋</div>
+          <h3 style={{ fontSize: '1.35rem', color: '#f8fafc', marginBottom: '8px' }}>
+            Report Ready — Download Directly
+          </h3>
+          <p style={{ color: '#94a3b8', maxWidth: '520px', margin: '0 auto 28px', lineHeight: 1.6 }}>
+            Your QA report has been generated and saved to your cloud storage. Use the buttons below to
+            download it directly — no re-scanning required.
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
+            {(['pdf', 'xlsx', 'json', 'md'] as const).map((fmt) => (
+              <a
+                key={fmt}
+                href={`/api/v1/scans/${scanId}/download/${fmt}`}
+                download
+                onClick={(e) => {
+                  // Attach auth header via fetch instead of bare <a> for protected endpoints
+                  e.preventDefault();
+                  fetch(`/api/v1/scans/${scanId}/download/${fmt}`, {
+                    headers: { Authorization: `Bearer ${session?.access_token}` },
+                  })
+                    .then((r) => r.blob())
+                    .then((blob) => {
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `qa-report-${scanId}.${fmt}`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      setTimeout(() => URL.revokeObjectURL(url), 1000);
+                    })
+                    .catch(() => alert('Download failed. Please try again.'));
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '10px 20px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  background:
+                    fmt === 'pdf'
+                      ? 'rgba(239,68,68,0.1)'
+                      : fmt === 'xlsx'
+                      ? 'rgba(52,211,153,0.1)'
+                      : 'rgba(99,102,241,0.1)',
+                  color:
+                    fmt === 'pdf' ? '#f87171' : fmt === 'xlsx' ? '#34d399' : '#818cf8',
+                  textDecoration: 'none',
+                  fontSize: '0.88rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                }}
+              >
+                {fmt.toUpperCase()}
+              </a>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={handleManualRetry}
+            className="btn btn-secondary"
+            style={{ padding: '8px 16px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <RefreshCw size={14} /> Try Load Report Again
+          </button>
         </motion.div>
       )}
 
