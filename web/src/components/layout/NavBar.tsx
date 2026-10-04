@@ -40,19 +40,17 @@ export const NavBar: React.FC = () => {
   return (
     <header className={styles.header} style={{ position: 'relative', zIndex: 100 }}>
       {/* Brand Logo */}
-      <Link href="/" className={styles.logo} onClick={() => setMobileMenuOpen(false)}>
-        <div className={styles.logoIconWrapper} style={{ overflow: 'hidden', padding: 0 }}>
-          <img
-            src="/logo.png"
-            alt="JASUSS.TECH"
-            width={38}
-            height={38}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }}
-          />
-        </div>
-        <div>
+      <Link href="/" className={styles.logo} onClick={() => setMobileMenuOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
+        <img
+          src="/logo-icon.png"
+          alt="JASUSS.TECH Emblem"
+          width={36}
+          height={36}
+          style={{ width: '36px', height: '36px', objectFit: 'contain', filter: 'drop-shadow(0 0 10px rgba(56, 189, 248, 0.5))' }}
+        />
+        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'baseline', fontWeight: 800, letterSpacing: '-0.02em', fontSize: '1.25rem', color: '#f8fafc' }}>
           <span>JASUSS</span>
-          <span className={styles.logoSub}>.TECH</span>
+          <span className={styles.logoSub} style={{ color: '#38bdf8', marginLeft: '2px', fontWeight: 900 }}>.TECH</span>
         </div>
       </Link>
 

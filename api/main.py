@@ -726,23 +726,58 @@ def run_qa_pipeline(
     username: Optional[str] = None,
     password: Optional[str] = None,
     gemini_api_key: Optional[str] = None,
+    ai_keys_pool: Optional[list] = None,
+    provider_id: Optional[str] = None,
+    model_name: Optional[str] = None,
+    endpoint: Optional[str] = None,
 ):
-    """Run the QA pipeline as a background subprocess using user's isolated API key."""
+    """Run the QA pipeline as a background subprocess using user's isolated API keys with seamless failover."""
     try:
         update_scan(scan_id, "running")
     except Exception as error:
         logger.exception("Failed to update scan %s to running: %s", scan_id, error)
         return
 
-    # If key wasn't explicitly passed, retrieve it from the user's database record
-    if not gemini_api_key:
+    # If key pool wasn't explicitly passed, retrieve it from the user's database records
+    if not ai_keys_pool:
         try:
             with SessionLocal() as db:
-                db_u = db.query(User).filter(User.id == str(user_id)).first()
-                if db_u and db_u.gemini_api_key:
-                    gemini_api_key = db_u.gemini_api_key.strip()
+                user_keys = (
+                    db.query(UserApiKey)
+                    .filter(UserApiKey.user_id == str(user_id))
+                    .order_by(UserApiKey.is_default.desc(), UserApiKey.created_at.desc())
+                    .all()
+                )
+                if user_keys:
+                    ai_keys_pool = [
+                        {
+                            "api_key": k.api_key,
+                            "provider_id": k.provider_id or "gemini",
+                            "model": k.model,
+                            "endpoint": k.endpoint,
+                            "label": k.label or k.provider_id,
+                        }
+                        for k in user_keys
+                        if k.api_key
+                    ]
         except Exception as e:
-            logger.warning("Could not fetch gemini_api_key from DB for user %s: %s", user_id, e)
+            logger.warning("Could not fetch ai_keys_pool from DB for user %s: %s", user_id, e)
+
+    # If primary key wasn't explicitly passed, use the first key from the pool or DB User record
+    if not gemini_api_key:
+        if ai_keys_pool and len(ai_keys_pool) > 0:
+            gemini_api_key = ai_keys_pool[0].get("api_key")
+            provider_id = provider_id or ai_keys_pool[0].get("provider_id")
+            model_name = model_name or ai_keys_pool[0].get("model")
+            endpoint = endpoint or ai_keys_pool[0].get("endpoint")
+        else:
+            try:
+                with SessionLocal() as db:
+                    db_u = db.query(User).filter(User.id == str(user_id)).first()
+                    if db_u and db_u.gemini_api_key:
+                        gemini_api_key = db_u.gemini_api_key.strip()
+            except Exception as e:
+                logger.warning("Could not fetch gemini_api_key from DB for user %s: %s", user_id, e)
 
     # --run-id namespaces this scan's output files, so concurrent scans cannot
     # pick up each other's results.
@@ -763,6 +798,18 @@ def run_qa_pipeline(
 
     if gemini_api_key:
         cmd.extend(["--api-key", gemini_api_key])
+
+    if ai_keys_pool:
+        cmd.extend(["--ai-keys-pool", json.dumps(ai_keys_pool)])
+
+    if provider_id:
+        cmd.extend(["--provider", provider_id])
+
+    if model_name:
+        cmd.extend(["--model", model_name])
+
+    if endpoint:
+        cmd.extend(["--endpoint", endpoint])
 
     if auth_token:
         # Sanitize auth_token: strip newlines to prevent argument injection
@@ -804,7 +851,12 @@ def run_qa_pipeline(
             if password and password in safe_line:
                 safe_line = safe_line.replace(password, "[REDACTED_PASSWORD]")
             if gemini_api_key and gemini_api_key in safe_line:
-                safe_line = safe_line.replace(gemini_api_key, "[REDACTED_GEMINI_KEY]")
+                safe_line = safe_line.replace(gemini_api_key, "[REDACTED_AI_KEY]")
+            if ai_keys_pool:
+                for k_cfg in ai_keys_pool:
+                    k_val = k_cfg.get("api_key")
+                    if k_val and k_val in safe_line:
+                        safe_line = safe_line.replace(k_val, "[REDACTED_AI_KEY]")
             sys.stdout.write(safe_line)
             sys.stdout.flush()
 
@@ -894,22 +946,53 @@ async def create_scan(
 
     # Enforce plan-based page limit using billing PLANS config
     from models import User as _User  # noqa: PLC0415
+    ai_keys_pool = []
+    primary_provider_id = "gemini"
+    primary_model_name = None
+    primary_endpoint = None
+
     with SessionLocal() as db:
         db_user_check = db.query(_User).filter(_User.id == user_id_val).first()
         user_plan = getattr(db_user_check, "plan_tier", "free") if db_user_check else "free"
         user_gemini_api_key = getattr(db_user_check, "gemini_api_key", None) if db_user_check else None
-        if not user_gemini_api_key and db_user_check:
-            active_k = db.query(UserApiKey).filter(UserApiKey.user_id == user_id_val, UserApiKey.is_default == True).first()
-            if not active_k:
-                active_k = db.query(UserApiKey).filter(UserApiKey.user_id == user_id_val).first()
-            if active_k:
-                user_gemini_api_key = active_k.api_key
+
+        user_keys = (
+            db.query(UserApiKey)
+            .filter(UserApiKey.user_id == user_id_val)
+            .order_by(UserApiKey.is_default.desc(), UserApiKey.created_at.desc())
+            .all()
+        )
+        for k in user_keys:
+            if k.api_key:
+                ai_keys_pool.append({
+                    "api_key": k.api_key,
+                    "provider_id": k.provider_id or "gemini",
+                    "model": k.model,
+                    "endpoint": k.endpoint,
+                    "label": k.label or k.provider_id,
+                })
+
+        if user_gemini_api_key and not any(k["api_key"] == user_gemini_api_key for k in ai_keys_pool):
+            ai_keys_pool.append({
+                "api_key": user_gemini_api_key,
+                "provider_id": "gemini",
+                "model": "gemini-2.5-flash",
+                "endpoint": None,
+                "label": "Gemini API Key",
+            })
+
+        if ai_keys_pool:
+            if not user_gemini_api_key:
+                user_gemini_api_key = ai_keys_pool[0]["api_key"]
+            primary_provider_id = ai_keys_pool[0].get("provider_id") or "gemini"
+            primary_model_name = ai_keys_pool[0].get("model")
+            primary_endpoint = ai_keys_pool[0].get("endpoint")
 
     # Strict BYOK enforcement: User must supply their personal Gemini or AI API key in Profile
-    if not user_gemini_api_key:
+    if not user_gemini_api_key and not ai_keys_pool:
         raise HTTPException(
             status_code=400,
-            detail="Google Gemini API key is required to generate the AI QA report. Please configure your Gemini or AI provider API key in your Workspace Profile settings before launching a scan."
+            detail="An AI provider API key is required to generate the AI QA report. Please configure your API key (Gemini, OpenAI, Claude, DeepSeek, or Local LLM) in your Workspace Profile settings before launching a scan."
         )
 
     plan_max_pages = _get_plan_max_pages(user_plan)
@@ -966,6 +1049,10 @@ async def create_scan(
                     username,
                     password_raw,
                     user_gemini_api_key,
+                    ai_keys_pool,
+                    primary_provider_id,
+                    primary_model_name,
+                    primary_endpoint,
                 ],
                 task_id=scan_id,
             )
@@ -988,6 +1075,10 @@ async def create_scan(
             username,
             password_raw,
             user_gemini_api_key,
+            ai_keys_pool=ai_keys_pool,
+            provider_id=primary_provider_id,
+            model_name=primary_model_name,
+            endpoint=primary_endpoint,
         )
 
     return {

@@ -252,11 +252,11 @@ export const AuthModal: React.FC = () => {
           <div className={styles.modalHeader}>
             <div className={styles.modalLogo} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <img
-                src="/logo.png"
+                src="/logo-icon.png"
                 alt="JASUSS.TECH"
-                width={24}
-                height={24}
-                style={{ borderRadius: '6px', objectFit: 'cover' }}
+                width={26}
+                height={26}
+                style={{ objectFit: 'contain', filter: 'drop-shadow(0 0 6px rgba(56, 189, 248, 0.45))' }}
               />
               <span>JASUSS Workspace</span>
             </div>

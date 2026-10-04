@@ -10,11 +10,11 @@ export const Footer: React.FC = () => {
         <div style={styles.brandCol}>
           <Link href="/" style={styles.logoLink}>
             <img
-              src="/logo.png"
+              src="/logo-icon.png"
               alt="JASUSS.TECH Logo"
-              width={38}
-              height={38}
-              style={styles.logoImg}
+              width={36}
+              height={36}
+              style={{ width: "36px", height: "36px", objectFit: "contain", filter: "drop-shadow(0 0 10px rgba(56, 189, 248, 0.45))" }}
             />
             <span style={styles.logoText}>
               JASUSS<span style={{ color: "#38bdf8" }}>.TECH</span>
