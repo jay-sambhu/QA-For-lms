@@ -120,6 +120,21 @@ export const UserProfileModal: React.FC = () => {
     }
   }, [profileModalOpen, session?.access_token]);
 
+  // Close on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && profileModalOpen) {
+        closeProfileModal();
+      }
+    };
+    if (profileModalOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [profileModalOpen, closeProfileModal]);
+
   // Update selected model when provider changes
   const handleProviderSelect = (pid: string) => {
     setSelectedProvider(pid);
@@ -245,8 +260,10 @@ export const UserProfileModal: React.FC = () => {
 
   return (
     <AnimatePresence>
-      <motion.div
-        className={styles.modalOverlay}
+      {profileModalOpen && session && (
+        <motion.div
+          key="user-profile-modal-overlay"
+          className={styles.modalOverlay}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -269,9 +286,14 @@ export const UserProfileModal: React.FC = () => {
             </div>
             <button
               type="button"
-              onClick={closeProfileModal}
+              onClick={(e) => {
+                e.stopPropagation();
+                closeProfileModal();
+              }}
               className={styles.modalCloseBtn}
               title="Close"
+              aria-label="Close"
+              style={{ cursor: 'pointer', zIndex: 10 }}
             >
               <RiCloseLine size={20} />
             </button>
@@ -987,7 +1009,10 @@ export const UserProfileModal: React.FC = () => {
             {/* Log Out Button */}
             <button
               type="button"
-              onClick={signOut}
+              onClick={async () => {
+                closeProfileModal();
+                await signOut();
+              }}
               className="btn btn-secondary"
               style={{ padding: '10px 16px', color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.3)', background: 'rgba(239, 68, 68, 0.06)', width: '100%', marginTop: '4px' }}
             >
@@ -997,6 +1022,7 @@ export const UserProfileModal: React.FC = () => {
           </div>
         </motion.div>
       </motion.div>
+      )}
     </AnimatePresence>
   );
 };
