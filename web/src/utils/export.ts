@@ -844,11 +844,59 @@ export const handleDownloadReport = async ({
   const safeScanId = scanId || results?.report_metadata?.scan_id || results?.id || 'unknown';
 
   if (normFormat === 'pdf') {
+    // Attempt direct download of pre-generated PDF from Supabase storage
+    try {
+      if (sessionToken && safeScanId !== 'unknown') {
+        const headers: Record<string, string> = { Authorization: `Bearer ${sessionToken}` };
+        const response = await fetch(`/api/v1/scans/${safeScanId}/download/pdf`, { headers });
+        if (response.ok) {
+          const disposition = response.headers.get('content-disposition');
+          const filename = extractFilenameFromDisposition(disposition, `qa-report-${safeScanId}.pdf`);
+          const blob = await response.blob();
+          const typedBlob = new Blob([blob], { type: 'application/pdf' });
+          const downloadUrl = window.URL.createObjectURL(typedBlob);
+          const anchor = document.createElement('a');
+          anchor.href = downloadUrl;
+          anchor.download = filename;
+          document.body.appendChild(anchor);
+          anchor.click();
+          document.body.removeChild(anchor);
+          setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 1000);
+          return;
+        }
+      }
+    } catch {
+      // Fallback to client-side generation below
+    }
     downloadPDF(results, safeScanId);
     return;
   }
 
   if (normFormat === 'excel' || normFormat === 'xlsx') {
+    // Attempt direct download of pre-generated Excel workbook from Supabase storage
+    try {
+      if (sessionToken && safeScanId !== 'unknown') {
+        const headers: Record<string, string> = { Authorization: `Bearer ${sessionToken}` };
+        const response = await fetch(`/api/v1/scans/${safeScanId}/download/xlsx`, { headers });
+        if (response.ok) {
+          const disposition = response.headers.get('content-disposition');
+          const filename = extractFilenameFromDisposition(disposition, `qa-report-${safeScanId}.xlsx`);
+          const blob = await response.blob();
+          const typedBlob = new Blob([blob], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+          const downloadUrl = window.URL.createObjectURL(typedBlob);
+          const anchor = document.createElement('a');
+          anchor.href = downloadUrl;
+          anchor.download = filename;
+          document.body.appendChild(anchor);
+          anchor.click();
+          document.body.removeChild(anchor);
+          setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 1000);
+          return;
+        }
+      }
+    } catch {
+      // Fallback to client-side generation below
+    }
     downloadExcel(results, safeScanId);
     return;
   }

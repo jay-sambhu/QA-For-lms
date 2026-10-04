@@ -39,6 +39,8 @@ import {
   TbSparkles,
   TbLoader2,
   TbLock,
+  TbCloudDownload,
+  TbDatabase,
 } from 'react-icons/tb';
 import { useAuth } from '../../context/AuthContext';
 import styles from '../../app/page.module.css';
@@ -114,9 +116,40 @@ export const UserProfileModal: React.FC = () => {
     }
   };
 
+  // Supabase Storage Quota (20 MB per user)
+  const [storageData, setStorageData] = useState<{
+    used_bytes: number;
+    limit_bytes: number;
+    used_mb: number;
+    limit_mb: number;
+    used_percent: number;
+    file_count: number;
+    is_quota_exceeded: boolean;
+  } | null>(null);
+  const [loadingStorage, setLoadingStorage] = useState(false);
+
+  const fetchStorageUsage = async () => {
+    if (!session?.access_token) return;
+    setLoadingStorage(true);
+    try {
+      const res = await fetch('/api/v1/user/storage', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStorageData(data);
+      }
+    } catch (e) {
+      console.error('Failed to load storage usage:', e);
+    } finally {
+      setLoadingStorage(false);
+    }
+  };
+
   useEffect(() => {
     if (profileModalOpen && session?.access_token) {
       fetchUserApiKeys();
+      fetchStorageUsage();
     }
   }, [profileModalOpen, session?.access_token]);
 
@@ -954,6 +987,110 @@ export const UserProfileModal: React.FC = () => {
                   <SiAnthropic size={11} /> Anthropic Console <TbExternalLink size={11} />
                 </a>
               </div>
+            </div>
+
+            {/* Supabase Cloud Storage (20 MB Per-User Limit) */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+                padding: '16px',
+                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(56, 189, 248, 0.05))',
+                border: '1px solid rgba(56, 189, 248, 0.22)',
+                borderRadius: '14px',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <TbDatabase size={20} color="#38bdf8" />
+                  <span style={{ fontSize: '0.92rem', fontWeight: 700, color: '#f8fafc' }}>
+                    Supabase Cloud Report Storage
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      background: 'rgba(56, 189, 248, 0.15)',
+                      color: '#38bdf8',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <TbCloudDownload size={13} /> Direct Cloud Download
+                  </span>
+                </div>
+              </div>
+
+              {/* Progress bar & metrics */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                  <span style={{ color: '#94a3b8' }}>
+                    Storage Used ({storageData?.file_count ?? 0} files)
+                  </span>
+                  <span style={{ fontWeight: 700, color: storageData?.is_quota_exceeded ? '#ef4444' : '#f8fafc' }}>
+                    {storageData ? `${storageData.used_mb.toFixed(2)} MB / ${storageData.limit_mb.toFixed(0)} MB` : '0.00 MB / 20 MB'}
+                    {' '}
+                    <span style={{ color: '#64748b', fontWeight: 500 }}>
+                      ({storageData ? `${storageData.used_percent.toFixed(1)}%` : '0%'})
+                    </span>
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    width: '100%',
+                    height: '8px',
+                    borderRadius: '4px',
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${Math.min(storageData?.used_percent ?? 0, 100)}%`,
+                      background: storageData?.is_quota_exceeded
+                        ? 'linear-gradient(90deg, #ef4444, #f87171)'
+                        : (storageData?.used_percent ?? 0) > 75
+                        ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
+                        : 'linear-gradient(90deg, #38bdf8, #6366f1)',
+                      borderRadius: '4px',
+                      transition: 'width 0.4s ease',
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.74rem', color: '#64748b' }}>
+                <span>Dedicated 20 MB bucket quota per user</span>
+                <span style={{ color: '#94a3b8' }}>Reports stored in Supabase bucket</span>
+              </div>
+
+              {storageData?.is_quota_exceeded && (
+                <div
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: '8px',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    color: '#fca5a5',
+                    fontSize: '0.75rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <TbAlertCircle size={15} color="#ef4444" />
+                  <span>20 MB quota limit reached. Delete older scans to free cloud storage space.</span>
+                </div>
+              )}
             </div>
 
             {/* Subscription & Plan Status */}
