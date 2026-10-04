@@ -17,7 +17,7 @@ if os.path.exists(_env_file):
 else:
     load_dotenv(override=True)
 
-from fastapi import Depends, FastAPI, HTTPException, Header, BackgroundTasks
+from fastapi import Depends, FastAPI, HTTPException, Header, BackgroundTasks, Response
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, SecretStr, field_validator
 from supabase import create_client, Client
@@ -890,6 +890,50 @@ def run_qa_pipeline(
             md_path = line.split(":", 1)[1].strip()
 
     if json_path and md_path and result_returncode == 0:
+        # Pre-render PDF and XLSX so all formats are immediately available without regeneration
+        user_results_dir = os.path.join(ROOT_DIR, "user_data", str(user_id), "results")
+        os.makedirs(user_results_dir, exist_ok=True)
+        pdf_path = os.path.join(user_results_dir, f"final_qa_report_{scan_id}.pdf")
+        xlsx_path = os.path.join(user_results_dir, f"final_qa_report_{scan_id}.xlsx")
+
+        try:
+            _generate_pdf_from_json(json_path, pdf_path)
+        except Exception as e:
+            logger.warning("Could not pre-render PDF for scan %s: %s", scan_id, e)
+            pdf_path = None
+
+        try:
+            _generate_xlsx_from_json(json_path, xlsx_path)
+        except Exception as e:
+            logger.warning("Could not pre-render XLSX for scan %s: %s", scan_id, e)
+            xlsx_path = None
+
+        # Upload to Supabase Storage bucket under {user_id}/{scan_id}/report.{ext}
+        # Enforcing strict 20 MB per-user bucket quota
+        try:
+            from core.supabase_storage import upload_scan_reports
+            files_to_upload = {"json": json_path, "md": md_path}
+            if pdf_path and os.path.isfile(pdf_path):
+                files_to_upload["pdf"] = pdf_path
+            if xlsx_path and os.path.isfile(xlsx_path):
+                files_to_upload["xlsx"] = xlsx_path
+
+            storage_res = upload_scan_reports(
+                user_id=str(user_id),
+                scan_id=str(scan_id),
+                local_files=files_to_upload,
+            )
+            if storage_res.get("success"):
+                logger.info("Successfully stored scan %s report artifacts in Supabase bucket", scan_id)
+            else:
+                logger.warning(
+                    "Supabase storage upload note for scan %s: %s",
+                    scan_id,
+                    storage_res.get("message") or storage_res.get("reason"),
+                )
+        except Exception as e:
+            logger.error("Error uploading reports to Supabase for scan %s: %s", scan_id, e)
+
         update_scan(
             scan_id,
             "completed",
@@ -1182,7 +1226,7 @@ async def get_scan_status(scan_id: UUID, user=Depends(require_user)):
 @app.delete("/api/v1/scans/{scan_id}")
 @app.delete("/api/scans/{scan_id}")
 async def cancel_scan(scan_id: UUID, user=Depends(require_user)):
-    """Cancel an ongoing scan or mark it stopped."""
+    """Cancel an ongoing scan or mark it stopped and clean up cloud storage to free quota."""
     user_id_val = str(getattr(user, "id", user))
     with SessionLocal() as db:
         scan = db.query(Scan).filter(Scan.id == str(scan_id)).first()
@@ -1198,8 +1242,44 @@ async def cancel_scan(scan_id: UUID, user=Depends(require_user)):
                 logger.info("Revoked Celery task for scan %s", scan_id)
             except Exception as e:
                 logger.warning("Could not revoke Celery task for scan %s: %s", scan_id, e)
+            try:
+                from core.supabase_storage import delete_scan_reports
+                delete_scan_reports(user_id_val, str(scan_id))
+            except Exception as e:
+                logger.warning("Could not delete Supabase files on cancel: %s", e)
             return {"status": "cancelled", "message": "Scan has been stopped."}
-        return {"status": scan.status, "message": f"Scan is already {scan.status}."}
+
+        # If completed/failed/stopped, also remove from Supabase bucket to free up the 20 MB quota
+        try:
+            from core.supabase_storage import delete_scan_reports
+            delete_scan_reports(user_id_val, str(scan_id))
+        except Exception as e:
+            logger.warning("Could not delete Supabase files on scan delete: %s", e)
+        return {"status": scan.status, "message": f"Scan is {scan.status}."}
+
+
+@app.get("/api/v1/user/storage")
+@app.get("/api/storage/usage")
+async def get_storage_usage(user=Depends(require_user)):
+    """
+    Return user's Supabase Storage quota and usage under the 20 MB per-user limit.
+    """
+    user_id_val = str(getattr(user, "id", user))
+    try:
+        from core.supabase_storage import get_user_storage_usage
+        return get_user_storage_usage(user_id_val)
+    except Exception as e:
+        logger.error("Error fetching storage usage for %s: %s", user_id_val, e)
+        return {
+            "used_bytes": 0,
+            "limit_bytes": 20 * 1024 * 1024,
+            "used_mb": 0.0,
+            "limit_mb": 20.0,
+            "used_percent": 0.0,
+            "remaining_bytes": 20 * 1024 * 1024,
+            "file_count": 0,
+            "is_quota_exceeded": False,
+        }
 
 def _get_download_media_type(format_ext: str) -> str:
     """Return canonical media type for download formats."""
@@ -1292,13 +1372,34 @@ async def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require
     if scan.get("status") != "completed":
         raise HTTPException(status_code=400, detail="Scan is not completed")
 
-    if file_type_norm == "json":
+    canonical_ext = "xlsx" if file_type_norm in ("excel", "xlsx") else ("md" if file_type_norm in ("markdown", "md") else file_type_norm)
+    canonical_filename = f"qa-report-{scan_id}.{canonical_ext}"
+    media_type = _get_download_media_type(canonical_ext)
+
+    # 1. DIRECT DOWNLOAD FROM SUPABASE STORAGE BUCKET (ZERO RE-GENERATION)
+    try:
+        from core.supabase_storage import get_scan_report_file
+        cloud_bytes = get_scan_report_file(user_id_val, str(scan_id), canonical_ext)
+        if cloud_bytes:
+            return Response(
+                content=cloud_bytes,
+                media_type=media_type,
+                headers={
+                    "Content-Disposition": f'attachment; filename="{canonical_filename}"',
+                    "Access-Control-Expose-Headers": "Content-Disposition",
+                    "X-Report-Source": "supabase-storage",
+                },
+            )
+    except Exception as e:
+        logger.debug("Supabase storage direct download check for scan %s: %s", scan_id, e)
+
+    # 2. FALLBACK: Check local disk or generate if missing, then upload to Supabase for subsequent downloads
+    stored_path = None
+    if canonical_ext == "json":
         stored_path = scan.get("json_path")
-        canonical_ext = "json"
-    elif file_type_norm in ("md", "markdown"):
+    elif canonical_ext == "md":
         stored_path = scan.get("report_path") or scan.get("md_path")
-        canonical_ext = "md"
-    elif file_type_norm == "pdf":
+    elif canonical_ext == "pdf":
         candidates = [
             scan.get("pdf_path"),
             os.path.join("user_data", user_id_val, "results", f"final_qa_report_{scan_id}.pdf"),
@@ -1313,8 +1414,7 @@ async def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require
                 target_pdf = os.path.join(ROOT_DIR, "user_data", user_id_val, "results", f"final_qa_report_{scan_id}.pdf")
                 _generate_pdf_from_json(json_resolved, target_pdf)
                 stored_path = _relative_to_root(target_pdf)
-        canonical_ext = "pdf"
-    elif file_type_norm in ("xlsx", "excel"):
+    elif canonical_ext == "xlsx":
         candidates = [
             scan.get("xlsx_path"),
             os.path.join("user_data", user_id_val, "results", f"final_qa_report_{scan_id}.xlsx"),
@@ -1329,7 +1429,6 @@ async def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require
                 target_xlsx = os.path.join(ROOT_DIR, "user_data", user_id_val, "results", f"final_qa_report_{scan_id}.xlsx")
                 _generate_xlsx_from_json(json_resolved, target_xlsx)
                 stored_path = _relative_to_root(target_xlsx)
-        canonical_ext = "xlsx"
 
     if not stored_path:
         raise HTTPException(status_code=404, detail="Report file path not found")
@@ -1338,8 +1437,12 @@ async def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require
     if not resolved or not os.path.isfile(resolved):
         raise HTTPException(status_code=404, detail="Report file not found on disk")
 
-    canonical_filename = f"qa-report-{scan_id}.{canonical_ext}"
-    media_type = _get_download_media_type(canonical_ext)
+    # Upload to Supabase Storage lazily so future accesses are served directly from the bucket
+    try:
+        from core.supabase_storage import upload_scan_reports
+        upload_scan_reports(user_id_val, str(scan_id), {canonical_ext: resolved})
+    except Exception as e:
+        logger.debug("Lazy upload to Supabase storage note: %s", e)
 
     return FileResponse(
         path=resolved,
@@ -1348,8 +1451,24 @@ async def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require
         headers={
             "Content-Disposition": f'attachment; filename="{canonical_filename}"',
             "Access-Control-Expose-Headers": "Content-Disposition",
+            "X-Report-Source": "local-disk",
         },
     )
+
+
+@app.get("/api/v1/scans/{scan_id}/signed-url/{file_type}")
+async def get_scan_report_signed_url_endpoint(scan_id: UUID, file_type: str, user=Depends(require_user)):
+    """Return a direct signed download URL from Supabase Storage."""
+    user_id_val = str(getattr(user, "id", user))
+    scan = get_scan(str(scan_id))
+    if not scan or str(scan.get("user_id")) != user_id_val:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    from core.supabase_storage import get_scan_report_signed_url
+    url = get_scan_report_signed_url(user_id_val, str(scan_id), file_type)
+    if not url:
+        raise HTTPException(status_code=404, detail="Report file not found in Supabase Storage")
+    return {"signed_url": url, "scan_id": str(scan_id), "file_type": file_type}
 
 
 @app.get("/")
