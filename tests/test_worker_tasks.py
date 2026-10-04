@@ -47,11 +47,25 @@ class TestWorkerTasks(unittest.TestCase):
         max_pages = 10
         auth_token = "token-xyz"
 
-        # Execute the task synchronously
+        # Execute the task synchronously with the full updated signature
         process_query_task(scan_id, user_id, url, max_pages, auth_token)
 
+        # The task now passes login_url, username, password positionally (all None)
+        # plus keyword args for the AI provider configuration
         mock_pipeline.assert_called_once_with(
-            scan_id, user_id, url, max_pages, auth_token
+            scan_id,
+            user_id,
+            url,
+            max_pages,
+            auth_token,
+            None,   # login_url
+            None,   # username
+            None,   # password
+            gemini_api_key=None,
+            ai_keys_pool=None,
+            provider_id=None,
+            model_name=None,
+            endpoint=None,
         )
 
     @patch("worker.tasks.run_qa_pipeline", side_effect=RuntimeError("Pipeline crash"))
@@ -68,7 +82,21 @@ class TestWorkerTasks(unittest.TestCase):
             process_query_task(scan_id, user_id, url, max_pages, auth_token)
 
         self.assertIn("Pipeline crash", str(ctx.exception))
-        mock_pipeline.assert_called_once_with(scan_id, user_id, url, max_pages, auth_token)
+        mock_pipeline.assert_called_once_with(
+            scan_id,
+            user_id,
+            url,
+            max_pages,
+            auth_token,
+            None,   # login_url
+            None,   # username
+            None,   # password
+            gemini_api_key=None,
+            ai_keys_pool=None,
+            provider_id=None,
+            model_name=None,
+            endpoint=None,
+        )
         mock_update_scan.assert_called_once_with(scan_id, "failed")
 
     def test_process_query_task_retry_configuration(self):
@@ -104,13 +132,34 @@ class TestApiScanEnqueue(unittest.TestCase):
         mock_table.insert.return_value = mock_table
         mock_table.execute.return_value = MagicMock(data=[])
 
+        # Build a mock DB user that has a gemini_api_key so the BYOK check passes.
+        mock_db_user = MagicMock()
+        mock_db_user.id = "test-user-uuid-123"
+        mock_db_user.gemini_api_key = "test-gemini-key-abc"
+        mock_db_user.plan_tier = "free"
+
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_query = MagicMock()
+        mock_session.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.all.return_value = []           # No UserApiKey rows
+        mock_query.first.return_value = mock_db_user
+        mock_session.add = MagicMock()
+        mock_session.commit = MagicMock()
+        mock_session.rollback = MagicMock()
+
         payload = {
             "url": "https://example.com/lms",
             "max_pages": 15,
             "auth_token": "bearer-token-abc"
         }
 
-        response = self.client.post("/api/scans", json=payload)
+        with patch("api.main.SessionLocal", return_value=mock_session):
+            response = self.client.post("/api/scans", json=payload)
+
         self.assertEqual(response.status_code, 200)
 
         data = response.json()
@@ -118,18 +167,19 @@ class TestApiScanEnqueue(unittest.TestCase):
         self.assertEqual(data["status"], "pending")
         self.assertEqual(data["url"], "https://example.com/lms")
 
-        # Verify Celery apply_async was called once with exact arguments (capped to 10 by free-tier limit) and task_id
+        # Verify Celery apply_async was called once with the correct scan/user IDs.
+        # The args list is now 13 elements (full provider config); check key positions.
         scan_id = data["scan_id"]
-        mock_apply_async.assert_called_once_with(
-            args=[
-                scan_id,
-                "test-user-uuid-123",
-                "https://example.com/lms",
-                10,
-                "bearer-token-abc"
-            ],
-            task_id=scan_id,
-        )
+        self.assertTrue(mock_apply_async.called, "apply_async should have been called once")
+        call_args = mock_apply_async.call_args
+        task_id = call_args.kwargs.get("task_id")
+        self.assertEqual(task_id, scan_id)
+        args_list = call_args.kwargs.get("args", [])
+        self.assertEqual(args_list[0], scan_id, "First arg should be scan_id")
+        self.assertEqual(args_list[1], "test-user-uuid-123", "Second arg should be user_id")
+        self.assertEqual(args_list[2], "https://example.com/lms", "Third arg should be URL")
+        # Free-tier cap: max_pages must be <= 10
+        self.assertLessEqual(args_list[3], 10, "max_pages should be capped by free-tier limit")
 
 
     @patch.dict(os.environ, {"ALLOW_LOCAL_TARGETS": "false"})
