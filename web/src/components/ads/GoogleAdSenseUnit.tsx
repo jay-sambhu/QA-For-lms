@@ -15,7 +15,6 @@ interface GoogleAdSenseUnitProps {
   responsive?: boolean;
   style?: React.CSSProperties;
   className?: string;
-  refreshKey?: string | number;
 }
 
 export const GoogleAdSenseUnit: React.FC<GoogleAdSenseUnitProps> = ({
@@ -25,7 +24,6 @@ export const GoogleAdSenseUnit: React.FC<GoogleAdSenseUnitProps> = ({
   responsive = true,
   style = {},
   className = "",
-  refreshKey,
 }) => {
   const adClient = client || process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID || "ca-pub-9888591397038663";
   const adSlot = slot || process.env.NEXT_PUBLIC_ADSENSE_SLOT_ID || "";
@@ -33,25 +31,25 @@ export const GoogleAdSenseUnit: React.FC<GoogleAdSenseUnitProps> = ({
   const [adLoaded, setAdLoaded] = useState(false);
   const [isTestMode, setIsTestMode] = useState(false);
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const isLocal =
-        window.location.hostname === "localhost" ||
-        window.location.hostname === "127.0.0.1" ||
-        window.location.hostname.endsWith(".local");
-      setIsTestMode(isLocal);
+  // An <ins> slot may only be pushed once; pushing again (e.g. on re-render or before the
+  // AdSense script loads) throws "already have ads" and violates AdSense refresh policy.
+  const pushedRef = useRef(false);
 
-      try {
-        // Push ad request to Google AdSense queue
-        if (adRef.current && (!adRef.current.innerHTML || adRef.current.getAttribute("data-adsbygoogle-status") !== "done")) {
-          (window.adsbygoogle = window.adsbygoogle || []).push({});
-          setAdLoaded(true);
-        }
-      } catch (e) {
-        console.warn("[Google AdSense] Ad request push warning:", e);
-      }
+  useEffect(() => {
+    const host = window.location.hostname;
+    const isLocal = host === "localhost" || host === "127.0.0.1" || host.endsWith(".local");
+    setIsTestMode(isLocal);
+    if (pushedRef.current || !adRef.current) return;
+    // Set test mode on the element before the first push (state would apply too late)
+    if (isLocal) adRef.current.setAttribute("data-ad-test", "on");
+    pushedRef.current = true;
+    try {
+      (window.adsbygoogle = window.adsbygoogle || []).push({});
+      setAdLoaded(true);
+    } catch (e) {
+      console.warn("[Google AdSense] Ad request push warning:", e);
     }
-  }, [refreshKey, adClient, adSlot]);
+  }, []);
 
   return (
     <div style={{ position: "relative", width: "100%", overflow: "hidden", ...style }} className={className}>

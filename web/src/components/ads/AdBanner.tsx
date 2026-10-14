@@ -1,7 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { ExternalLink, ChevronRight, Volume2, VolumeX, ShieldCheck } from "lucide-react";
+import {
+  LuExternalLink as ExternalLink,
+  LuChevronRight as ChevronRight,
+  LuVolume2 as Volume2,
+  LuVolumeX as VolumeX,
+  LuShieldCheck as ShieldCheck,
+} from "react-icons/lu";
 import { GoogleAdSenseUnit } from "./GoogleAdSenseUnit";
 
 // ─── Ad data ─────────────────────────────────────────────────────────────────
@@ -59,14 +65,22 @@ const ADS: AdCreative[] = [
 function trackImpression(adId: string) {
   if (typeof window !== "undefined") {
     const key = `ad_impressions_${adId}`;
-    localStorage.setItem(key, String(parseInt(localStorage.getItem(key) || "0", 10) + 1));
+    try {
+      localStorage.setItem(key, String(parseInt(localStorage.getItem(key) || "0", 10) + 1));
+    } catch {
+      // storage unavailable (private mode / blocked) — tracking is best-effort
+    }
   }
 }
 
 function trackClick(adId: string) {
   if (typeof window !== "undefined") {
     const key = `ad_clicks_${adId}`;
-    localStorage.setItem(key, String(parseInt(localStorage.getItem(key) || "0", 10) + 1));
+    try {
+      localStorage.setItem(key, String(parseInt(localStorage.getItem(key) || "0", 10) + 1));
+    } catch {
+      // storage unavailable (private mode / blocked) — tracking is best-effort
+    }
   }
 }
 
@@ -152,7 +166,6 @@ export const AdBanner: React.FC<AdBannerProps> = ({ isAuthenticated, onCycleComp
       <div style={S.adsenseContainer}>
         <GoogleAdSenseUnit
           client={adClient}
-          refreshKey={adIndex}
           style={{ minHeight: "60px" }}
         />
       </div>

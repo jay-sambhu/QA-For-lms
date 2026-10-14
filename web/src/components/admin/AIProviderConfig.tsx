@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   RiGoogleFill,
   RiOpenaiFill,
@@ -38,7 +38,8 @@ export const AIProviderConfig: React.FC = () => {
   const [testing, setTesting] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
 
-  const fetchProviders = async () => {
+  const fetchProviders = useCallback(async () => {
+    if (!session?.access_token) return;
     try {
       const headers: Record<string, string> = {};
       if (session?.access_token) {
@@ -60,11 +61,11 @@ export const AIProviderConfig: React.FC = () => {
     } catch (e) {
       console.error('Failed to load AI providers:', e);
     }
-  };
+  }, [session?.access_token]);
 
   useEffect(() => {
     fetchProviders();
-  }, [session?.access_token]);
+  }, [fetchProviders]);
 
   const handleProviderSelect = (pId: string) => {
     setSelectedProvider(pId);
@@ -97,7 +98,7 @@ export const AIProviderConfig: React.FC = () => {
           temperature: temperature,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || 'Failed to save AI configuration');
 
       setFeedback({ type: 'success', text: `Active AI Engine updated to ${selectedProvider.toUpperCase()} (${selectedModel})` });
@@ -126,7 +127,7 @@ export const AIProviderConfig: React.FC = () => {
           api_key: apiKeyInput || undefined,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || 'Test connection failed');
 
       if (data.status === 'warning') {

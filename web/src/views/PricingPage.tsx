@@ -1,8 +1,8 @@
 "use client";
 
 import React from 'react';
-import { motion } from 'framer-motion';
-import { Sparkles } from 'lucide-react';
+import { m as motion } from 'framer-motion';
+import { LuSparkles as Sparkles } from 'react-icons/lu';
 import { PricingCards } from '../components/pricing/PricingCards';
 import styles from '../app/page.module.css';
 

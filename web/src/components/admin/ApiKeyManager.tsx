@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { RiKey2Line, RiAddLine, RiDeleteBinLine, RiRefreshLine } from 'react-icons/ri';
 import { useAuth } from '../../context/AuthContext';
 import styles from '../../app/page.module.css';
@@ -19,7 +19,8 @@ export const ApiKeyManager: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchKeys = async () => {
+  const fetchKeys = useCallback(async () => {
+    if (!session?.access_token) return;
     setLoading(true);
     try {
       const headers: Record<string, string> = {};
@@ -36,11 +37,11 @@ export const ApiKeyManager: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [session?.access_token]);
 
   useEffect(() => {
     fetchKeys();
-  }, [session?.access_token]);
+  }, [fetchKeys]);
 
   const handleAddKey = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,10 +63,10 @@ export const ApiKeyManager: React.FC = () => {
         setNewKey('');
         fetchKeys();
       } else {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         setError(data.detail || 'Failed to add API key');
       }
-    } catch (err) {
+    } catch {
       setError('Network error');
     } finally {
       setLoading(false);

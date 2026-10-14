@@ -23,16 +23,14 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
   const [leftDismissed, setLeftDismissed] = useState(false);
   const [rightDismissed, setRightDismissed] = useState(false);
 
-  // Paid users (Pro / Enterprise) enjoy a 100% ad-free experience
+  // Paid users (Pro / Enterprise) enjoy a 100% ad-free experience. Only the rails are
+  // gated: keeping the wrapper stable avoids remounting the whole app when the plan loads.
   const isPaidUser = userPlan === "pro" || userPlan === "enterprise";
-  if (isPaidUser) {
-    return <>{children}</>;
-  }
 
   return (
     <div className="sideAdRailsContainer">
       {/* Left Sidebar Rail */}
-      {!leftDismissed && (
+      {!isPaidUser && !leftDismissed && (
         <aside className="sideAdRail sideAdRailLeft" aria-label="Sponsored QA Tools">
           <div className="sideAdRailHeader">
             <span className="sideAdBadge">
@@ -119,7 +117,7 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
       </div>
 
       {/* Right Sidebar Rail */}
-      {!rightDismissed && (
+      {!isPaidUser && !rightDismissed && (
         <aside className="sideAdRail sideAdRailRight" aria-label="Developer Ecosystem">
           <div className="sideAdRailHeader">
             <span className="sideAdBadge">

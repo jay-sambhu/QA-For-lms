@@ -37,6 +37,9 @@ export const ReportHeader: React.FC<ReportHeaderProps> = ({
         format,
         sessionToken,
       });
+    } catch (e) {
+      console.error('Report export failed:', e);
+      alert('Could not export the report. Please try again.');
     } finally {
       setDownloadingFormat(null);
     }

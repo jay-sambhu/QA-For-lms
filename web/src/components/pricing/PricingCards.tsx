@@ -13,6 +13,7 @@ export const PricingCards: React.FC = () => {
   const [selectedGateway, setSelectedGateway] = useState<'stripe' | 'lemonsqueezy' | 'razorpay' | 'paypal'>('stripe');
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingMessage, setBillingMessage] = useState('');
+  const [billingOk, setBillingOk] = useState(true);
 
   const handleCheckout = async (planId: string) => {
     if (!session) {
@@ -32,11 +33,15 @@ export const PricingCards: React.FC = () => {
         body: JSON.stringify({
           plan_id: planId,
           gateway: selectedGateway,
+          // Without these the backend defaults to http://localhost:3000 after payment
+          success_url: `${window.location.origin}/dashboard?billing=success`,
+          cancel_url: `${window.location.origin}/pricing?billing=cancel`,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || 'Checkout failed');
 
+      setBillingOk(true);
       if (data.checkout_url) {
         setBillingMessage(`Redirecting to secure ${selectedGateway.toUpperCase()} checkout...`);
         setTimeout(() => {
@@ -47,6 +52,7 @@ export const PricingCards: React.FC = () => {
         await refreshPlan();
       }
     } catch (err) {
+      setBillingOk(false);
       setBillingMessage(err instanceof Error ? err.message : 'Checkout failed.');
     } finally {
       setBillingLoading(false);
@@ -63,8 +69,8 @@ export const PricingCards: React.FC = () => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
       {billingMessage && (
-        <div className={`${styles.authBanner} ${billingMessage.includes('Redirecting') || billingMessage.includes('success') ? styles.authBannerSuccess : styles.authBannerError}`}>
-          {billingMessage.includes('Redirecting') || billingMessage.includes('success') ? (
+        <div className={`${styles.authBanner} ${billingOk ? styles.authBannerSuccess : styles.authBannerError}`}>
+          {billingOk ? (
             <RiCheckboxCircleFill size={18} />
           ) : (
             <RiErrorWarningLine size={18} />
@@ -117,7 +123,11 @@ export const PricingCards: React.FC = () => {
           <button
             type="button"
             disabled={billingLoading}
-            onClick={() => handleCheckout('free')}
+            onClick={() => {
+              if (window.confirm('Switch to the free Starter plan? Paid features will be removed.')) {
+                handleCheckout('free');
+              }
+            }}
             className={styles.planSelectBtn}
           >
             Select Starter ($0)

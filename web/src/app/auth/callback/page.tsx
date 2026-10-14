@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/context/AuthContext";
+import { supabase, useAuth } from "@/context/AuthContext";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
+  const { openAuthModal } = useAuth();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(true);
 
@@ -45,7 +46,7 @@ export default function AuthCallbackPage() {
     const routeUserByRole = async (token?: string) => {
       if (redirected) return;
       redirected = true;
-      setIsProcessing(false);
+      // Keep the spinner until router.replace() navigates away (clearing it here flashed the error card)
       let target = "/dashboard";
       if (token) {
         try {
@@ -217,7 +218,10 @@ export default function AuthCallbackPage() {
               </button>
               <button
                 type="button"
-                onClick={() => router.replace("/?auth=signin")}
+                onClick={() => {
+                  router.replace("/");
+                  openAuthModal("signin");
+                }}
                 style={{
                   padding: "10px 18px",
                   borderRadius: "8px",

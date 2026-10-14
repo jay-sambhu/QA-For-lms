@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { createClient, type Session } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -69,8 +69,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isAdmin = userRole === 'admin' || userProfile?.is_admin === true;
 
-  const fetchUserProfile = async (accessToken?: string): Promise<UserProfile | null> => {
-    const token = accessToken || session?.access_token;
+  // Always read the latest session inside async callbacks (avoids stale closures
+  // from the mount-time effect and the onAuthStateChange subscription).
+  // Updated wherever setSession is called.
+  const sessionRef = useRef<Session | null>(null);
+
+  const fetchUserProfile = useCallback(async (accessToken?: string): Promise<UserProfile | null> => {
+    const token = accessToken || sessionRef.current?.access_token;
     if (!token) {
       setUserProfile(null);
       setUserRole('user');
@@ -78,10 +83,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return null;
     }
 
+    const startUserId = sessionRef.current?.user?.id;
     try {
       const res = await fetch('/api/v1/auth/me', {
         headers: { Authorization: `Bearer ${token}` },
       });
+      // Ignore late responses if the user changed meanwhile (e.g. signed out / switched account)
+      if (sessionRef.current?.user?.id !== startUserId) return null;
       if (res.ok) {
         const data: UserProfile = await res.json();
         setUserProfile(data);
@@ -93,27 +101,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Backend user profile check failed, using fallback:', e);
     }
 
-    // Safety fallback if backend is momentarily unreachable
-    if (session?.user) {
-      const email = (session.user.email || '').toLowerCase();
-      const appRole = session.user.app_metadata?.role || session.user.user_metadata?.role;
-      const derivedRole =
-        appRole === 'admin' ||
-        email === 'dellizulter@gmail.com' ||
-        email.startsWith('admin@') ||
-        email.endsWith('@admin.jasuss.io')
-          ? 'admin'
-          : 'user';
-      setUserRole(derivedRole);
+    // Safety fallback if backend is momentarily unreachable. Only trust app_metadata
+    // (server-controlled); user_metadata is editable by the user. The backend still
+    // enforces admin access on every /api/v1/admin/* call.
+    const current = sessionRef.current;
+    if (current?.user && current.user.id === startUserId) {
+      const email = (current.user.email || '').toLowerCase();
+      const appRole = current.user.app_metadata?.role;
+      setUserRole(appRole === 'admin' || email === 'dellizulter@gmail.com' ? 'admin' : 'user');
     }
     return null;
-  };
+  }, []);
 
-  const refreshPlan = async () => {
-    if (session?.access_token) {
-      await fetchUserProfile(session.access_token);
+  const refreshPlan = useCallback(async () => {
+    if (sessionRef.current?.access_token) {
+      await fetchUserProfile(sessionRef.current.access_token);
     }
-  };
+  }, [fetchUserProfile]);
 
   useEffect(() => {
     if (!supabase) {
@@ -121,12 +125,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    let lastProfileToken: string | null = null;
+    const loadProfileFor = (next: Session) => {
+      // getSession() and the INITIAL_SESSION event both deliver the same token; fetch once.
+      if (lastProfileToken === next.access_token) return;
+      lastProfileToken = next.access_token;
+      void fetchUserProfile(next.access_token);
+    };
+
     supabase.auth
       .getSession()
-      .then(async ({ data, error }) => {
+      .then(({ data, error }) => {
         if (!error && data.session) {
+          sessionRef.current = data.session;
           setSession(data.session);
-          await fetchUserProfile(data.session.access_token);
+          loadProfileFor(data.session);
         }
       })
       .finally(() => {
@@ -135,11 +148,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      sessionRef.current = nextSession;
       setSession(nextSession);
       if (nextSession) {
-        await fetchUserProfile(nextSession.access_token);
+        // Token refreshes don't change the user's plan/role — skip the extra /auth/me round trip
+        if (event !== 'TOKEN_REFRESHED') loadProfileFor(nextSession);
       } else {
+        lastProfileToken = null;
         setUserProfile(null);
         setUserPlan('free');
         setUserRole('user');
@@ -147,7 +163,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [fetchUserProfile]);
 
   const openAuthModal = (mode: 'signin' | 'signup' = 'signin') => {
     setAuthMode(mode);
@@ -177,6 +193,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (typeof window !== 'undefined') {
       localStorage.removeItem('jasuss_session');
     }
+    sessionRef.current = null;
     setSession(null);
     setUserProfile(null);
     setUserPlan('free');
@@ -184,6 +201,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setProfileModalOpen(false);
     setAuthModalOpen(false);
     if (typeof window !== 'undefined') {
+      // Intentional full reload: guarantees every component's in-memory user data is dropped.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
       window.location.href = '/';
     }
   };

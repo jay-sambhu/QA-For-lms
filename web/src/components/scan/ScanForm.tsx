@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
 import {
   RiGlobalLine,
   RiLockPasswordLine,
@@ -149,6 +149,18 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onSubmit, loading, error }) 
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.25 }}
           >
+            <div className={styles.authFieldGroup}>
+              <label className={styles.authFieldLabel}>
+                <RiGlobalLine size={14} /> Login Page URL (optional)
+              </label>
+              <input
+                type="url"
+                placeholder="https://example.com/login"
+                value={loginUrl}
+                onChange={(e) => setLoginUrl(e.target.value)}
+                className={styles.authInput}
+              />
+            </div>
 
             <div className={styles.authFieldGroup}>
               <label className={styles.authFieldLabel}>

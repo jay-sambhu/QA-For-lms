@@ -16,6 +16,8 @@ logger = logging.getLogger("ai_qa_agent.supabase_storage")
 USER_STORAGE_LIMIT_BYTES = 20 * 1024 * 1024  # Strict 20 MB per user
 BUCKET_NAME = "reports"
 
+_CLIENT_CACHE: Dict[tuple, Any] = {}
+
 MIME_TYPES = {
     "json": "application/json",
     "md": "text/markdown; charset=utf-8",
@@ -34,9 +36,18 @@ def get_supabase_client():
         logger.warning("Supabase credentials not found in environment (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).")
         return None
 
+    # Reuse one client per (url, key): building a client per call created new
+    # HTTP connection pools on every status poll / download.
+    cache_key = (url, key)
+    cached = _CLIENT_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     try:
         from supabase import create_client
-        return create_client(url, key)
+        client = create_client(url, key)
+        _CLIENT_CACHE.clear()
+        _CLIENT_CACHE[cache_key] = client
+        return client
     except Exception as error:
         logger.error("Failed to initialize Supabase client: %s", error)
         return None

@@ -75,8 +75,10 @@ def process_query_task(
             except ImportError:
                 from ..api.main import update_scan
             update_scan(scan_id, "failed")
-        except Exception:
-            pass
+        except Exception as update_err:
+            # Previously swallowed silently, leaving the scan stuck "running"
+            # with no trace of why.
+            logger.error("Could not mark scan %s as failed: %s", scan_id, update_err)
         raise exc
 
 

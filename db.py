@@ -22,10 +22,11 @@ if db_url.startswith("sqlite"):
         "echo": False,
     }
 else:
-    # Production-grade PostgreSQL connection pooling for concurrent API & Celery workers
+    # Small per-process pool: the API and each Celery child hold their own pool,
+    # so large defaults multiply quickly against a low-memory Postgres.
     engine_kwargs = {
-        "pool_size": int(os.environ.get("DB_POOL_SIZE", 20)),
-        "max_overflow": int(os.environ.get("DB_MAX_OVERFLOW", 10)),
+        "pool_size": int(os.environ.get("DB_POOL_SIZE", 5)),
+        "max_overflow": int(os.environ.get("DB_MAX_OVERFLOW", 5)),
         "pool_recycle": int(os.environ.get("DB_POOL_RECYCLE", 1800)),
         "pool_pre_ping": True,
         "echo": False,

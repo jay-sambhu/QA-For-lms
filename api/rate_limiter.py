@@ -10,7 +10,8 @@ logger = logging.getLogger("ai_qa_agent.rate_limiter")
 # Initialize Redis client (singleton)
 redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 try:
-    redis_client = redis.from_url(redis_url, decode_responses=True, socket_connect_timeout=1)
+    # socket_timeout too: without it a half-dead Redis blocks a request indefinitely.
+    redis_client = redis.from_url(redis_url, decode_responses=True, socket_connect_timeout=1, socket_timeout=1)
 except Exception:
     redis_client = None
 
@@ -21,6 +22,14 @@ BURST_SECONDS = 60  # period for rate limiting (1 minute)
 
 # In-memory sliding window fallback cache if Redis is unavailable
 _memory_store: dict = defaultdict(list)
+# Keys were never evicted, so every distinct IP/token ever seen stayed in
+# memory for the life of the process. Sweep stale keys past this size.
+_MEMORY_STORE_SWEEP_AT = int(os.getenv("RATE_LIMIT_MEMORY_MAX_KEYS", "5000"))
+
+
+def _sweep_memory_store(cutoff: float) -> None:
+    for k in [k for k, v in _memory_store.items() if not v or v[-1] <= cutoff]:
+        _memory_store.pop(k, None)
 
 def get_user_limit(user) -> int:
     """Determine per‑user rate limit based on role.
@@ -32,7 +41,10 @@ def get_user_limit(user) -> int:
         return INSTRUCTOR_LIMIT
     return STANDARD_LIMIT
 
-async def rate_limit_dependency(request: Request, user=Depends(lambda: None)):
+def rate_limit_dependency(request: Request, user=Depends(lambda: None)):
+    # Sync on purpose: FastAPI runs it in the threadpool, so the blocking
+    # Redis round trip (up to the 1s timeout when Redis is down) no longer
+    # stalls the event loop.
     """FastAPI dependency that raises HTTP 429 when the request exceeds the
     allowed quota for the caller. Uses Redis if available, with graceful in-memory
     sliding window fallback if Redis is unavailable.
@@ -76,6 +88,8 @@ async def rate_limit_dependency(request: Request, user=Depends(lambda: None)):
 
     if not used_redis:
         cutoff = now - BURST_SECONDS
+        if len(_memory_store) >= _MEMORY_STORE_SWEEP_AT:
+            _sweep_memory_store(cutoff)
         _memory_store[key] = [ts for ts in _memory_store[key] if ts > cutoff]
         _memory_store[key].append(now)
         if len(_memory_store[key]) > limit:

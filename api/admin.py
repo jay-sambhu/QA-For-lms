@@ -32,16 +32,22 @@ def require_admin(authorization: str = Header(None)):
 
     user = require_user(authorization)
 
-    # Derive role: Admin if local DB role is 'admin', or Supabase metadata is 'admin', or admin email
-    user_meta = getattr(user, "user_metadata", None) or {}
-    app_meta = getattr(user, "app_metadata", None) or {}
-    user_email = getattr(user, "email", "") or ""
+    # Derive role: Admin if local DB role is 'admin', Supabase app_metadata
+    # role is 'admin', or the email is in the ADMIN_EMAILS allow-list.
+    # user_metadata is NOT trusted: any user can write it from the browser via
+    # supabase.auth.updateUser({data: {role: "admin"}}). Likewise "any email
+    # starting with admin@" let anyone owning admin@<their-domain> in.
+    try:
+        from api.main import ADMIN_EMAILS
+    except ImportError:
+        from main import ADMIN_EMAILS
+    app_meta = getattr(user, "app_metadata", None)
+    app_meta = app_meta if isinstance(app_meta, dict) else {}
+    user_email = (getattr(user, "email", "") or "").lower()
 
     is_admin = (
-        user_meta.get("role") == "admin"
-        or app_meta.get("role") == "admin"
-        or user_email in ["dellizulter@gmail.com", "admin@jasuss.tech", "admin@jasuss.io"]
-        or user_email.startswith("admin@")
+        app_meta.get("role") == "admin"
+        or user_email in ADMIN_EMAILS
         or user_email.endswith("@admin.jasuss.io")
     )
     if not is_admin:
