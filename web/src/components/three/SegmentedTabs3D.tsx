@@ -47,8 +47,8 @@ export function SegmentedTabs3D<T extends string>({
     (e: React.KeyboardEvent<HTMLButtonElement>) => {
       const index = tabs.findIndex((t) => t.id === active);
       let next = -1;
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (index + 1) % tabs.length;
-      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (index - 1 + tabs.length) % tabs.length;
+      if (e.key === 'ArrowRight') next = (index + 1) % tabs.length;
+      else if (e.key === 'ArrowLeft') next = (index - 1 + tabs.length) % tabs.length;
       else if (e.key === 'Home') next = 0;
       else if (e.key === 'End') next = tabs.length - 1;
       if (next < 0 || !tabs[next]) return;

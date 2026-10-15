@@ -22,6 +22,7 @@ export function useTilt3D<T extends HTMLElement>(
   { max = 8, enabled = true }: TiltOptions = {},
 ) {
   const frame = useRef<number | null>(null);
+  const wasOn = useRef(false);
   const canAnimate = useCanAnimate3D();
   const on = enabled && canAnimate;
   const [hovering, setHovering] = useState(false);
@@ -43,7 +44,8 @@ export function useTilt3D<T extends HTMLElement>(
   }, [ref, cancelFrame]);
 
   useEffect(() => {
-    if (!on) onPointerLeave();
+    if (wasOn.current && !on) onPointerLeave();
+    wasOn.current = on;
   }, [on, onPointerLeave]);
 
   const onPointerEnter = useCallback(

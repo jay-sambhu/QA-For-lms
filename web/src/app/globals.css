@@ -587,8 +587,7 @@ button {
   cursor: pointer;
 }
 
-button.surface-3d,
-a.surface-3d {
+:where(button.surface-3d, a.surface-3d) {
   display: block;
   width: 100%;
   color: inherit;
