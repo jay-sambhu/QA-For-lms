@@ -1,0 +1,412 @@
+/* ─────────────────────────────────────────────────────────────
+ * 3D layer: perspective background, tilt cards, scroll reveal and
+ * the hero "site mapping" scene. Transform/opacity only (GPU friendly).
+ * ───────────────────────────────────────────────────────────── */
+
+/* ── Fixed perspective floor behind every page ── */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+  perspective: 900px;
+  perspective-origin: 50% 0%;
+}
+
+.floor {
+  position: absolute;
+  left: -50%;
+  right: -50%;
+  bottom: -30%;
+  height: 90%;
+  transform: rotateX(72deg);
+  transform-origin: 50% 100%;
+  background-image:
+    linear-gradient(rgba(79, 70, 229, 0.13) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(79, 70, 229, 0.13) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent 75%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent 75%);
+  animation: floorDrift 18s linear infinite;
+}
+
+@keyframes floorDrift {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 0 64px, 0 0; }
+}
+
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.55;
+  animation: orbFloat 16s ease-in-out infinite alternate;
+}
+
+.orbA { width: 420px; height: 420px; top: -120px; left: 8%; background: rgba(129, 140, 248, 0.35); }
+.orbB { width: 360px; height: 360px; top: 30%; right: -80px; background: rgba(56, 189, 248, 0.28); animation-delay: -6s; }
+.orbC { width: 300px; height: 300px; bottom: 5%; left: -60px; background: rgba(244, 114, 182, 0.18); animation-delay: -11s; }
+
+@keyframes orbFloat {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(40px, 30px, 0) scale(1.08); }
+}
+
+/* ── Tilt card ── */
+.tilt {
+  --rx: 0deg;
+  --ry: 0deg;
+  --gx: 50%;
+  --gy: 50%;
+  --lift: 0px;
+  position: relative;
+  transform-style: preserve-3d;
+  transform: perspective(1000px) rotateX(var(--rx)) rotateY(var(--ry)) translateZ(var(--lift));
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.45s ease;
+  will-change: transform;
+}
+
+.tiltActive {
+  --lift: 12px;
+  transition: transform 0.08s linear, box-shadow 0.3s ease;
+  box-shadow: var(--shadow-3d);
+}
+
+.glare {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(circle at var(--gx) var(--gy), rgba(255, 255, 255, 0.55), transparent 55%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  mix-blend-mode: soft-light;
+}
+
+.tiltActive .glare {
+  opacity: 1;
+}
+
+/* Lift the card's children off its surface for real parallax depth */
+.tilt :global([data-depth="1"]) { transform: translateZ(20px); }
+.tilt :global([data-depth="2"]) { transform: translateZ(40px); }
+
+/* ── Scroll reveal ── */
+.reveal {
+  opacity: 0;
+  transform: perspective(1200px) translate3d(0, 48px, -60px) rotateX(14deg);
+  transform-origin: 50% 100%;
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+.revealed {
+  opacity: 1;
+  transform: none;
+}
+
+/* ── Hero: 3D site-mapping scene ── */
+.scene {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 0.86;
+  max-width: 560px;
+  margin: 0 auto;
+  perspective: 1600px;
+  perspective-origin: 50% 30%;
+}
+
+.stage {
+  --sx: 0deg;
+  --sy: 0deg;
+  position: absolute;
+  inset: 8% 6% 14%;
+  transform-style: preserve-3d;
+  transform: rotateX(calc(58deg + var(--sx))) rotateZ(calc(-34deg + var(--sy)));
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.plane {
+  position: absolute;
+  inset: 0;
+  border-radius: 28px;
+  background:
+    linear-gradient(rgba(79, 70, 229, 0.14) 1px, transparent 1px) 0 0 / 36px 36px,
+    linear-gradient(90deg, rgba(79, 70, 229, 0.14) 1px, transparent 1px) 0 0 / 36px 36px,
+    linear-gradient(135deg, #ffffff 0%, #eef2ff 100%);
+  border: 1px solid rgba(79, 70, 229, 0.18);
+  box-shadow: 0 60px 80px -40px rgba(79, 70, 229, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.8) inset;
+  transform-style: preserve-3d;
+}
+
+/* Sweep beam that "maps" the site */
+.beamClip {
+  position: absolute;
+  inset: 0;
+  border-radius: 28px;
+  overflow: hidden;
+}
+
+.beam {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 26%;
+  background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.32), rgba(99, 102, 241, 0.45), transparent);
+  animation: beamSweep 4.8s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+@keyframes beamSweep {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(480%); }
+}
+
+.links {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.link {
+  fill: none;
+  stroke: rgba(79, 70, 229, 0.45);
+  stroke-width: 0.6;
+  stroke-dasharray: 2 2;
+  animation: linkFlow 2.4s linear infinite;
+}
+
+@keyframes linkFlow {
+  to { stroke-dashoffset: -16; }
+}
+
+/* Extruded page blocks standing on the plane */
+.node {
+  position: absolute;
+  width: 15%;
+  aspect-ratio: 1;
+  transform-style: preserve-3d;
+  transform: translate(-50%, -50%);
+}
+
+.nodeBody {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  animation: nodeRise 5s ease-in-out infinite;
+  animation-delay: var(--d, 0s);
+}
+
+.nodeTop {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #ffffff, #e0e7ff);
+  border: 1px solid rgba(79, 70, 229, 0.35);
+  transform: translateZ(var(--h, 24px));
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9) inset;
+}
+
+.nodeTop::before,
+.nodeTop::after {
+  content: "";
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  height: 8%;
+  border-radius: 4px;
+  background: rgba(79, 70, 229, 0.28);
+}
+
+.nodeTop::before { top: 24%; }
+.nodeTop::after { top: 44%; right: 38%; background: rgba(14, 165, 233, 0.35); }
+
+.nodeShadow {
+  position: absolute;
+  inset: 4%;
+  border-radius: 10px;
+  background: rgba(79, 70, 229, 0.22);
+  filter: blur(6px);
+}
+
+/* Side walls give each block thickness */
+.nodeWall {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--h, 24px);
+  background: linear-gradient(180deg, #c7d2fe, #a5b4fc);
+  transform-origin: 50% 100%;
+  transform: rotateX(-90deg);
+}
+
+.nodeWallSide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: var(--h, 24px);
+  background: linear-gradient(90deg, #a5b4fc, #818cf8);
+  transform-origin: 100% 50%;
+  transform: rotateY(90deg);
+}
+
+@keyframes nodeRise {
+  0%, 100% { transform: translateZ(0); }
+  50% { transform: translateZ(10px); }
+}
+
+/* Defect / pass pins */
+.pin {
+  position: absolute;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+}
+
+.pinStem {
+  position: absolute;
+  left: -1px;
+  bottom: 0;
+  width: 2px;
+  height: 56px;
+  background: linear-gradient(to top, rgba(225, 29, 72, 0), #e11d48);
+  transform-origin: 50% 100%;
+  transform: rotateX(-90deg);
+}
+
+.pinHead {
+  position: absolute;
+  left: -9px;
+  top: -9px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fda4af, #e11d48);
+  transform: translateZ(56px) rotateX(-90deg);
+  animation: pinPulse 2.2s ease-in-out infinite;
+  animation-delay: var(--d, 0s);
+  --ring: rgba(225, 29, 72, 0.2);
+}
+
+.pinOk .pinStem { background: linear-gradient(to top, rgba(5, 150, 105, 0), #059669); }
+.pinOk .pinHead {
+  background: radial-gradient(circle at 35% 35%, #6ee7b7, #059669);
+  --ring: rgba(5, 150, 105, 0.2);
+}
+
+@keyframes pinPulse {
+  0%, 100% { box-shadow: 0 0 0 4px var(--ring); }
+  50% { box-shadow: 0 0 0 11px transparent; }
+}
+
+/* Floating device frames above the map (screen-facing) */
+.devices {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.device {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.04), 0 24px 48px -18px rgba(15, 23, 42, 0.28);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: deviceBob 6s ease-in-out infinite;
+}
+
+.device i {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.device i:nth-of-type(1) { width: 60%; background: rgba(79, 70, 229, 0.35); }
+.device i:nth-of-type(3) { width: 75%; }
+
+.deviceDesktop { width: 34%; top: 0; left: 0; animation-delay: -1s; }
+.deviceTablet { width: 24%; top: 4%; right: 2%; animation-delay: -3s; }
+.devicePhone { width: 17%; bottom: 10%; right: 0; animation-delay: -4.5s; }
+
+.deviceLabel {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.deviceLabel::before {
+  content: "";
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+
+@keyframes deviceBob {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -10px, 0); }
+}
+
+/* Score chip */
+.scoreChip {
+  position: absolute;
+  left: 2%;
+  bottom: 4%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 24px 48px -18px rgba(79, 70, 229, 0.4);
+  animation: deviceBob 7s ease-in-out infinite;
+  animation-delay: -2s;
+}
+
+.scoreValue {
+  font-size: 1.35rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #4f46e5, #0891b2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  line-height: 1;
+}
+
+.scoreText {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+@media (max-width: 900px) {
+  .scene { max-width: 440px; }
+}
+
+/* Respect users who ask for less motion */
+@media (prefers-reduced-motion: reduce) {
+  .floor, .orb, .beam, .link, .nodeBody, .pinHead, .device, .scoreChip { animation: none; }
+  .reveal { opacity: 1; transform: none; transition: none; }
+  .tilt, .stage { transition: none; }
+}
