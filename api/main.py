@@ -2,9 +2,14 @@ import json
 import ipaddress
 import logging
 import os
+import signal
+import socket
 import subprocess
 import sys
-from datetime import datetime, timezone
+import threading
+import time
+from collections import deque
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlparse
 from uuid import uuid4, UUID
@@ -12,13 +17,17 @@ from dotenv import load_dotenv
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 _env_file = os.path.join(ROOT_DIR, ".env")
+# override=False: real environment variables (systemd / docker / CI / the
+# test suite's isolated DATABASE_URL) must win over the .env file. With
+# override=True the .env silently redirected tests to the dev Postgres.
 if os.path.exists(_env_file):
-    load_dotenv(dotenv_path=_env_file, override=True)
+    load_dotenv(dotenv_path=_env_file, override=False)
 else:
-    load_dotenv(override=True)
+    load_dotenv(override=False)
 
 from fastapi import Depends, FastAPI, HTTPException, Header, BackgroundTasks, Response
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, SecretStr, field_validator
 from supabase import create_client, Client
 
@@ -26,10 +35,18 @@ from supabase import create_client, Client
 try:
     from db import SessionLocal, engine
     from models import Scan, Base, User, BlogPost, UserApiKey
-    from worker.tasks import process_query_task
 except ImportError:
     from ..db import SessionLocal, engine
     from ..models import Scan, Base, User, BlogPost, UserApiKey
+
+# Kept separate: if Celery is unavailable the API must still start (scans then
+# run through the bounded local fallback) instead of failing on the relative
+# re-import above.
+try:
+    from worker.tasks import process_query_task
+except Exception as _celery_import_err:  # pragma: no cover - depends on env
+    process_query_task = None
+    logging.getLogger("ai_qa_agent.api").warning("Celery task import failed: %s", _celery_import_err)
 
 try:
     from core.ai_config import AI_PROVIDERS_REGISTRY
@@ -157,6 +174,25 @@ else:
 # holds a background worker forever.
 PIPELINE_TIMEOUT_SECONDS = int(os.environ.get("QA_PIPELINE_TIMEOUT", "1800"))
 MAX_PAGES_LIMIT = int(os.environ.get("QA_MAX_PAGES_LIMIT", "100"))
+
+# How often the pipeline supervisor checks for timeout / user cancellation.
+_PIPELINE_POLL_SECONDS = float(os.environ.get("QA_PIPELINE_POLL_SECONDS", "5"))
+
+# A "running" scan whose last heartbeat (progress file / created_at) is older
+# than this is considered orphaned (worker OOM-killed, API restarted while a
+# fallback scan was running, ...) and is marked failed so the UI stops spinning.
+STALE_RUNNING_SECONDS = int(os.environ.get("QA_STALE_SCAN_SECONDS", str(PIPELINE_TIMEOUT_SECONDS + 600)))
+# A "pending" scan nobody picked up within this window is also marked failed.
+STALE_PENDING_SECONDS = int(os.environ.get("QA_STALE_PENDING_SECONDS", "86400"))
+
+# When Celery is unavailable, scans run inside the API process. Each scan is a
+# Chromium-driving subprocess (~300-600 MB), so bound how many run at once;
+# the rest wait in this executor's queue instead of OOM-killing the droplet.
+LOCAL_MAX_CONCURRENT_SCANS = max(1, int(os.environ.get("QA_LOCAL_MAX_CONCURRENT_SCANS", "1")))
+# Semaphore + daemon threads rather than a ThreadPoolExecutor: executor
+# threads are joined at interpreter exit, which would block API shutdown
+# until a 30-minute scan finished.
+_local_scan_slots = threading.BoundedSemaphore(LOCAL_MAX_CONCURRENT_SCANS)
 
 def _get_plan_max_pages(plan_tier: str) -> int:
     """Get max_pages limit from billing PLANS config for the given plan tier.
@@ -332,6 +368,13 @@ ADMIN_EMAILS = {
 }
 
 
+def _is_admin_email(email: str) -> bool:
+    """Admin allow-list. Never match on an "admin@" local part alone: anyone
+    who owns admin@<any-domain> could otherwise sign up and become admin."""
+    email = (email or "").lower()
+    return email in ADMIN_EMAILS or email.endswith("@admin.jasuss.io")
+
+
 @app.get("/api/v1/auth/me")
 @app.get("/api/v1/user/me")
 async def get_current_user_profile(user=Depends(require_user)):
@@ -345,7 +388,7 @@ async def get_current_user_profile(user=Depends(require_user)):
     with SessionLocal() as db:
         db_user = db.query(User).filter(User.id == user_id_val).first()
         if not db_user:
-            initial_role = "admin" if (user_email in ADMIN_EMAILS or user_email.startswith("admin@") or user_email.endswith("@admin.jasuss.io")) else "user"
+            initial_role = "admin" if _is_admin_email(user_email) else "user"
             db_user = User(
                 id=user_id_val,
                 email=user_email or f"user_{user_id_val}@example.com",
@@ -357,7 +400,7 @@ async def get_current_user_profile(user=Depends(require_user)):
             db.refresh(db_user)
         else:
             # Synchronize admin status for recognized admin emails if not yet set
-            if (user_email in ADMIN_EMAILS or user_email.startswith("admin@") or user_email.endswith("@admin.jasuss.io")) and db_user.role != "admin":
+            if _is_admin_email(user_email) and db_user.role != "admin":
                 db_user.role = "admin"
                 db.commit()
                 db.refresh(db_user)
@@ -642,13 +685,19 @@ async def delete_user_gemini_api_key(user=Depends(require_user)):
     return {"status": "success", "has_key": False, "masked_key": None, "message": "Gemini API key removed."}
 
 
-def get_scan(scan_id: str):
-    """Retrieve a Scan record by ID using SQLAlchemy."""
+def get_scan(scan_id: str, reap_stale: bool = False):
+    """Retrieve a Scan record by ID using SQLAlchemy.
+
+    reap_stale=True (status endpoint only) first marks an orphaned
+    pending/running scan as failed.
+    """
     try:
         with SessionLocal() as db:
             scan = db.query(Scan).filter(Scan.id == scan_id).first()
             if not scan:
                 return None
+            if reap_stale:
+                _reap_stale_scans(db, [scan])
             return {
                 "id": str(scan.id),
                 "user_id": str(scan.user_id),
@@ -680,9 +729,149 @@ def update_scan(
                 db_scan.completed_at = datetime.now(timezone.utc)
                 db_scan.report_path = report_path
                 db_scan.json_path = json_path
+            elif status == "failed" and not db_scan.completed_at:
+                db_scan.completed_at = datetime.now(timezone.utc)
             db.commit()
     except Exception as error:
         logger.error("Database error updating scan %s: %s", scan_id, error)
+
+
+def _get_scan_status_value(scan_id: str) -> Optional[str]:
+    """Return just the status column (used by the pipeline supervisor)."""
+    try:
+        with SessionLocal() as db:
+            row = db.query(Scan.status).filter(Scan.id == scan_id).first()
+            return row[0] if row else None
+    except Exception as error:
+        logger.debug("Could not read status for scan %s: %s", scan_id, error)
+        return None
+
+
+def _set_parent_death_signal():
+    """preexec_fn: SIGKILL the pipeline if the process that spawned it dies.
+
+    Celery revoke(terminate=True), the hard time limit and OOM kills take the
+    worker child down without running `finally`, which used to orphan the
+    run_qa.py subprocess and its Chromium.
+    """
+    try:
+        import ctypes
+        libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        libc.prctl(1, signal.SIGKILL)  # PR_SET_PDEATHSIG
+    except Exception:
+        pass
+
+
+def _kill_process_tree(process) -> None:
+    """Kill the pipeline's whole process group (python, node driver, chromium)."""
+    try:
+        if process.poll() is not None:
+            return
+    except Exception:
+        pass
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except Exception:
+        try:
+            process.kill()
+        except Exception:
+            pass
+    try:
+        process.wait(timeout=10)
+    except Exception:
+        pass
+
+
+# Per-run intermediate files that are not needed once the final report exists.
+# Final reports, progress files, the application model and learning patterns
+# are kept (they are read by the API / later runs).
+_INTERMEDIATE_PREFIXES = (
+    "discovery_checkpoint_", "crawl_", "checkpoint_", "agent_decisions_",
+    "test_plan_", "test_cases_", "regression_", "qa_findings_", "perf_a11y_",
+    "execution_results_", "evidence_manifest_", "defects_", "api_test_results_",
+)
+ARTIFACT_RETENTION_DAYS = float(os.environ.get("QA_ARTIFACT_RETENTION_DAYS", "7"))
+
+
+def _cleanup_old_artifacts(user_dir: str) -> None:
+    """Delete screenshots and intermediate files older than the retention window.
+
+    Without this user_data/<uid>/screenshots grew forever (hundreds of MB per
+    active user), which fills a small droplet's disk. Set
+    QA_ARTIFACT_RETENTION_DAYS=0 to disable.
+    """
+    if ARTIFACT_RETENTION_DAYS <= 0:
+        return
+    import shutil
+    cutoff = time.time() - ARTIFACT_RETENTION_DAYS * 86400
+    try:
+        shots_root = os.path.join(user_dir, "screenshots")
+        if os.path.isdir(shots_root):
+            for entry in os.scandir(shots_root):
+                if entry.is_dir(follow_symlinks=False) and entry.stat().st_mtime < cutoff:
+                    shutil.rmtree(entry.path, ignore_errors=True)
+        results_root = os.path.join(user_dir, "results")
+        if os.path.isdir(results_root):
+            for entry in os.scandir(results_root):
+                if (
+                    entry.is_file(follow_symlinks=False)
+                    and entry.name.startswith(_INTERMEDIATE_PREFIXES)
+                    and entry.stat().st_mtime < cutoff
+                ):
+                    try:
+                        os.remove(entry.path)
+                    except OSError:
+                        pass
+    except Exception as error:
+        logger.debug("Artifact cleanup skipped for %s: %s", user_dir, error)
+
+
+def _progress_mtime(user_id: str, scan_id: str) -> Optional[float]:
+    for path in (
+        os.path.join(ROOT_DIR, "user_data", str(user_id), "results", f"progress_{scan_id}.json"),
+        os.path.join(ROOT_DIR, "results", f"progress_{scan_id}.json"),
+    ):
+        try:
+            return os.path.getmtime(path)
+        except OSError:
+            continue
+    return None
+
+
+def _reap_stale_scans(db, scans) -> None:
+    """Mark orphaned pending/running scans as failed.
+
+    A scan is left "running" forever when its worker is OOM-killed or the API
+    process restarts mid-scan (local fallback). Uses the progress file's mtime
+    as a heartbeat so long-but-alive scans are not reaped.
+    """
+    now = time.time()
+    changed = False
+    for scan in scans:
+        if scan.status not in ("pending", "running") or not scan.created_at:
+            continue
+        created = scan.created_at
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        heartbeat = created.timestamp()
+        if scan.status == "running":
+            mtime = _progress_mtime(scan.user_id, scan.id)
+            if mtime:
+                heartbeat = max(heartbeat, mtime)
+            limit = STALE_RUNNING_SECONDS
+        else:
+            limit = STALE_PENDING_SECONDS
+        if now - heartbeat > limit:
+            logger.warning("Marking stale %s scan %s as failed (no heartbeat for %ds)", scan.status, scan.id, int(now - heartbeat))
+            scan.status = "failed"
+            scan.completed_at = datetime.now(timezone.utc)
+            changed = True
+    if changed:
+        try:
+            db.commit()
+        except Exception as error:
+            db.rollback()
+            logger.error("Could not persist stale-scan reaping: %s", error)
 
 
 
@@ -779,6 +968,21 @@ def run_qa_pipeline(
             except Exception as e:
                 logger.warning("Could not fetch gemini_api_key from DB for user %s: %s", user_id, e)
 
+    # SSRF: the API validator only inspects the literal hostname. Resolve it
+    # here (worker side, off the request path) so DNS names pointing at
+    # internal addresses cannot be scanned.
+    try:
+        from security.url_guard import local_targets_allowed, url_targets_private_network
+        if not local_targets_allowed():
+            for target in (url, login_url):
+                reason = url_targets_private_network(target) if target else None
+                if reason:
+                    logger.warning("Scan %s rejected (SSRF guard): %s", scan_id, reason)
+                    update_scan(scan_id, "failed")
+                    return
+    except Exception as guard_err:
+        logger.warning("SSRF pre-flight check skipped for scan %s: %s", scan_id, guard_err)
+
     # --run-id namespaces this scan's output files, so concurrent scans cannot
     # pick up each other's results.
     cmd = [
@@ -790,17 +994,11 @@ def run_qa_pipeline(
         "--run-id",
         scan_id,
     ]
-    
+
     # Store artifacts in isolated user directory
     user_dir = os.path.join(ROOT_DIR, "user_data", str(user_id))
     os.makedirs(user_dir, exist_ok=True)
     cmd.extend(["--output-dir", user_dir])
-
-    if gemini_api_key:
-        cmd.extend(["--api-key", gemini_api_key])
-
-    if ai_keys_pool:
-        cmd.extend(["--ai-keys-pool", json.dumps(ai_keys_pool)])
 
     if provider_id:
         cmd.extend(["--provider", provider_id])
@@ -811,20 +1009,17 @@ def run_qa_pipeline(
     if endpoint:
         cmd.extend(["--endpoint", endpoint])
 
-    if auth_token:
-        # Sanitize auth_token: strip newlines to prevent argument injection
-        safe_token = (auth_token or "").replace("\n", "").replace("\r", "")
-        if safe_token:
-            cmd.extend(["--auth-token", safe_token])
-
     if login_url:
         cmd.extend(["--login-url", login_url])
 
     if username:
         cmd.extend(["--username", username])
 
-    # Pass password and user API key via isolated transient environment variables
+    # Secrets (password, AI keys, bearer token) go through the child's
+    # environment, never argv: argv is world-readable via `ps` / /proc.
     sub_env = dict(os.environ)
+    for _k in ("QA_AUTH_PASSWORD", "QA_AUTH_TOKEN", "QA_AI_KEYS_POOL"):
+        sub_env.pop(_k, None)
     if password:
         sub_env["QA_AUTH_PASSWORD"] = password
     if gemini_api_key:
@@ -832,40 +1027,113 @@ def run_qa_pipeline(
     else:
         # PRODUCTION ENFORCEMENT: Never fallback to ambient developer / super-admin key
         sub_env.pop("GEMINI_API_KEY", None)
+    if ai_keys_pool:
+        sub_env["QA_AI_KEYS_POOL"] = json.dumps(ai_keys_pool)
+    safe_token = (auth_token or "").replace("\n", "").replace("\r", "")
+    if safe_token:
+        sub_env["QA_AUTH_TOKEN"] = safe_token
+    try:
+        from security.url_guard import local_targets_allowed as _lta
+        if not _lta():
+            # Tells the crawler to abort browser requests to private IPs
+            # (covers redirects to internal addresses).
+            sub_env["QA_BLOCK_PRIVATE_NETWORK"] = "true"
+    except Exception:
+        pass
 
+    secrets_to_redact = [v for v in (password, gemini_api_key, safe_token) if v]
+    for k_cfg in ai_keys_pool or []:
+        k_val = k_cfg.get("api_key") if isinstance(k_cfg, dict) else None
+        if k_val:
+            secrets_to_redact.append(k_val)
+
+    def _redact(text: str) -> str:
+        for secret in secrets_to_redact:
+            if secret in text:
+                text = text.replace(secret, "[REDACTED]")
+        return text
+
+    # Only the tail is kept for diagnostics; buffering the whole stdout of a
+    # 100-page crawl grew without bound.
+    stdout_tail = deque(maxlen=400)
+    json_path = None
+    md_path = None
+    result_returncode = None
+    process = None
+    stop_event = threading.Event()
+    outcome = {"timed_out": False, "cancelled": False}
+
+    def _supervise():
+        """Kill the pipeline on timeout or when the user cancels the scan.
+
+        The old code called process.wait(timeout=...) only after the stdout
+        loop had already drained, i.e. after the process exited, so the
+        timeout never fired and a wedged Chromium held the worker forever.
+        """
+        deadline = time.monotonic() + PIPELINE_TIMEOUT_SECONDS
+        while not stop_event.wait(_PIPELINE_POLL_SECONDS):
+            if process is None or process.poll() is not None:
+                return
+            if time.monotonic() >= deadline:
+                outcome["timed_out"] = True
+                _kill_process_tree(process)
+                return
+            if _get_scan_status_value(scan_id) == "cancelled":
+                outcome["cancelled"] = True
+                _kill_process_tree(process)
+                return
+
+    supervisor = None
     try:
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            errors="replace",
             cwd=ROOT_DIR,
             env=sub_env,
+            # Own process group so the whole tree (python -> node driver ->
+            # chromium) can be killed together.
+            start_new_session=True,
+            preexec_fn=_set_parent_death_signal if sys.platform.startswith("linux") else None,
         )
-        
-        stdout_lines = []
+        supervisor = threading.Thread(target=_supervise, name=f"qa-supervise-{scan_id[:8]}", daemon=True)
+        supervisor.start()
+
         # Display every action log in the console, but hide secret credentials and API keys
         for line in process.stdout:
-            stdout_lines.append(line)
-            safe_line = line
-            if password and password in safe_line:
-                safe_line = safe_line.replace(password, "[REDACTED_PASSWORD]")
-            if gemini_api_key and gemini_api_key in safe_line:
-                safe_line = safe_line.replace(gemini_api_key, "[REDACTED_AI_KEY]")
-            if ai_keys_pool:
-                for k_cfg in ai_keys_pool:
-                    k_val = k_cfg.get("api_key")
-                    if k_val and k_val in safe_line:
-                        safe_line = safe_line.replace(k_val, "[REDACTED_AI_KEY]")
+            safe_line = _redact(line)
+            stdout_tail.append(safe_line)
+            if line.startswith("Final JSON:"):
+                json_path = line.split(":", 1)[1].strip()
+            elif line.startswith("Final Markdown:"):
+                md_path = line.split(":", 1)[1].strip()
             sys.stdout.write(safe_line)
             sys.stdout.flush()
 
-        process.wait(timeout=PIPELINE_TIMEOUT_SECONDS)
-        
-        result_returncode = process.returncode
-        result_stdout = "".join(stdout_lines)
-        
-    except subprocess.TimeoutExpired:
+        result_returncode = process.wait()
+    except Exception as error:
+        # Includes Celery's SoftTimeLimitExceeded raised inside the read loop.
+        update_scan(scan_id, "failed")
+        logger.exception("Background task exception for scan %s: %s", scan_id, error)
+        return
+    finally:
+        stop_event.set()
+        if process is not None:
+            _kill_process_tree(process)
+            try:
+                process.stdout.close()
+            except Exception:
+                pass
+        _cleanup_old_artifacts(user_dir)
+
+    result_stdout = "".join(stdout_tail)
+
+    if outcome["cancelled"]:
+        logger.info("Scan %s was cancelled by the user; pipeline terminated.", scan_id)
+        return
+    if outcome["timed_out"]:
         update_scan(scan_id, "failed")
         logger.error(
             "Scan %s timed out after %ss and was terminated.",
@@ -873,21 +1141,6 @@ def run_qa_pipeline(
             PIPELINE_TIMEOUT_SECONDS,
         )
         return
-    except Exception as error:
-        update_scan(scan_id, "failed")
-        logger.exception("Background task exception for scan %s: %s", scan_id, error)
-        return
-
-    # run_qa.py prints:
-    #   Final JSON: <path>
-    #   Final Markdown: <path>
-    json_path = None
-    md_path = None
-    for line in result_stdout.splitlines():
-        if line.startswith("Final JSON:"):
-            json_path = line.split(":", 1)[1].strip()
-        elif line.startswith("Final Markdown:"):
-            md_path = line.split(":", 1)[1].strip()
 
     if json_path and md_path and result_returncode == 0:
         # Pre-render PDF and XLSX so all formats are immediately available without regeneration
@@ -972,6 +1225,44 @@ def _can_use_celery() -> bool:
         return bool(inspector and inspector.ping())
     except Exception:
         return False
+
+
+def _try_enqueue_celery(scan_id: str, task_args: list) -> bool:
+    """Enqueue the scan on Celery if a broker and worker are reachable."""
+    try:
+        from worker.tasks import process_query_task
+        _apply_fn = getattr(process_query_task, "apply_async", None)
+        is_mocked = _apply_fn is not None and type(_apply_fn).__name__ in ("MagicMock", "Mock", "AsyncMock")
+        if is_mocked or _can_use_celery():
+            process_query_task.apply_async(args=task_args, task_id=scan_id)
+            return True
+        logger.info("Celery broker/worker unavailable; running scan %s via background task", scan_id)
+    except Exception as e:
+        logger.warning("Celery enqueue failed (%s), running via background task", e)
+    return False
+
+
+def _run_local_scan(*args, **kwargs):
+    try:
+        run_qa_pipeline(*args, **kwargs)
+    except Exception as error:
+        scan_id = args[0] if args else kwargs.get("scan_id")
+        logger.exception("Local pipeline run for scan %s crashed: %s", scan_id, error)
+        if scan_id:
+            update_scan(scan_id, "failed")
+
+
+def _run_local_scan_bounded(*args, **kwargs):
+    with _local_scan_slots:
+        _run_local_scan(*args, **kwargs)
+
+
+def _submit_local_scan(*args, **kwargs):
+    """Queue an in-process pipeline run; at most LOCAL_MAX_CONCURRENT_SCANS run at once."""
+    threading.Thread(
+        target=_run_local_scan_bounded, args=args, kwargs=kwargs,
+        name="qa-local-scan", daemon=True,
+    ).start()
 
 
 @app.post("/api/v1/scans")
@@ -1075,41 +1366,33 @@ async def create_scan(
     username = request.auth.username if request.auth else None
     password_raw = request.auth.password.get_secret_value() if request.auth and request.auth.password else None
 
-    # Enqueue asynchronous Celery task with background task fallback
-    enqueued = False
-    try:
-        from worker.tasks import process_query_task
-        _apply_fn = getattr(process_query_task, "apply_async", None)
-        is_mocked = _apply_fn is not None and type(_apply_fn).__name__ in ("MagicMock", "Mock", "AsyncMock")
-        if is_mocked or _can_use_celery():
-            process_query_task.apply_async(
-                args=[
-                    scan_id,
-                    user_id_val,
-                    request.url,
-                    request.max_pages,
-                    request.auth_token,
-                    login_url,
-                    username,
-                    password_raw,
-                    user_gemini_api_key,
-                    ai_keys_pool,
-                    primary_provider_id,
-                    primary_model_name,
-                    primary_endpoint,
-                ],
-                task_id=scan_id,
-            )
-            enqueued = True
-        else:
-            logger.info("Celery broker/worker unavailable; running scan %s via background task", scan_id)
-    except Exception as e:
-        logger.warning("Celery enqueue failed (%s), running via background task", e)
+    task_args = [
+        scan_id,
+        user_id_val,
+        request.url,
+        request.max_pages,
+        request.auth_token,
+        login_url,
+        username,
+        password_raw,
+        user_gemini_api_key,
+        ai_keys_pool,
+        primary_provider_id,
+        primary_model_name,
+        primary_endpoint,
+    ]
 
-    # In local development fallback to FastAPI background task if Celery was not enqueued
+    # Enqueue asynchronous Celery task with background task fallback. The
+    # broker probe + inspect().ping() block for up to ~2.5s, so they run in
+    # the threadpool rather than on the event loop.
+    enqueued = await run_in_threadpool(_try_enqueue_celery, scan_id, task_args)
+
+    # In local development fallback to an in-process run if Celery was not
+    # enqueued. The BackgroundTask only *submits* to a bounded executor so at
+    # most QA_LOCAL_MAX_CONCURRENT_SCANS pipelines run at once.
     if not enqueued:
         background_tasks.add_task(
-            run_qa_pipeline,
+            _submit_local_scan,
             scan_id,
             user_id_val,
             request.url,
@@ -1142,6 +1425,7 @@ async def list_scans(user=Depends(require_user)):
     user_id_val = str(getattr(user, "id", user))
     with SessionLocal() as db:
         scans = db.query(Scan).filter(Scan.user_id == user_id_val).order_by(Scan.created_at.desc()).limit(50).all()
+        _reap_stale_scans(db, scans)
         return {
             "scans": [
                 {
@@ -1160,7 +1444,12 @@ async def list_scans(user=Depends(require_user)):
 @app.get("/api/v1/scans/{scan_id}")
 @app.get("/api/scans/{scan_id}")
 async def get_scan_status(scan_id: UUID, user=Depends(require_user)):
-    scan = get_scan(str(scan_id))
+    # DB, disk and Supabase I/O: keep it off the event loop.
+    return await run_in_threadpool(_get_scan_status_sync, scan_id, user)
+
+
+def _get_scan_status_sync(scan_id: UUID, user):
+    scan = get_scan(str(scan_id), reap_stale=True)
     user_id_val = str(getattr(user, "id", user))
 
     if not scan or str(scan.get("user_id")) != user_id_val:
@@ -1256,6 +1545,10 @@ async def get_scan_status(scan_id: UUID, user=Depends(require_user)):
 @app.delete("/api/scans/{scan_id}")
 async def cancel_scan(scan_id: UUID, user=Depends(require_user)):
     """Cancel an ongoing scan or mark it stopped and clean up cloud storage to free quota."""
+    return await run_in_threadpool(_cancel_scan_sync, scan_id, user)
+
+
+def _cancel_scan_sync(scan_id: UUID, user):
     user_id_val = str(getattr(user, "id", user))
     with SessionLocal() as db:
         scan = db.query(Scan).filter(Scan.id == str(scan_id)).first()
@@ -1296,7 +1589,7 @@ async def get_storage_usage(user=Depends(require_user)):
     user_id_val = str(getattr(user, "id", user))
     try:
         from core.supabase_storage import get_user_storage_usage
-        return get_user_storage_usage(user_id_val)
+        return await run_in_threadpool(get_user_storage_usage, user_id_val)
     except Exception as e:
         logger.error("Error fetching storage usage for %s: %s", user_id_val, e)
         return {
@@ -1334,17 +1627,28 @@ def _generate_pdf_from_json(json_path: str, output_path: str):
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     doc = SimpleDocTemplate(output_path, pagesize=letter)
     styles = getSampleStyleSheet()
+    # Paragraph parses its text as markup: report content such as
+    # "Missing <title> tag" or URLs with "&" made reportlab raise and the PDF
+    # download returned 500. Escape everything that comes from the report.
+    from xml.sax.saxutils import escape as _esc
+    meta = data.get("report_metadata", {}) or {}
+    findings = data.get("findings", []) or []
     story = [
         Paragraph("<b>Autonomous QA Test Report</b>", styles["Title"]),
         Spacer(1, 12),
-        Paragraph(f"Target: {data.get('report_metadata', {}).get('target', 'N/A')}", styles["Normal"]),
-        Paragraph(f"Pages Crawled: {data.get('report_metadata', {}).get('pages_crawled', 0)}", styles["Normal"]),
+        Paragraph(f"Target: {_esc(str(meta.get('target', 'N/A')))}", styles["Normal"]),
+        Paragraph(f"Pages Crawled: {_esc(str(meta.get('pages_crawled', 0)))}", styles["Normal"]),
         Spacer(1, 12),
-        Paragraph(f"<b>Findings ({len(data.get('findings', []))})</b>", styles["Heading2"]),
+        Paragraph(f"<b>Findings ({len(findings)})</b>", styles["Heading2"]),
     ]
-    for finding in data.get("findings", []):
-        story.append(Paragraph(f"• [{finding.get('severity', 'INFO')}] {finding.get('title', '')}", styles["Normal"]))
-    if not data.get("findings"):
+    for finding in findings:
+        if not isinstance(finding, dict):
+            continue
+        story.append(Paragraph(
+            f"• [{_esc(str(finding.get('severity', 'INFO')))}] {_esc(str(finding.get('title', '')))}",
+            styles["Normal"],
+        ))
+    if not findings:
         story.append(Paragraph("No defects detected. Target web application verified successfully.", styles["Normal"]))
     doc.build(story)
 
@@ -1356,24 +1660,38 @@ def _generate_xlsx_from_json(json_path: str, output_path: str):
             data = json.load(f)
     except Exception:
         data = {}
+    from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+
+    def _cell(value):
+        # Scraped page text can contain control characters, which openpyxl
+        # rejects with IllegalCharacterError (-> 500 on download).
+        if isinstance(value, (int, float)) or value is None:
+            return value
+        return ILLEGAL_CHARACTERS_RE.sub("", str(value))
+
+    meta = data.get("report_metadata", {}) or {}
+    quality = meta.get("quality_score", {})
+    score = quality.get("score", 100) if isinstance(quality, dict) else quality
     wb = openpyxl.Workbook()
     ws_summary = wb.active
     ws_summary.title = "Summary"
-    ws_summary.append(["Target", data.get("report_metadata", {}).get("target", "N/A")])
-    ws_summary.append(["Generated At", data.get("report_metadata", {}).get("generated_at", "")])
-    ws_summary.append(["Pages Crawled", data.get("report_metadata", {}).get("pages_crawled", 0)])
-    ws_summary.append(["Quality Score", data.get("report_metadata", {}).get("quality_score", {}).get("score", 100)])
-    
+    ws_summary.append(["Target", _cell(meta.get("target", "N/A"))])
+    ws_summary.append(["Generated At", _cell(meta.get("generated_at", ""))])
+    ws_summary.append(["Pages Crawled", _cell(meta.get("pages_crawled", 0))])
+    ws_summary.append(["Quality Score", _cell(score)])
+
     ws_findings = wb.create_sheet(title="Findings")
     ws_findings.append(["ID", "Title", "Severity", "Priority", "Classification", "URL"])
-    for f in data.get("findings", []):
+    for f in data.get("findings", []) or []:
+        if not isinstance(f, dict):
+            continue
         ws_findings.append([
-            f.get("id", ""),
-            f.get("title", ""),
-            f.get("severity", ""),
-            f.get("priority", ""),
-            f.get("classification", ""),
-            f.get("url", ""),
+            _cell(f.get("id", "")),
+            _cell(f.get("title", "")),
+            _cell(f.get("severity", "")),
+            _cell(f.get("priority", "")),
+            _cell(f.get("classification", "")),
+            _cell(f.get("url", "")),
         ])
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     wb.save(output_path)
@@ -1386,6 +1704,12 @@ async def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require
     Download a completed scan's report artifact in the requested format (json, md/markdown, pdf, xlsx).
     Sets explicit Content-Disposition and media_type headers with canonical filenames.
     """
+    # Supabase download, PDF/XLSX rendering and the lazy upload are all
+    # blocking; running them inline stalled every other request.
+    return await run_in_threadpool(_download_scan_file_sync, scan_id, file_type, user)
+
+
+def _download_scan_file_sync(scan_id: UUID, file_type: str, user):
     file_type_norm = file_type.lower().strip(".")
     if file_type_norm not in ("json", "md", "markdown", "pdf", "xlsx", "excel"):
         raise HTTPException(
@@ -1466,12 +1790,17 @@ async def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require
     if not resolved or not os.path.isfile(resolved):
         raise HTTPException(status_code=404, detail="Report file not found on disk")
 
-    # Upload to Supabase Storage lazily so future accesses are served directly from the bucket
-    try:
-        from core.supabase_storage import upload_scan_reports
-        upload_scan_reports(user_id_val, str(scan_id), {canonical_ext: resolved})
-    except Exception as e:
-        logger.debug("Lazy upload to Supabase storage note: %s", e)
+    # Upload to Supabase Storage lazily so future accesses are served directly
+    # from the bucket. Done in the background: it is several network round
+    # trips (bucket check, quota listing, upload, signed URL).
+    def _lazy_upload():
+        try:
+            from core.supabase_storage import upload_scan_reports
+            upload_scan_reports(user_id_val, str(scan_id), {canonical_ext: resolved})
+        except Exception as e:
+            logger.debug("Lazy upload to Supabase storage note: %s", e)
+
+    threading.Thread(target=_lazy_upload, name="qa-lazy-upload", daemon=True).start()
 
     return FileResponse(
         path=resolved,
@@ -1489,12 +1818,17 @@ async def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require
 async def get_scan_report_signed_url_endpoint(scan_id: UUID, file_type: str, user=Depends(require_user)):
     """Return a direct signed download URL from Supabase Storage."""
     user_id_val = str(getattr(user, "id", user))
-    scan = get_scan(str(scan_id))
+    scan = await run_in_threadpool(get_scan, str(scan_id))
     if not scan or str(scan.get("user_id")) != user_id_val:
         raise HTTPException(status_code=404, detail="Scan not found")
 
+    file_type_norm = file_type.lower().strip(".")
+    if file_type_norm not in ("json", "md", "markdown", "pdf", "xlsx", "excel"):
+        raise HTTPException(status_code=400, detail="Invalid file type. Supported formats: 'json', 'md', 'markdown', 'pdf', 'xlsx'")
+    file_type = "xlsx" if file_type_norm in ("excel", "xlsx") else ("md" if file_type_norm in ("markdown", "md") else file_type_norm)
+
     from core.supabase_storage import get_scan_report_signed_url
-    url = get_scan_report_signed_url(user_id_val, str(scan_id), file_type)
+    url = await run_in_threadpool(get_scan_report_signed_url, user_id_val, str(scan_id), file_type)
     if not url:
         raise HTTPException(status_code=404, detail="Report file not found in Supabase Storage")
     return {"signed_url": url, "scan_id": str(scan_id), "file_type": file_type}
