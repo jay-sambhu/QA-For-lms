@@ -1,6 +1,6 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+// jspdf / jspdf-autotable / xlsx are heavy (~750 KB) and only needed for the client-side
+// fallback when the server has no pre-generated report, so they are loaded on demand.
+import { downloadScanReport, saveBlob } from './download';
 
 export interface CanonicalExportData {
   target: string;
@@ -251,8 +251,12 @@ const extractCanonicalExportData = (results: any, scanId: string | null = ''): C
 /**
  * Generates and triggers a PDF download for the QA scan.
  */
-const downloadPDF = (results: any, scanId: string | null = '') => {
+const downloadPDF = async (results: any, scanId: string | null = '') => {
   if (!results) return;
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ]);
 
   const data = extractCanonicalExportData(results, scanId);
   const doc = new jsPDF('p', 'mm', 'a4'); // A4 Portrait (210 x 297 mm)
@@ -502,8 +506,9 @@ const downloadPDF = (results: any, scanId: string | null = '') => {
 /**
  * Generates and triggers an Excel (.xlsx) workbook download for the QA scan.
  */
-const downloadExcel = (results: any, scanId: string | null = '') => {
+const downloadExcel = async (results: any, scanId: string | null = '') => {
   if (!results) return;
+  const XLSX = await import('xlsx');
 
   const data = extractCanonicalExportData(results, scanId);
   const tc = data.testCasesSummary;
@@ -763,15 +768,7 @@ const downloadMarkdown = (results: any, scanId: string | null = '') => {
   const safeScanId = scanId && scanId !== 'N/A' ? scanId : (data.target || 'scan').replace(/[^a-z0-9]/gi, '_').toLowerCase();
   const filename = `qa-report-${safeScanId}.md`;
 
-  const blob = new Blob([mdContent], { type: 'text/markdown; charset=utf-8' });
-  const downloadUrl = window.URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = downloadUrl;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 1000);
+  saveBlob(new Blob([mdContent], { type: 'text/markdown; charset=utf-8' }), filename);
 };
 
 /**
@@ -785,15 +782,7 @@ const downloadJSON = (results: any, scanId: string | null = '') => {
   const safeScanId = scanId && scanId !== 'N/A' ? scanId : (data.target || 'scan').replace(/[^a-z0-9]/gi, '_').toLowerCase();
   const filename = `qa-report-${safeScanId}.json`;
 
-  const blob = new Blob([jsonContent], { type: 'application/json; charset=utf-8' });
-  const downloadUrl = window.URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = downloadUrl;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 1000);
+  saveBlob(new Blob([jsonContent], { type: 'application/json; charset=utf-8' }), filename);
 };
 
 export type ExportFormat = 'pdf' | 'excel' | 'xlsx' | 'json' | 'md' | 'markdown';
@@ -806,33 +795,8 @@ export interface DownloadReportOptions {
 }
 
 /**
- * Parses filename from Content-Disposition header with fallback.
- */
-const extractFilenameFromDisposition = (disposition: string | null, fallbackFilename: string): string => {
-  if (!disposition) return fallbackFilename;
-
-  // Check for RFC 5987 / RFC 6266 utf-8 filename
-  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
-  if (utf8Match && utf8Match[1]) {
-    try {
-      return decodeURIComponent(utf8Match[1]);
-    } catch {
-      return utf8Match[1];
-    }
-  }
-
-  // Check for standard filename="name" or filename=name
-  const standardMatch = disposition.match(/filename="?([^";]+)"?/i);
-  if (standardMatch && standardMatch[1]) {
-    return standardMatch[1].trim();
-  }
-
-  return fallbackFilename;
-};
-
-/**
  * Unified download handler for all report formats (PDF, Excel, JSON, Markdown).
- * Automatically resolves Content-Disposition headers, MIME types, and fallback filenames.
+ * Prefers the server's pre-generated file; falls back to client-side generation.
  */
 export const handleDownloadReport = async ({
   results,
@@ -842,120 +806,26 @@ export const handleDownloadReport = async ({
 }: DownloadReportOptions): Promise<void> => {
   const normFormat = format.toLowerCase() as ExportFormat;
   const safeScanId = scanId || results?.report_metadata?.scan_id || results?.id || 'unknown';
+  const serverFormat =
+    normFormat === 'excel' || normFormat === 'xlsx'
+      ? 'xlsx'
+      : normFormat === 'markdown' || normFormat === 'md'
+      ? 'md'
+      : normFormat === 'json'
+      ? 'json'
+      : 'pdf';
 
-  if (normFormat === 'pdf') {
-    // Attempt direct download of pre-generated PDF from Supabase storage
+  if (sessionToken && safeScanId !== 'unknown') {
     try {
-      if (sessionToken && safeScanId !== 'unknown') {
-        const headers: Record<string, string> = { Authorization: `Bearer ${sessionToken}` };
-        const response = await fetch(`/api/v1/scans/${safeScanId}/download/pdf`, { headers });
-        if (response.ok) {
-          const disposition = response.headers.get('content-disposition');
-          const filename = extractFilenameFromDisposition(disposition, `qa-report-${safeScanId}.pdf`);
-          const blob = await response.blob();
-          const typedBlob = new Blob([blob], { type: 'application/pdf' });
-          const downloadUrl = window.URL.createObjectURL(typedBlob);
-          const anchor = document.createElement('a');
-          anchor.href = downloadUrl;
-          anchor.download = filename;
-          document.body.appendChild(anchor);
-          anchor.click();
-          document.body.removeChild(anchor);
-          setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 1000);
-          return;
-        }
-      }
+      await downloadScanReport(String(safeScanId), serverFormat, sessionToken);
+      return;
     } catch {
-      // Fallback to client-side generation below
+      // Fall back to client-side generation below
     }
-    downloadPDF(results, safeScanId);
-    return;
   }
 
-  if (normFormat === 'excel' || normFormat === 'xlsx') {
-    // Attempt direct download of pre-generated Excel workbook from Supabase storage
-    try {
-      if (sessionToken && safeScanId !== 'unknown') {
-        const headers: Record<string, string> = { Authorization: `Bearer ${sessionToken}` };
-        const response = await fetch(`/api/v1/scans/${safeScanId}/download/xlsx`, { headers });
-        if (response.ok) {
-          const disposition = response.headers.get('content-disposition');
-          const filename = extractFilenameFromDisposition(disposition, `qa-report-${safeScanId}.xlsx`);
-          const blob = await response.blob();
-          const typedBlob = new Blob([blob], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-          const downloadUrl = window.URL.createObjectURL(typedBlob);
-          const anchor = document.createElement('a');
-          anchor.href = downloadUrl;
-          anchor.download = filename;
-          document.body.appendChild(anchor);
-          anchor.click();
-          document.body.removeChild(anchor);
-          setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 1000);
-          return;
-        }
-      }
-    } catch {
-      // Fallback to client-side generation below
-    }
-    downloadExcel(results, safeScanId);
-    return;
-  }
-
-  if (normFormat === 'json') {
-    // If we have local results, download directly or try backend
-    try {
-      if (sessionToken && safeScanId !== 'unknown') {
-        const headers: Record<string, string> = { Authorization: `Bearer ${sessionToken}` };
-        const response = await fetch(`/api/v1/scans/${safeScanId}/download/json`, { headers });
-        if (response.ok) {
-          const disposition = response.headers.get('content-disposition');
-          const filename = extractFilenameFromDisposition(disposition, `qa-report-${safeScanId}.json`);
-          const blob = await response.blob();
-          const typedBlob = new Blob([blob], { type: 'application/json' });
-          const downloadUrl = window.URL.createObjectURL(typedBlob);
-          const anchor = document.createElement('a');
-          anchor.href = downloadUrl;
-          anchor.download = filename;
-          document.body.appendChild(anchor);
-          anchor.click();
-          document.body.removeChild(anchor);
-          setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 1000);
-          return;
-        }
-      }
-    } catch {
-      // Fallback below
-    }
-    downloadJSON(results, safeScanId);
-    return;
-  }
-
-  if (normFormat === 'md' || normFormat === 'markdown') {
-    // If we have local results, download directly or try backend
-    try {
-      if (sessionToken && safeScanId !== 'unknown') {
-        const headers: Record<string, string> = { Authorization: `Bearer ${sessionToken}` };
-        const response = await fetch(`/api/v1/scans/${safeScanId}/download/md`, { headers });
-        if (response.ok) {
-          const disposition = response.headers.get('content-disposition');
-          const filename = extractFilenameFromDisposition(disposition, `qa-report-${safeScanId}.md`);
-          const blob = await response.blob();
-          const typedBlob = new Blob([blob], { type: 'text/markdown; charset=utf-8' });
-          const downloadUrl = window.URL.createObjectURL(typedBlob);
-          const anchor = document.createElement('a');
-          anchor.href = downloadUrl;
-          anchor.download = filename;
-          document.body.appendChild(anchor);
-          anchor.click();
-          document.body.removeChild(anchor);
-          setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 1000);
-          return;
-        }
-      }
-    } catch {
-      // Fallback below
-    }
-    downloadMarkdown(results, safeScanId);
-    return;
-  }
+  if (serverFormat === 'pdf') return downloadPDF(results, safeScanId);
+  if (serverFormat === 'xlsx') return downloadExcel(results, safeScanId);
+  if (serverFormat === 'json') return downloadJSON(results, safeScanId);
+  return downloadMarkdown(results, safeScanId);
 };
