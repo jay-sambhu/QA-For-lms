@@ -37,7 +37,7 @@ export const TestCasesTab: React.FC<TestCasesTabProps> = ({ testCases }) => {
           : isFailed
           ? 'rgba(239, 68, 68, 0.2)'
           : 'rgba(245, 158, 11, 0.2)';
-        const badgeColor = isPassed ? '#34d399' : isFailed ? '#f87171' : '#fbbf24';
+        const badgeColor = isPassed ? '#059669' : isFailed ? '#dc2626' : '#d97706';
 
         return (
           <div
@@ -60,7 +60,7 @@ export const TestCasesTab: React.FC<TestCasesTabProps> = ({ testCases }) => {
               </span>
             </div>
 
-            <h3 style={{ fontSize: '1.12rem', color: '#f8fafc', margin: '4px 0 8px' }}>
+            <h3 style={{ fontSize: '1.12rem', color: 'var(--text-main)', margin: '4px 0 8px' }}>
               {tc.title}
             </h3>
 
@@ -73,13 +73,13 @@ export const TestCasesTab: React.FC<TestCasesTabProps> = ({ testCases }) => {
               {tc.source_page && <span className={styles.chip}>{tc.source_page}</span>}
             </div>
 
-            <div style={{ fontSize: '0.9rem', color: '#cbd5e1', marginTop: '8px' }}>
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-body)', marginTop: '8px' }}>
               <div>
-                <strong style={{ color: '#94a3b8' }}>Expected:</strong>{' '}
+                <strong style={{ color: 'var(--text-muted)' }}>Expected:</strong>{' '}
                 {tc.expected_result || 'N/A'}
               </div>
               <div style={{ marginTop: '4px' }}>
-                <strong style={{ color: '#94a3b8' }}>Actual:</strong>{' '}
+                <strong style={{ color: 'var(--text-muted)' }}>Actual:</strong>{' '}
                 {tc.actual_result || 'Assertion passed successfully.'}
               </div>
             </div>

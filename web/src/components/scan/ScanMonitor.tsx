@@ -120,10 +120,10 @@ export const ScanMonitor: React.FC<ScanMonitorProps> = ({
           </button>
         </div>
 
-        <h2 style={{ fontSize: '1.8rem', fontWeight: 700, color: '#f8fafc', marginTop: '8px' }}>
+        <h2 style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '8px' }}>
           Automated Test Execution Running
         </h2>
-        <p style={{ color: '#94a3b8', fontSize: '0.94rem' }}>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.94rem' }}>
           Executing multi-viewport crawler, synthetic user journeys, and defect analysis in parallel.
         </p>
       </div>
@@ -190,9 +190,9 @@ export const ScanMonitor: React.FC<ScanMonitorProps> = ({
               <div className={styles.stepHeader}>
                 <span className={styles.stepNumber}>Stage 0{st.step}</span>
                 {isDone ? (
-                  <RiCheckDoubleFill size={18} color="#34d399" />
+                  <RiCheckDoubleFill size={18} color="#059669" />
                 ) : isActive ? (
-                  <TbLoader2 size={18} className="pulse" color="#818cf8" />
+                  <TbLoader2 size={18} className="pulse" color="#4f46e5" />
                 ) : (
                   <span style={{ color: '#475569' }}>{st.icon}</span>
                 )}

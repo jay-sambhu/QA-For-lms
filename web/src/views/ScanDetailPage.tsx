@@ -330,7 +330,7 @@ export const ScanDetailPage: React.FC = () => {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
         <Loader2 size={36} className="pulse" color="#6366f1" />
-        <p style={{ color: '#94a3b8' }}>Loading verification context...</p>
+        <p style={{ color: 'var(--text-muted)' }}>Loading verification context...</p>
       </div>
     );
   }
@@ -339,7 +339,7 @@ export const ScanDetailPage: React.FC = () => {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
         <Loader2 size={36} className="pulse" color="#6366f1" />
-        <p style={{ color: '#94a3b8' }}>Session unauthenticated. Redirecting to home...</p>
+        <p style={{ color: 'var(--text-muted)' }}>Session unauthenticated. Redirecting to home...</p>
       </div>
     );
   }
@@ -354,7 +354,7 @@ export const ScanDetailPage: React.FC = () => {
         >
           <ArrowLeft size={14} /> Back to Dashboard
         </Link>
-        <span style={{ color: '#64748b', fontSize: '0.85rem', fontFamily: 'monospace' }}>
+        <span style={{ color: 'var(--text-subtle)', fontSize: '0.85rem', fontFamily: 'monospace' }}>
           Scan ID: {scanId}
         </span>
       </div>
@@ -404,11 +404,11 @@ export const ScanDetailPage: React.FC = () => {
           animate={{ opacity: 1, scale: 1 }}
           style={{ textAlign: 'center', padding: '40px 24px 24px' }}
         >
-          <Loader2 size={40} className="pulse" color="#818cf8" style={{ margin: '0 auto 16px' }} />
-          <h3 style={{ fontSize: '1.4rem', color: '#f8fafc' }}>
+          <Loader2 size={40} className="pulse" color="#4f46e5" style={{ margin: '0 auto 16px' }} />
+          <h3 style={{ fontSize: '1.4rem', color: 'var(--text-main)' }}>
             Finalizing Quality Synthesis & Report...
           </h3>
-          <p style={{ color: '#94a3b8', maxWidth: '500px', margin: '8px auto 16px' }}>
+          <p style={{ color: 'var(--text-muted)', maxWidth: '500px', margin: '8px auto 16px' }}>
             Multi-viewport execution is complete. Generating compliance grading and executive findings.
           </p>
           <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginBottom: '16px' }}>
@@ -434,10 +434,10 @@ export const ScanDetailPage: React.FC = () => {
           style={{ textAlign: 'center', padding: '48px 24px' }}
         >
           <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>📋</div>
-          <h3 style={{ fontSize: '1.35rem', color: '#f8fafc', marginBottom: '8px' }}>
+          <h3 style={{ fontSize: '1.35rem', color: 'var(--text-main)', marginBottom: '8px' }}>
             Report Ready — Download Directly
           </h3>
-          <p style={{ color: '#94a3b8', maxWidth: '520px', margin: '0 auto 28px', lineHeight: 1.6 }}>
+          <p style={{ color: 'var(--text-muted)', maxWidth: '520px', margin: '0 auto 28px', lineHeight: 1.6 }}>
             Your QA report has been generated and saved to your cloud storage. Use the buttons below to
             download it directly — no re-scanning required.
           </p>
@@ -454,7 +454,7 @@ export const ScanDetailPage: React.FC = () => {
                   gap: '6px',
                   padding: '10px 20px',
                   borderRadius: '10px',
-                  border: '1px solid rgba(255,255,255,0.12)',
+                  border: '1px solid rgba(var(--ink-rgb), 0.12)',
                   background:
                     fmt === 'pdf'
                       ? 'rgba(239,68,68,0.1)'
@@ -462,7 +462,7 @@ export const ScanDetailPage: React.FC = () => {
                       ? 'rgba(52,211,153,0.1)'
                       : 'rgba(99,102,241,0.1)',
                   color:
-                    fmt === 'pdf' ? '#f87171' : fmt === 'xlsx' ? '#34d399' : '#818cf8',
+                    fmt === 'pdf' ? '#dc2626' : fmt === 'xlsx' ? '#059669' : '#4f46e5',
                   textDecoration: 'none',
                   fontSize: '0.88rem',
                   fontWeight: 500,
@@ -488,10 +488,10 @@ export const ScanDetailPage: React.FC = () => {
       {(status === 'failed' || status === 'cancelled' || status === 'error') && (
         <div className={styles.adminTableCard} style={{ textAlign: 'center', padding: '48px 24px' }}>
           <AlertTriangle size={36} color="#ef4444" style={{ margin: '0 auto 12px' }} />
-          <h3 style={{ fontSize: '1.4rem', color: '#f8fafc' }}>
+          <h3 style={{ fontSize: '1.4rem', color: 'var(--text-main)' }}>
             {status === 'cancelled' ? 'Scan Stopped' : 'Scan Encountered An Issue'}
           </h3>
-          <p style={{ color: '#94a3b8', maxWidth: '500px', margin: '8px auto 24px' }}>
+          <p style={{ color: 'var(--text-muted)', maxWidth: '500px', margin: '8px auto 24px' }}>
             {error || 'The automated QA scan could not complete successfully.'}
           </p>
           <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>

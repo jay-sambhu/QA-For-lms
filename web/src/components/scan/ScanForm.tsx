@@ -65,7 +65,7 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onSubmit, loading, error }) 
     <form onSubmit={handleSubmit} className={styles.form}>
       <div className={styles.inputRow}>
         <div className={styles.inputGroup}>
-          <RiGlobalLine className={styles.inputIcon} size={20} color="#818cf8" />
+          <RiGlobalLine className={styles.inputIcon} size={20} color="#4f46e5" />
           <input
             type="url"
             placeholder="https://example.com or enter your target web application URL"
@@ -99,7 +99,7 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onSubmit, loading, error }) 
       {/* Quick Sample URLs */}
       <div className={styles.quickPillsRow}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-          <TbSparkles size={14} color="#818cf8" /> Instant Demo Targets:
+          <TbSparkles size={14} color="#4f46e5" /> Instant Demo Targets:
         </span>
         <button
           type="button"

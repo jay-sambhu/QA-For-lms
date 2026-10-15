@@ -45,7 +45,7 @@ export const FindingsTab: React.FC<FindingsTabProps> = ({ findings }) => {
               left: '14px',
               top: '50%',
               transform: 'translateY(-50%)',
-              color: '#64748b',
+              color: 'var(--text-subtle)',
             }}
           />
           <input
@@ -114,7 +114,7 @@ export const FindingsTab: React.FC<FindingsTabProps> = ({ findings }) => {
               </span>
             </div>
 
-            <h3 style={{ fontSize: '1.18rem', color: '#f8fafc', margin: '4px 0 8px' }}>
+            <h3 style={{ fontSize: '1.18rem', color: 'var(--text-main)', margin: '4px 0 8px' }}>
               {finding.title}
             </h3>
             <p className={styles.findingDesc}>

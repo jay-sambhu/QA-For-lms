@@ -30,7 +30,7 @@ export const DevicesTab: React.FC<DevicesTabProps> = ({ crossDeviceMetrics }) =>
         <div className={styles.statCard}>
           <div className={styles.statHeader}>
             <span>Desktop (1920x1080)</span>
-            <TbDeviceDesktop size={20} color="#818cf8" />
+            <TbDeviceDesktop size={20} color="#4f46e5" />
           </div>
           <div className={styles.statValue}>{breakdown.desktop}</div>
           <div className={styles.statSub}>Responsive Findings</div>
@@ -39,7 +39,7 @@ export const DevicesTab: React.FC<DevicesTabProps> = ({ crossDeviceMetrics }) =>
         <div className={styles.statCard}>
           <div className={styles.statHeader}>
             <span>iPhone 13 (390x844)</span>
-            <TbDeviceMobile size={20} color="#38bdf8" />
+            <TbDeviceMobile size={20} color="#0284c7" />
           </div>
           <div className={styles.statValue}>{breakdown.iphone}</div>
           <div className={styles.statSub}>Touch & Viewport Findings</div>
@@ -48,7 +48,7 @@ export const DevicesTab: React.FC<DevicesTabProps> = ({ crossDeviceMetrics }) =>
         <div className={styles.statCard}>
           <div className={styles.statHeader}>
             <span>iPad (820x1180)</span>
-            <TbDeviceTablet size={20} color="#34d399" />
+            <TbDeviceTablet size={20} color="#059669" />
           </div>
           <div className={styles.statValue}>{breakdown.ipad}</div>
           <div className={styles.statSub}>Tablet Layout Findings</div>

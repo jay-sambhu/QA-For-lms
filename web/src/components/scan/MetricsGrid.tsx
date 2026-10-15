@@ -46,7 +46,7 @@ export const MetricsGrid: React.FC<MetricsGridProps> = ({ results }) => {
       <div className={styles.statCard}>
         <div className={styles.statHeader}>
           <span>Total Test Cases</span>
-          <TbTestPipe size={20} color="#818cf8" />
+          <TbTestPipe size={20} color="#4f46e5" />
         </div>
         <div className={styles.statValue}>{totalTestCases}</div>
         <div className={styles.statSub}>
@@ -68,7 +68,7 @@ export const MetricsGrid: React.FC<MetricsGridProps> = ({ results }) => {
       <div className={styles.statCard}>
         <div className={styles.statHeader}>
           <span>Pages & Devices</span>
-          <TbDeviceDesktop size={20} color="#38bdf8" />
+          <TbDeviceDesktop size={20} color="#0284c7" />
         </div>
         <div className={styles.statValue}>{pagesCrawled}</div>
         <div className={styles.statSub}>Desktop · iPhone 13 · iPad</div>
@@ -77,7 +77,7 @@ export const MetricsGrid: React.FC<MetricsGridProps> = ({ results }) => {
       <div className={styles.statCard}>
         <div className={styles.statHeader}>
           <span>Execution Duration</span>
-          <TbClock size={20} color="#34d399" />
+          <TbClock size={20} color="#059669" />
         </div>
         <div className={styles.statValue}>{durationText}</div>
         <div className={styles.statSub}>Parallel worker pipeline</div>

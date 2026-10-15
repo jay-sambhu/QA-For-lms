@@ -24,7 +24,7 @@ export const QualityScoreCard: React.FC<QualityScoreCardProps> = ({
     : isModerateQuality
     ? 'rgba(245, 158, 11, 0.15)'
     : 'rgba(239, 68, 68, 0.15)';
-  const badgeColor = isHighQuality ? '#34d399' : isModerateQuality ? '#fbbf24' : '#f87171';
+  const badgeColor = isHighQuality ? '#059669' : isModerateQuality ? '#d97706' : '#dc2626';
   const badgeBorder = `1px solid ${
     isHighQuality
       ? 'rgba(16, 185, 129, 0.35)'
@@ -43,7 +43,7 @@ export const QualityScoreCard: React.FC<QualityScoreCardProps> = ({
               cy="65"
               r="54"
               fill="none"
-              stroke="rgba(255, 255, 255, 0.08)"
+              stroke="rgba(var(--ink-rgb), 0.08)"
               strokeWidth="10"
             />
             <circle

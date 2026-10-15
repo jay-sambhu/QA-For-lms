@@ -58,10 +58,10 @@ export const ReportHeader: React.FC<ReportHeaderProps> = ({
     <div className={styles.resultsHeader}>
       <div>
         <h2>
-          <TbFileAnalytics size={26} color="#818cf8" /> Autonomous QA Scan Report
+          <TbFileAnalytics size={26} color="#4f46e5" /> Autonomous QA Scan Report
         </h2>
-        <div style={{ color: '#94a3b8', fontSize: '0.92rem', marginTop: '4px' }}>
-          Target: <strong style={{ color: '#f8fafc' }}>{targetUrl}</strong> · Generated at {generatedAt}
+        <div style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '4px' }}>
+          Target: <strong style={{ color: 'var(--text-main)' }}>{targetUrl}</strong> · Generated at {generatedAt}
         </div>
       </div>
 
@@ -103,7 +103,7 @@ export const ReportHeader: React.FC<ReportHeaderProps> = ({
           {downloadingFormat === 'json' ? (
             <TbLoader2 size={16} className="pulse" />
           ) : (
-            <RiCodeSSlashLine size={16} color="#38bdf8" />
+            <RiCodeSSlashLine size={16} color="#0284c7" />
           )}
           <span>JSON</span>
         </button>

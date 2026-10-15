@@ -40,9 +40,9 @@ export const DeviceDeck: React.FC<DeviceDeckProps> = ({
     <div className={styles.deviceDeckSection}>
       <div className={styles.deviceDeckTitleRow}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          <TbActivity size={16} color="#38bdf8" /> Live Multi-Device Emulation Viewports
+          <TbActivity size={16} color="#0284c7" /> Live Multi-Device Emulation Viewports
         </span>
-        <span style={{ color: '#34d399', fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.04em' }}>
+        <span style={{ color: '#059669', fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.04em' }}>
           ● 3 ISOLATED CONTEXTS ACTIVE
         </span>
       </div>
@@ -60,7 +60,7 @@ export const DeviceDeck: React.FC<DeviceDeckProps> = ({
             >
               <div className={styles.deviceCardHeader}>
                 <div className={styles.deviceIconName}>
-                  <span style={{ color: isCrawlingThis ? '#818cf8' : '#64748b' }}>{dev.icon}</span>
+                  <span style={{ color: isCrawlingThis ? '#4f46e5' : 'var(--text-subtle)' }}>{dev.icon}</span>
                   <span>{dev.name}</span>
                 </div>
                 <span
@@ -73,7 +73,7 @@ export const DeviceDeck: React.FC<DeviceDeckProps> = ({
               </div>
 
               <div className={styles.deviceMockupFrame}>
-                <div style={{ color: isCrawlingThis ? '#38bdf8' : '#94a3b8', fontSize: '0.78rem' }}>
+                <div style={{ color: isCrawlingThis ? '#0284c7' : 'var(--text-muted)', fontSize: '0.78rem' }}>
                   {isCrawlingThis
                     ? activeUrl || defaultUrl || 'Navigating DOM...'
                     : 'Waiting for viewport pass...'}
