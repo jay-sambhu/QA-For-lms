@@ -3,9 +3,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
-import { Loader2, AlertTriangle, ArrowLeft, RefreshCw } from 'lucide-react';
+import { m as motion } from 'framer-motion';
+import {
+  LuLoaderCircle as Loader2,
+  LuTriangleAlert as AlertTriangle,
+  LuArrowLeft as ArrowLeft,
+  LuRefreshCw as RefreshCw,
+} from 'react-icons/lu';
 import { useAuth, supabase } from '../context/AuthContext';
+import { downloadScanReport, type ServerReportFormat } from '../utils/download';
 import { ScanMonitor } from '../components/scan/ScanMonitor';
 import { ScanResults } from '../components/scan/ScanResults';
 import { AdBanner } from '../components/ads/AdBanner';
@@ -19,7 +25,6 @@ export const ScanDetailPage: React.FC = () => {
   const { session, sessionLoaded } = useAuth();
 
   const [status, setStatus] = useState<ScanStatus>('pending');
-  const [initialLoading, setInitialLoading] = useState(true);
   const [targetUrl, setTargetUrl] = useState('');
   const [progress, setProgress] = useState<ProgressPayload | null>(null);
   const [results, setResults] = useState<QAReport | null>(null);
@@ -39,7 +44,14 @@ export const ScanDetailPage: React.FC = () => {
   // How many times we've seen status=completed with no results payload yet
   const completedNoResultsRef = useRef(0);
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const isPollingRef = useRef(false);
+  // Latest access token, read by the poller without restarting it on every token refresh
+  const accessTokenRef = useRef<string | undefined>(session?.access_token);
+  const hasSession = !!session?.access_token;
+  const [downloadingFormat, setDownloadingFormat] = useState<string | null>(null);
+
+  useEffect(() => {
+    accessTokenRef.current = session?.access_token;
+  }, [session?.access_token]);
 
   // Elapsed timer
   useEffect(() => {
@@ -66,14 +78,31 @@ export const ScanDetailPage: React.FC = () => {
   const handleStopScan = async () => {
     if (!scanId || !session?.access_token) return;
     try {
-      await fetch(`/api/v1/scans/${scanId}/cancel`, {
+      const res = await fetch(`/api/v1/scans/${scanId}/cancel`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        alert(body.detail || `Could not stop the scan (HTTP ${res.status}).`);
+        return;
+      }
       setStatus('cancelled');
       setError('Scan was cancelled by user.');
     } catch {
-      // Ignore network aborts on cancel
+      alert('Network error while stopping the scan. Please try again.');
+    }
+  };
+
+  const handleReportDownload = async (fmt: ServerReportFormat) => {
+    if (!scanId || !session?.access_token) return;
+    setDownloadingFormat(fmt);
+    try {
+      await downloadScanReport(scanId, fmt, session.access_token);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Download failed. Please try again.');
+    } finally {
+      setDownloadingFormat(null);
     }
   };
 
@@ -93,13 +122,16 @@ export const ScanDetailPage: React.FC = () => {
     if (!sessionLoaded || !scanId) return;
 
     // 2. If user is unauthenticated, show error without firing API requests
-    if (!session?.access_token) {
+    if (!hasSession) {
       setError('Please sign in to view this scan.');
       setStatus('error');
       return;
     }
 
     let isMounted = true;
+    // Per-effect in-flight guard. (A shared ref used to stay `true` when the effect restarted
+    // mid-request, so the new poller bailed out and polling silently stopped forever.)
+    let inFlight = false;
     consecutiveErrorsRef.current = 0;
 
     const stopPolling = () => {
@@ -118,11 +150,11 @@ export const ScanDetailPage: React.FC = () => {
     };
 
     const executePoll = async () => {
-      if (!isMounted || isPollingRef.current) return;
-      isPollingRef.current = true;
+      if (!isMounted || inFlight) return;
+      inFlight = true;
 
       try {
-        let currentToken = session.access_token;
+        let currentToken = accessTokenRef.current;
         if (supabase) {
           try {
             const { data } = await supabase.auth.getSession();
@@ -147,7 +179,6 @@ export const ScanDetailPage: React.FC = () => {
             return;
           }
           stopPolling();
-          setInitialLoading(false);
           setError('Scan not found or has expired.');
           setStatus('error');
           return;
@@ -174,7 +205,6 @@ export const ScanDetailPage: React.FC = () => {
             return;
           }
           stopPolling();
-          setInitialLoading(false);
           setError('Session expired or unauthorized. Please sign in again.');
           setStatus('error');
           return;
@@ -183,7 +213,6 @@ export const ScanDetailPage: React.FC = () => {
         // Forbidden
         if (res.status === 403) {
           stopPolling();
-          setInitialLoading(false);
           setError('You do not have permission to view this scan.');
           setStatus('error');
           return;
@@ -194,7 +223,6 @@ export const ScanDetailPage: React.FC = () => {
           consecutiveErrorsRef.current += 1;
           if (consecutiveErrorsRef.current >= 10) {
             stopPolling();
-            setInitialLoading(false);
             setError(
               res.status === 502
                 ? 'Backend service is temporarily restarting (502 Bad Gateway). Please retry in a few moments.'
@@ -213,7 +241,6 @@ export const ScanDetailPage: React.FC = () => {
         consecutiveErrorsRef.current = 0;
         const data = await res.json();
         if (!isMounted) return;
-        setInitialLoading(false);
 
         if (data.url) setTargetUrl(data.url);
         setStatus(data.status);
@@ -235,7 +262,6 @@ export const ScanDetailPage: React.FC = () => {
           // The backend confirmed the report is in Supabase but too large to serve inline
           if (data.has_cloud_report) {
             stopPolling();
-            setInitialLoading(false);
             setReportUnavailable(true);
             return;
           }
@@ -243,7 +269,6 @@ export const ScanDetailPage: React.FC = () => {
           completedNoResultsRef.current += 1;
           if (completedNoResultsRef.current >= 5) {
             stopPolling();
-            setInitialLoading(false);
             setReportUnavailable(true);
             return;
           }
@@ -275,7 +300,6 @@ export const ScanDetailPage: React.FC = () => {
         consecutiveErrorsRef.current += 1;
         if (consecutiveErrorsRef.current >= 5) {
           stopPolling();
-          setInitialLoading(false);
           setError('Network connection error while checking scan status. Please retry.');
           setStatus('error');
           return;
@@ -283,7 +307,7 @@ export const ScanDetailPage: React.FC = () => {
         const backoff = Math.min(8000, 2000 * consecutiveErrorsRef.current);
         scheduleNextPoll(backoff);
       } finally {
-        isPollingRef.current = false;
+        inFlight = false;
       }
     };
 
@@ -293,7 +317,7 @@ export const ScanDetailPage: React.FC = () => {
       isMounted = false;
       stopPolling();
     };
-  }, [scanId, session?.access_token, sessionLoaded, retryCount]);
+  }, [scanId, hasSession, sessionLoaded, retryCount]);
 
   // Route Authentication Guard: Unauthenticated users are bounced to home
   useEffect(() => {
@@ -419,29 +443,11 @@ export const ScanDetailPage: React.FC = () => {
           </p>
           <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
             {(['pdf', 'xlsx', 'json', 'md'] as const).map((fmt) => (
-              <a
+              <button
+                type="button"
                 key={fmt}
-                href={`/api/v1/scans/${scanId}/download/${fmt}`}
-                download
-                onClick={(e) => {
-                  // Attach auth header via fetch instead of bare <a> for protected endpoints
-                  e.preventDefault();
-                  fetch(`/api/v1/scans/${scanId}/download/${fmt}`, {
-                    headers: { Authorization: `Bearer ${session?.access_token}` },
-                  })
-                    .then((r) => r.blob())
-                    .then((blob) => {
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = `qa-report-${scanId}.${fmt}`;
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
-                      setTimeout(() => URL.revokeObjectURL(url), 1000);
-                    })
-                    .catch(() => alert('Download failed. Please try again.'));
-                }}
+                onClick={() => handleReportDownload(fmt)}
+                disabled={downloadingFormat === fmt}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -463,8 +469,8 @@ export const ScanDetailPage: React.FC = () => {
                   cursor: 'pointer',
                 }}
               >
-                {fmt.toUpperCase()}
-              </a>
+                {downloadingFormat === fmt ? '…' : fmt.toUpperCase()}
+              </button>
             ))}
           </div>
           <button
