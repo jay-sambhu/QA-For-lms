@@ -26,8 +26,10 @@ AI_PROVIDERS_REGISTRY: Dict[str, AIProviderMeta] = {
         name="Google Gemini AI",
         description="High-speed reasoning, multi-modal analysis, and native structured schema parsing.",
         icon="SiGoogle",
-        models=["gemini-2.5-flash", "gemini-1.5-pro", "gemini-3-flash-preview", "gemini-1.5-flash"],
-        default_model="gemini-2.5-flash",
+        # Google retires Gemini names often; keep this list to models that are
+        # live today, and keep it in sync with GEMINI_FALLBACK_MODELS.
+        models=["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.5-flash", "gemini-3-flash-preview"],
+        default_model="gemini-3.8-flash",
         env_key_name="GEMINI_API_KEY",
         requires_endpoint=False,
     ),
@@ -78,7 +80,7 @@ AI_PROVIDERS_REGISTRY: Dict[str, AIProviderMeta] = {
 # In-memory runtime active AI configuration state
 _RUNTIME_AI_STATE: Dict[str, Any] = {
     "active_provider": "gemini",
-    "active_model": "gemini-2.5-flash",
+    "active_model": "gemini-3.8-flash",
     "temperature": 0.2,
     "max_tokens": 4096,
     "custom_endpoints": {

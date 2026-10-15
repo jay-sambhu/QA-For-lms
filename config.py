@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = Field(default=None, env="GEMINI_API_KEY")
     # Backward compatibility: support GOOGLE_API_KEY as fallback
     GOOGLE_API_KEY: Optional[str] = Field(default=None, env="GOOGLE_API_KEY")
-    AI_MODEL: str = Field(default="gemini-3-flash-preview", env="AI_MODEL")
+    AI_MODEL: str = Field(default="gemini-3.8-flash", env="AI_MODEL")
     REDIS_URL: Optional[str] = Field(default=None, env="REDIS_URL")
     STORAGE_URL: Optional[str] = Field(default=None, env="STORAGE_URL")
     MAX_SCAN_DURATION: int = Field(default=1800, env="MAX_SCAN_DURATION")

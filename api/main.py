@@ -503,7 +503,7 @@ async def list_user_api_keys(user=Depends(require_user)):
                 provider_id="gemini",
                 key_name="Google Gemini Studio",
                 api_key=db_user.gemini_api_key,
-                model="gemini-2.5-flash",
+                model=AI_PROVIDERS_REGISTRY["gemini"].default_model,
                 is_default=True,
             )
             db.add(legacy_key)
@@ -711,7 +711,7 @@ async def update_user_gemini_api_key(payload: ApiKeyUpdateRequest, user=Depends(
                 provider_id="gemini",
                 key_name="Google Gemini Studio",
                 api_key=key,
-                model="gemini-2.5-flash",
+                model=AI_PROVIDERS_REGISTRY["gemini"].default_model,
                 is_default=True,
             )
             db.add(new_k)
@@ -1414,7 +1414,7 @@ async def create_scan(
             ai_keys_pool.append({
                 "api_key": user_gemini_api_key,
                 "provider_id": "gemini",
-                "model": "gemini-2.5-flash",
+                "model": AI_PROVIDERS_REGISTRY["gemini"].default_model,
                 "endpoint": None,
                 "label": "Gemini API Key",
             })

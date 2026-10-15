@@ -49,7 +49,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState('gemini');
-  const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash');
+  const [selectedModel, setSelectedModel] = useState('gemini-3.8-flash');
   const [keyNameInput, setKeyNameInput] = useState('');
   const [keyValueInput, setKeyValueInput] = useState('');
   const [endpointInput, setEndpointInput] = useState('');

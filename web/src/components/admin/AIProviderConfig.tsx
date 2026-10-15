@@ -29,7 +29,7 @@ export const AIProviderConfig: React.FC = () => {
   const { session } = useAuth();
   const [providersData, setProvidersData] = useState<any>(null);
   const [selectedProvider, setSelectedProvider] = useState<string>('gemini');
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-flash');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.8-flash');
   const [apiKeyInput, setApiKeyInput] = useState<string>('');
   const [customEndpoint, setCustomEndpoint] = useState<string>('');
   const [temperature, setTemperature] = useState<number>(0.2);
@@ -50,7 +50,7 @@ export const AIProviderConfig: React.FC = () => {
         const data = await res.json();
         setProvidersData(data);
         setSelectedProvider(data.active_provider || 'gemini');
-        setSelectedModel(data.active_model || 'gemini-2.5-flash');
+        setSelectedModel(data.active_model || 'gemini-3.8-flash');
         setTemperature(data.temperature ?? 0.2);
 
         const currentP = data.providers?.find((p: any) => p.id === data.active_provider);
