@@ -4,7 +4,7 @@
 # the Celery worker, so this list covers both.
 #
 #   python -m venv .venv
-#   .venv/bin/pip install -r requirements-dev.txt   # dev/test
+#   .venv/bin/pip install -r requirements.txt
 #   .venv/bin/playwright install chromium
 #
 # Requires Python 3.11+ (playwright and pydantic wheels are ABI-specific).

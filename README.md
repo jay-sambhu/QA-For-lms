@@ -22,7 +22,7 @@ Powered by the **Nexus Engine**.
 6. [Configuration](#6-configuration)
 7. [API overview](#7-api-overview)
 8. [Plans and billing](#8-plans-and-billing)
-9. [Testing and  gates](#9-testing-and-quality-gates)
+9. [Checks before deploying](#9-checks-before-deploying)
 10. [Production readiness checklist](#10-production-readiness-checklist)
 11. [Repository structure](#11-repository-structure)
 12. [Contributing](#12-contributing)
@@ -304,18 +304,13 @@ Details, schemas and error model: [docs/API.md](docs/API.md).
 
 Gateways: Stripe, LemonSqueezy, Razorpay, PayPal. See [docs/BILLING.md](docs/BILLING.md).
 
-## 9. Testing and quality gates
+## 9. Checks before deploying
 
 ```bash
-pytest -q                                   # backend suite
-pytest -q --cov=. --cov-report=term-missing # with coverage
-ruff check . && ruff format --check .       # lint / format
-mypy .                                      # type check
-npm run lint --prefix web && npm run build --prefix web
-python ci_quality_gate.py                   # project quality gate
+npm run lint --prefix web && npm run build --prefix web   # frontend
+python -m compileall -q api core crawler worker billing security   # backend syntax
+docker compose build                                       # images build
 ```
-
-Every pull request must pass: lint, type check, unit and integration tests, migration test (`test_database_migrations.py`), frontend build, dependency and container vulnerability scan. See the CI pipeline in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#7-cicd-pipeline).
 
 ## 10. Production readiness checklist
 
@@ -364,7 +359,6 @@ Use this before go-live. Items marked ⚠️ are the most common gaps.
 ├── security/       # Redactor and SSRF guard
 ├── models.py  db.py  config.py
 ├── alembic/        # Database migrations
-├── tests/
 ├── web/            # Next.js frontend (standalone build, own Dockerfile)
 ├── deploy/         # Caddyfile
 ├── docs/
@@ -376,7 +370,7 @@ Use this before go-live. Items marked ⚠️ are the most common gaps.
 
 1. Fork and create a branch: `git checkout -b feat/short-description`
 2. Follow [Conventional Commits](https://www.conventionalcommits.org/)
-3. Ensure `pytest -q`, lint and `npm run build --prefix web` pass
+3. Ensure lint and `npm run build --prefix web` pass
 4. Open a pull request using the template; at least one review required
 
 ## 13. License

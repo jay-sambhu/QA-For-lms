@@ -439,7 +439,6 @@ Observed in the repository and recommended fixes before production:
 | Finding | Action |
 | --- | --- |
 | `.venv312/` is committed | Remove from git (`git rm -r --cached .venv312`), add to `.gitignore`; consider history rewrite if it is large |
-| Python modules and `test_*.py` files at repo root, plus a `tests/` folder | Move into a package (`jasuss/`) and `tests/`; add `pyproject.toml` |
 | `results/` directory in repo | Add to `.gitignore`; never commit scan output |
 | No `.env.example` visible | Add one with placeholders |
 | No `LICENSE`/`SECURITY.md`/`CODEOWNERS` verified | Add them (README links to `LICENSE`) |
