@@ -7,6 +7,7 @@ import { HiCheck, HiOutlineSparkles } from 'react-icons/hi2';
 import { RiShieldStarLine, RiCheckboxCircleFill, RiErrorWarningLine } from 'react-icons/ri';
 import { useAuth } from '../../context/AuthContext';
 import styles from '../../app/page.module.css';
+import { Tilt3D } from '../three/Tilt3D';
 
 export const PricingCards: React.FC = () => {
   const { session, openAuthModal, refreshPlan } = useAuth();
@@ -83,7 +84,7 @@ export const PricingCards: React.FC = () => {
       <div className={styles.gatewaySelectSection}>
         <div className={styles.gatewaySelectLabel}>
           <span>Choose Preferred Payment Gateway & Currency</span>
-          <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Global 256-Bit SSL Encrypted Checkout</span>
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Global 256-Bit SSL Encrypted Checkout</span>
         </div>
         <div className={styles.gatewayGrid}>
           {gateways.map((gw) => (
@@ -103,7 +104,7 @@ export const PricingCards: React.FC = () => {
       {/* 3 Plan Cards */}
       <div className={styles.pricingGrid}>
         {/* Starter Plan */}
-        <div className={styles.planCard}>
+        <Tilt3D className={styles.planCard} max={6}>
           <div className={styles.planHeader}>
             <div className={styles.planName}>Community Starter</div>
             <div className={styles.planPriceRow}>
@@ -132,10 +133,10 @@ export const PricingCards: React.FC = () => {
           >
             Select Starter ($0)
           </button>
-        </div>
+        </Tilt3D>
 
         {/* Pro Plan */}
-        <div className={`${styles.planCard} ${styles.planCardHighlighted}`}>
+        <Tilt3D className={`${styles.planCard} ${styles.planCardHighlighted}`} max={6}>
           <div className={styles.planPopularBadge}>
             <HiOutlineSparkles size={13} /> Recommended
           </div>
@@ -164,10 +165,10 @@ export const PricingCards: React.FC = () => {
           >
             {billingLoading ? 'Processing...' : `Upgrade with ${selectedGateway.toUpperCase()}`}
           </button>
-        </div>
+        </Tilt3D>
 
         {/* Enterprise Plan */}
-        <div className={styles.planCard}>
+        <Tilt3D className={styles.planCard} max={6}>
           <div className={styles.planHeader}>
             <div className={styles.planName}>
               <RiShieldStarLine size={18} color="#a855f7" style={{ display: 'inline', marginRight: '6px' }} />
@@ -196,7 +197,7 @@ export const PricingCards: React.FC = () => {
           >
             {billingLoading ? 'Processing...' : `Select Enterprise (${selectedGateway.toUpperCase()})`}
           </button>
-        </div>
+        </Tilt3D>
       </div>
     </div>
   );
