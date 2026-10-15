@@ -423,6 +423,19 @@ ADMIN_EMAILS = {
 }
 
 
+def _iso_utc(value):
+    """Serialize a DB timestamp with an explicit UTC offset.
+
+    SQLite hands back naive datetimes; without the offset the browser parses
+    the ISO string as local time and shows UTC clock values to the user.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.isoformat()
+
+
 def _is_admin_email(email: str) -> bool:
     """Admin allow-list. Never match on an "admin@" local part alone: anyone
     who owns admin@<any-domain> could otherwise sign up and become admin."""
@@ -758,8 +771,8 @@ def get_scan(scan_id: str, reap_stale: bool = False):
                 "user_id": str(scan.user_id),
                 "url": scan.url,
                 "status": scan.status,
-                "created_at": scan.created_at.isoformat() if scan.created_at else None,
-                "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
+                "created_at": _iso_utc(scan.created_at),
+                "completed_at": _iso_utc(scan.completed_at),
                 "report_path": scan.report_path,
                 "json_path": scan.json_path,
             }
@@ -1540,8 +1553,8 @@ async def list_scans(user=Depends(require_user)):
                     "id": s.id,
                     "url": s.url,
                     "status": s.status,
-                    "created_at": s.created_at.isoformat() if s.created_at else None,
-                    "completed_at": s.completed_at.isoformat() if s.completed_at else None,
+                    "created_at": _iso_utc(s.created_at),
+                    "completed_at": _iso_utc(s.completed_at),
                 }
                 for s in scans
             ]
