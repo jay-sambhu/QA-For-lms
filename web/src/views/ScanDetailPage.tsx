@@ -279,8 +279,10 @@ export const ScanDetailPage: React.FC = () => {
         // Terminal state: Failed
         if (data.status === 'failed') {
           stopPolling();
+          // Only a FAILED-stage message explains the failure; otherwise the last
+          // message is a stale progress update like "Crawling page 2/10".
           const failureDetail =
-            data.progress?.message ||
+            (data.progress?.stage === 'FAILED' && data.progress?.message) ||
             'Scan execution failed. The target site may be unreachable or returned an error.';
           setError(failureDetail);
           return;
