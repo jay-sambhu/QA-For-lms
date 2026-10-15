@@ -35,10 +35,5 @@ psycopg2-binary==2.9.9
 reportlab==4.4.9
 openpyxl==3.1.5
 
-# --- HTTP client (transitive via supabase; pinned for watchdog explicitness) ---
+# --- HTTP client (transitive via supabase; pinned explicitly) ---
 httpx==0.28.1
-
-# --- Optional: AI-driven exploration (core/explorer.py) ---
-# Not installed by default: it pulls in ~300 MB of LLM SDKs and is not used by
-# the scan pipeline. Install manually if you need it:
-#   pip install browser-use==0.13.8

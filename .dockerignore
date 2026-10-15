@@ -36,14 +36,9 @@ scratch/
 web/
 node_modules/
 
-# Docs and agent tooling
+# Docs and deploy config
 docs/
 *.md
-.agent/
-.agents/
-.gsd/
-.gemini/
-adapters/
 deploy/
 
 # Git & CI
