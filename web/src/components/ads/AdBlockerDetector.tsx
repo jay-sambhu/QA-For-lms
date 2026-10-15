@@ -140,7 +140,7 @@ export const AdBlockerDetector: React.FC = () => {
           <p style={styles.infoText}>
             <strong>JASUSS.TECH</strong> provides autonomous multi-viewport web QA crawling, regression testing, and executive reporting completely free.
           </p>
-          <p style={{ ...styles.infoText, marginTop: 8, color: "#94a3b8" }}>
+          <p style={{ ...styles.infoText, marginTop: 8, color: "var(--text-muted)" }}>
             Our infrastructure and AI analysis are sponsored by display advertisements. To keep this platform free and accessible to all developers, please whitelist our domain or disable your ad blocker.
           </p>
         </div>
@@ -213,12 +213,12 @@ const styles: Record<string, React.CSSProperties> = {
     position: "relative",
     width: "100%",
     maxWidth: "520px",
-    backgroundColor: "#0f172a",
+    backgroundColor: "var(--surface)",
     border: "1px solid rgba(239, 68, 68, 0.35)",
-    boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 35px rgba(239, 68, 68, 0.15)",
+    boxShadow: "0 25px 50px -12px rgba(15, 23, 42, 0.21), 0 0 35px rgba(239, 68, 68, 0.15)",
     borderRadius: "18px",
     padding: "32px 28px 24px",
-    color: "#f8fafc",
+    color: "var(--text-main)",
     textAlign: "center",
   },
   closeBtn: {
@@ -227,7 +227,7 @@ const styles: Record<string, React.CSSProperties> = {
     right: "16px",
     background: "transparent",
     border: "none",
-    color: "#94a3b8",
+    color: "var(--text-muted)",
     cursor: "pointer",
     padding: "6px",
     borderRadius: "8px",
@@ -250,18 +250,18 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "1.45rem",
     fontWeight: 700,
     margin: "0 0 6px",
-    color: "#ffffff",
+    color: "var(--text-heading)",
     letterSpacing: "-0.01em",
   },
   subtitle: {
     fontSize: "0.92rem",
-    color: "#f87171",
+    color: "#dc2626",
     fontWeight: 500,
     margin: "0 0 20px",
   },
   infoBox: {
-    backgroundColor: "rgba(30, 41, 59, 0.7)",
-    border: "1px solid rgba(255, 255, 255, 0.08)",
+    backgroundColor: "var(--surface-elevated)",
+    border: "1px solid rgba(var(--ink-rgb), 0.08)",
     borderRadius: "12px",
     padding: "16px",
     textAlign: "left",
@@ -271,10 +271,10 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "0.84rem",
     lineHeight: 1.5,
     margin: 0,
-    color: "#e2e8f0",
+    color: "var(--text-main)",
   },
   stepsBox: {
-    backgroundColor: "rgba(15, 23, 42, 0.6)",
+    backgroundColor: "var(--surface-elevated)",
     border: "1px solid rgba(148, 163, 184, 0.1)",
     borderRadius: "10px",
     padding: "12px 14px",
@@ -289,7 +289,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "flex-start",
     gap: "10px",
     fontSize: "0.8rem",
-    color: "#cbd5e1",
+    color: "var(--text-body)",
     lineHeight: 1.4,
   },
   actions: {
@@ -316,8 +316,8 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    color: "#93c5fd",
+    backgroundColor: "rgba(var(--ink-rgb), 0.06)",
+    color: "#2563eb",
     border: "1px solid rgba(147, 197, 253, 0.25)",
     borderRadius: "10px",
     padding: "11px 20px",
@@ -332,7 +332,7 @@ const styles: Record<string, React.CSSProperties> = {
   textDismissBtn: {
     background: "transparent",
     border: "none",
-    color: "#64748b",
+    color: "var(--text-subtle)",
     fontSize: "0.78rem",
     cursor: "pointer",
     textDecoration: "underline",

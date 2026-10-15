@@ -47,9 +47,9 @@ export const NavBar: React.FC = () => {
           height={36}
           style={{ width: '36px', height: '36px', objectFit: 'contain', filter: 'drop-shadow(0 0 10px rgba(56, 189, 248, 0.5))' }}
         />
-        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'baseline', fontWeight: 800, letterSpacing: '-0.02em', fontSize: '1.25rem', color: '#f8fafc' }}>
+        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'baseline', fontWeight: 800, letterSpacing: '-0.02em', fontSize: '1.25rem', color: 'var(--text-main)' }}>
           <span>JASUSS</span>
-          <span className={styles.logoSub} style={{ color: '#38bdf8', marginLeft: '2px', fontWeight: 900 }}>.TECH</span>
+          <span className={styles.logoSub} style={{ color: '#0284c7', marginLeft: '2px', fontWeight: 900 }}>.TECH</span>
         </div>
       </Link>
 
@@ -92,7 +92,7 @@ export const NavBar: React.FC = () => {
           <Link
             href="/admin"
             className={`${styles.navLink} ${isAdmin ? styles.navLinkActive : ''}`}
-            style={{ color: '#c084fc' }}
+            style={{ color: '#9333ea' }}
           >
             <RiShieldUserFill size={17} />
             <span>Admin</span>
@@ -126,7 +126,7 @@ export const NavBar: React.FC = () => {
                   textDecoration: 'none',
                 }}
               >
-                <RiShieldUserFill size={15} color="#c084fc" />
+                <RiShieldUserFill size={15} color="#9333ea" />
                 <span>Admin Console</span>
               </Link>
             ) : (
@@ -140,14 +140,14 @@ export const NavBar: React.FC = () => {
                   borderRadius: '10px',
                   background: 'rgba(99, 102, 241, 0.15)',
                   border: '1px solid rgba(99, 102, 241, 0.35)',
-                  color: '#818cf8',
+                  color: '#4f46e5',
                   fontSize: '0.82rem',
                   fontWeight: 700,
                   transition: 'all 0.2s ease',
                   textDecoration: 'none',
                 }}
               >
-                <TbDashboard size={15} color="#818cf8" />
+                <TbDashboard size={15} color="#4f46e5" />
                 <span>My Dashboard</span>
               </Link>
             )}
@@ -175,7 +175,7 @@ export const NavBar: React.FC = () => {
                   userIsAdmin
                     ? {
                         background: 'rgba(168, 85, 247, 0.2)',
-                        color: '#c084fc',
+                        color: '#9333ea',
                         border: '1px solid rgba(168, 85, 247, 0.4)',
                         fontWeight: 800,
                       }
@@ -232,7 +232,7 @@ export const NavBar: React.FC = () => {
                 fontSize: '0.65rem',
                 padding: '1px 6px',
                 background: userIsAdmin ? 'rgba(168, 85, 247, 0.2)' : undefined,
-                color: userIsAdmin ? '#c084fc' : undefined,
+                color: userIsAdmin ? '#9333ea' : undefined,
                 border: userIsAdmin ? '1px solid rgba(168, 85, 247, 0.4)' : undefined,
                 fontWeight: 800,
               }}
@@ -305,7 +305,7 @@ export const NavBar: React.FC = () => {
                 href="/admin"
                 onClick={() => setMobileMenuOpen(false)}
                 className={`${styles.mobileNavLink} ${isAdmin ? styles.mobileNavLinkActive : ''}`}
-                style={{ color: '#c084fc' }}
+                style={{ color: '#9333ea' }}
               >
                 <RiShieldUserFill size={18} />
                 <span>Admin Console</span>
@@ -313,7 +313,7 @@ export const NavBar: React.FC = () => {
             )}
           </div>
 
-          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(var(--ink-rgb), 0.08)' }}>
             <div className={styles.engineStatusPill} style={{ width: '100%', justifyContent: 'center', marginBottom: '12px' }}>
               <div className={styles.engineStatusDot} />
               <span>Nexus Engine Online · 99.9%</span>
@@ -342,7 +342,7 @@ export const NavBar: React.FC = () => {
                     width: '100%',
                     justifyContent: 'center',
                     fontSize: '0.85rem',
-                    color: '#f87171',
+                    color: '#dc2626',
                     borderColor: 'rgba(239, 68, 68, 0.3)',
                     background: 'rgba(239, 68, 68, 0.06)',
                   }}

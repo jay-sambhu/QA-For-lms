@@ -16,7 +16,7 @@ export const Footer: React.FC = () => {
               style={{ width: "36px", height: "36px", objectFit: "contain", filter: "drop-shadow(0 0 10px rgba(56, 189, 248, 0.45))" }}
             />
             <span style={styles.logoText}>
-              JASUSS<span style={{ color: "#38bdf8" }}>.TECH</span>
+              JASUSS<span style={{ color: "#0284c7" }}>.TECH</span>
             </span>
           </Link>
           <p style={styles.brandTagline}>
@@ -61,8 +61,8 @@ const styles: Record<string, React.CSSProperties> = {
   footer: {
     marginTop: "80px",
     padding: "48px 0 28px",
-    borderTop: "1px solid rgba(255, 255, 255, 0.08)",
-    color: "#64748b",
+    borderTop: "1px solid rgba(var(--ink-rgb), 0.08)",
+    color: "var(--text-subtle)",
     fontSize: "0.85rem",
     width: "100%",
   },
@@ -86,7 +86,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: "10px",
     textDecoration: "none",
-    color: "#fff",
+    color: "var(--text-heading)",
     fontWeight: 700,
     fontSize: "1.18rem",
   },
@@ -100,7 +100,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   brandTagline: {
     margin: 0,
-    color: "#94a3b8",
+    color: "var(--text-muted)",
     fontSize: "0.85rem",
     lineHeight: 1.6,
   },
@@ -111,20 +111,20 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: "150px",
   },
   colTitle: {
-    color: "#f8fafc",
+    color: "var(--text-main)",
     fontWeight: 700,
     fontSize: "0.88rem",
     marginBottom: "4px",
     letterSpacing: "0.02em",
   },
   footerLink: {
-    color: "#94a3b8",
+    color: "var(--text-muted)",
     textDecoration: "none",
     fontSize: "0.84rem",
     transition: "color 0.2s ease",
   },
   staticLink: {
-    color: "#64748b",
+    color: "var(--text-subtle)",
     fontSize: "0.82rem",
   },
   bottomBar: {
@@ -132,11 +132,11 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     alignItems: "center",
     paddingTop: "24px",
-    borderTop: "1px solid rgba(255, 255, 255, 0.05)",
+    borderTop: "1px solid rgba(var(--ink-rgb), 0.05)",
     flexWrap: "wrap",
     gap: "14px",
     fontSize: "0.8rem",
-    color: "#64748b",
+    color: "var(--text-subtle)",
   },
   statusIndicator: {
     display: "inline-flex",

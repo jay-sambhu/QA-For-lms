@@ -34,7 +34,7 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
         <aside className="sideAdRail sideAdRailLeft" aria-label="Sponsored QA Tools">
           <div className="sideAdRailHeader">
             <span className="sideAdBadge">
-              <TbShieldCheck size={13} color="#818cf8" />
+              <TbShieldCheck size={13} color="#4f46e5" />
               <span>SPONSORED QA</span>
             </span>
             <button
@@ -103,7 +103,7 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
 
           {/* Free Tier Callout */}
           <div className="sideAdFooter">
-            <span style={{ fontSize: "0.72rem", color: "#64748b" }}>Free Tier Plan</span>
+            <span style={{ fontSize: "0.72rem", color: "var(--text-subtle)" }}>Free Tier Plan</span>
             <Link href="/pricing" className="sideAdUpgradeLink">
               Remove ads with Pro →
             </Link>
@@ -121,7 +121,7 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
         <aside className="sideAdRail sideAdRailRight" aria-label="Developer Ecosystem">
           <div className="sideAdRailHeader">
             <span className="sideAdBadge">
-              <TbSparkles size={13} color="#38bdf8" />
+              <TbSparkles size={13} color="#0284c7" />
               <span>DEV ECOSYSTEM</span>
             </span>
             <button
@@ -164,7 +164,7 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
             className="sideAdCard"
           >
             <div className="sideAdCardTop">
-              <span className="sideAdIconBox" style={{ background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8" }}>
+              <span className="sideAdIconBox" style={{ background: "rgba(56, 189, 248, 0.15)", color: "#0284c7" }}>
                 <TbBolt size={15} />
               </span>
               <span className="sideAdCategory">PERFORMANCE</span>
@@ -190,7 +190,7 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
 
           {/* Free Tier Callout */}
           <div className="sideAdFooter">
-            <span style={{ fontSize: "0.72rem", color: "#64748b" }}>JASUSS Cloud</span>
+            <span style={{ fontSize: "0.72rem", color: "var(--text-subtle)" }}>JASUSS Cloud</span>
             <Link href="/blog" className="sideAdUpgradeLink">
               Read QA Articles →
             </Link>

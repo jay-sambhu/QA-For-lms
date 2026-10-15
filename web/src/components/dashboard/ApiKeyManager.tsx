@@ -218,7 +218,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
       case 'local_llm':
         return <TbServer2 size={size} color="#10b981" />;
       default:
-        return <RiCpuLine size={size} color="#818cf8" />;
+        return <RiCpuLine size={size} color="#4f46e5" />;
     }
   };
 
@@ -232,15 +232,15 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
     <div
       id="ai-models-manager"
       style={{
-        background: 'rgba(15, 23, 42, 0.65)',
+        background: 'rgba(var(--panel-rgb), 0.7)',
         backdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
+        border: '1px solid rgba(var(--ink-rgb), 0.08)',
         borderRadius: '20px',
         padding: '24px',
         display: 'flex',
         flexDirection: 'column',
         gap: '20px',
-        boxShadow: '0 16px 40px rgba(0, 0, 0, 0.35)',
+        boxShadow: '0 16px 40px rgba(15, 23, 42, 0.105)',
       }}
     >
       {/* Header bar */}
@@ -264,7 +264,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#818cf8',
+              color: '#4f46e5',
               boxShadow: '0 0 15px rgba(99, 102, 241, 0.25)',
             }}
           >
@@ -276,7 +276,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                 style={{
                   fontSize: '1.15rem',
                   fontWeight: 800,
-                  color: '#f8fafc',
+                  color: 'var(--text-main)',
                   letterSpacing: '-0.02em',
                   margin: 0,
                 }}
@@ -299,7 +299,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                     ? '#e9d5ff'
                     : isFreeLimitReached
                     ? '#facc15'
-                    : '#38bdf8',
+                    : '#0284c7',
                   border: `1px solid ${
                     quotaData?.is_paid
                       ? 'rgba(168, 85, 247, 0.45)'
@@ -314,7 +314,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
               >
                 {quotaData?.is_paid ? (
                   <>
-                    <RiVipCrownFill size={12} color="#c084fc" />
+                    <RiVipCrownFill size={12} color="#9333ea" />
                     <span>UNLIMITED ({(quotaData.plan_tier || 'PRO').toUpperCase()})</span>
                   </>
                 ) : (
@@ -325,7 +325,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                 )}
               </span>
             </div>
-            <p style={{ fontSize: '0.82rem', color: '#94a3b8', margin: '4px 0 0 0' }}>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
               Scale autonomously across Google Gemini, OpenAI, Claude, DeepSeek, and Local LLM (Ollama). The default key is used to generate QA defect reports.
             </p>
           </div>
@@ -351,9 +351,9 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
               alignItems: 'center',
               gap: '6px',
               background: showAddForm
-                ? 'rgba(255, 255, 255, 0.08)'
+                ? 'rgba(var(--ink-rgb), 0.08)'
                 : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
+              border: '1px solid rgba(var(--ink-rgb), 0.15)',
               fontWeight: 700,
             }}
           >
@@ -385,7 +385,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
             justifyContent: 'space-between',
             gap: '16px',
             flexWrap: 'wrap',
-            boxShadow: '0 8px 30px rgba(0, 0, 0, 0.3)',
+            boxShadow: '0 8px 30px rgba(15, 23, 42, 0.09)',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px', maxWidth: '650px' }}>
@@ -408,7 +408,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
               <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#facc15' }}>
                 Free Tier Maximum Reached (3 of 3 Allowed Keys)
               </div>
-              <div style={{ fontSize: '0.82rem', color: '#cbd5e1', marginTop: '3px', lineHeight: 1.4 }}>
+              <div style={{ fontSize: '0.82rem', color: 'var(--text-body)', marginTop: '3px', lineHeight: 1.4 }}>
                 You have reached the maximum quota for the Free plan. To connect additional AI models, custom Ollama endpoints, and prevent rate limits, activate an official Pro or Enterprise subscription.
               </div>
             </div>
@@ -456,8 +456,8 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
             onSubmit={handleAddKey}
             style={{
               overflow: 'hidden',
-              background: 'rgba(255, 255, 255, 0.02)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              background: 'rgba(var(--ink-rgb), 0.02)',
+              border: '1px solid rgba(var(--ink-rgb), 0.08)',
               borderRadius: '16px',
               padding: '20px',
               display: 'flex',
@@ -466,17 +466,17 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#f8fafc' }}>
+              <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-main)' }}>
                 Connect New AI Provider &amp; Model
               </div>
-              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                 Stored encrypted · Zero shared telemetry
               </span>
             </div>
 
             {/* Provider Selector Tabs */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#94a3b8' }}>
+              <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>
                 Select AI Platform Provider:
               </label>
               <div
@@ -504,11 +504,11 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                         borderRadius: '10px',
                         background: isSelected
                           ? 'rgba(99, 102, 241, 0.2)'
-                          : 'rgba(255, 255, 255, 0.03)',
+                          : 'rgba(var(--ink-rgb), 0.03)',
                         border: `1px solid ${
-                          isSelected ? '#6366f1' : 'rgba(255, 255, 255, 0.06)'
+                          isSelected ? '#6366f1' : 'rgba(var(--ink-rgb), 0.06)'
                         }`,
-                        color: isSelected ? '#f8fafc' : '#94a3b8',
+                        color: isSelected ? 'var(--text-main)' : 'var(--text-muted)',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
@@ -536,18 +536,18 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
             >
               {/* Model Dropdown */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#94a3b8' }}>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>
                   Model Target:
                 </label>
                 <select
                   value={selectedModel}
                   onChange={(e) => setSelectedModel(e.target.value)}
                   style={{
-                    background: 'rgba(15, 23, 42, 0.8)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    background: 'rgba(var(--panel-rgb), 0.8)',
+                    border: '1px solid rgba(var(--ink-rgb), 0.12)',
                     borderRadius: '8px',
                     padding: '8px 12px',
-                    color: '#f8fafc',
+                    color: 'var(--text-main)',
                     fontSize: '0.84rem',
                     outline: 'none',
                   }}
@@ -562,7 +562,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
 
               {/* Friendly Label Name */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#94a3b8' }}>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>
                   Key Label / Description (Optional):
                 </label>
                 <input
@@ -571,11 +571,11 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                   value={keyNameInput}
                   onChange={(e) => setKeyNameInput(e.target.value)}
                   style={{
-                    background: 'rgba(15, 23, 42, 0.8)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    background: 'rgba(var(--panel-rgb), 0.8)',
+                    border: '1px solid rgba(var(--ink-rgb), 0.12)',
                     borderRadius: '8px',
                     padding: '8px 12px',
-                    color: '#f8fafc',
+                    color: 'var(--text-main)',
                     fontSize: '0.84rem',
                     outline: 'none',
                   }}
@@ -585,7 +585,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
 
             {/* Secret API Key Input */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#94a3b8' }}>
+              <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>
                 {selectedProvider === 'local_llm'
                   ? 'Authorization Token (Optional for Ollama):'
                   : `API Secret Key for ${currentProviderMeta?.name || selectedProvider}:`}
@@ -607,11 +607,11 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                   required={selectedProvider !== 'local_llm'}
                   style={{
                     width: '100%',
-                    background: 'rgba(15, 23, 42, 0.8)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    background: 'rgba(var(--panel-rgb), 0.8)',
+                    border: '1px solid rgba(var(--ink-rgb), 0.12)',
                     borderRadius: '8px',
                     padding: '8px 40px 8px 12px',
-                    color: '#f8fafc',
+                    color: 'var(--text-main)',
                     fontSize: '0.84rem',
                     outline: 'none',
                     fontFamily: 'monospace',
@@ -627,7 +627,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                     transform: 'translateY(-50%)',
                     background: 'none',
                     border: 'none',
-                    color: '#64748b',
+                    color: 'var(--text-subtle)',
                     cursor: 'pointer',
                   }}
                 >
@@ -639,7 +639,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
             {/* Custom Endpoint Input (if Ollama or custom proxy) */}
             {(selectedProvider === 'local_llm' || currentProviderMeta?.requires_endpoint) && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#94a3b8' }}>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>
                   Custom Endpoint URL (Ollama or OpenAI-compatible gateway):
                 </label>
                 <input
@@ -648,11 +648,11 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                   value={endpointInput}
                   onChange={(e) => setEndpointInput(e.target.value)}
                   style={{
-                    background: 'rgba(15, 23, 42, 0.8)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    background: 'rgba(var(--panel-rgb), 0.8)',
+                    border: '1px solid rgba(var(--ink-rgb), 0.12)',
                     borderRadius: '8px',
                     padding: '8px 12px',
-                    color: '#f8fafc',
+                    color: 'var(--text-main)',
                     fontSize: '0.84rem',
                     outline: 'none',
                     fontFamily: 'monospace',
@@ -672,7 +672,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
               />
               <label
                 htmlFor="dashboard-is-default-key"
-                style={{ fontSize: '0.82rem', color: '#e2e8f0', cursor: 'pointer' }}
+                style={{ fontSize: '0.82rem', color: 'var(--text-main)', cursor: 'pointer' }}
               >
                 Set this model as the active default engine for automated QA crawls
               </label>
@@ -751,16 +751,16 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
       {/* List of Connected API Keys */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.82rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8' }}>
+          <span style={{ fontSize: '0.82rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>
             Active AI Keys ({apiKeys.length} {apiKeys.length === 1 ? 'Connected' : 'Connected'})
           </span>
-          <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
             Click star icon to switch default QA engine
           </span>
         </div>
 
         {loading ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#94a3b8', padding: '16px', fontSize: '0.84rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)', padding: '16px', fontSize: '0.84rem' }}>
             <TbLoader2 size={16} className="pulse" /> Loading connected API keys...
           </div>
         ) : apiKeys.length === 0 ? (
@@ -768,8 +768,8 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
             style={{
               padding: '24px',
               borderRadius: '12px',
-              background: 'rgba(255, 255, 255, 0.02)',
-              border: '1px dashed rgba(255, 255, 255, 0.1)',
+              background: 'rgba(var(--ink-rgb), 0.02)',
+              border: '1px dashed rgba(var(--ink-rgb), 0.1)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -778,11 +778,11 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
               textAlign: 'center',
             }}
           >
-            <TbKey size={32} color="#64748b" />
-            <div style={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.9rem' }}>
+            <TbKey size={32} color="var(--text-subtle)" />
+            <div style={{ color: 'var(--text-main)', fontWeight: 600, fontSize: '0.9rem' }}>
               No AI Model Keys Connected Yet
             </div>
-            <div style={{ color: '#94a3b8', fontSize: '0.8rem', maxWidth: '380px' }}>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', maxWidth: '380px' }}>
               Connect your Google Gemini, OpenAI, Claude, or DeepSeek API key to enable autonomous QA defect analysis and report generation.
             </div>
             <button
@@ -819,9 +819,9 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                     borderRadius: '14px',
                     background: isDefault
                       ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(16, 185, 129, 0.08))'
-                      : 'rgba(255, 255, 255, 0.025)',
+                      : 'rgba(var(--ink-rgb), 0.025)',
                     border: `1px solid ${
-                      isDefault ? 'rgba(99, 102, 241, 0.4)' : 'rgba(255, 255, 255, 0.07)'
+                      isDefault ? 'rgba(99, 102, 241, 0.4)' : 'rgba(var(--ink-rgb), 0.07)'
                     }`,
                     display: 'flex',
                     flexDirection: 'column',
@@ -838,7 +838,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                           width: '32px',
                           height: '32px',
                           borderRadius: '8px',
-                          background: 'rgba(255, 255, 255, 0.05)',
+                          background: 'rgba(var(--ink-rgb), 0.05)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -847,7 +847,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                         {renderProviderIcon(key.provider_id, 18)}
                       </div>
                       <div>
-                        <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#f8fafc' }}>
+                        <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-main)' }}>
                           {key.key_name || `${(key.provider_id || '').toUpperCase()} Engine`}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
@@ -856,8 +856,8 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                               fontSize: '0.72rem',
                               padding: '2px 6px',
                               borderRadius: '4px',
-                              background: 'rgba(255, 255, 255, 0.06)',
-                              color: '#94a3b8',
+                              background: 'rgba(var(--ink-rgb), 0.06)',
+                              color: 'var(--text-muted)',
                               fontFamily: 'monospace',
                             }}
                           >
@@ -876,14 +876,14 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                           padding: '3px 8px',
                           borderRadius: '6px',
                           background: 'rgba(16, 185, 129, 0.18)',
-                          color: '#34d399',
+                          color: '#059669',
                           border: '1px solid rgba(16, 185, 129, 0.35)',
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: '4px',
                         }}
                       >
-                        <RiStarFill size={11} color="#34d399" /> Default Engine
+                        <RiStarFill size={11} color="#059669" /> Default Engine
                       </span>
                     ) : (
                       <button
@@ -892,12 +892,12 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                         disabled={settingDefaultId === key.id}
                         title="Set as Default QA Model"
                         style={{
-                          background: 'rgba(255, 255, 255, 0.04)',
-                          border: '1px solid rgba(255, 255, 255, 0.08)',
+                          background: 'rgba(var(--ink-rgb), 0.04)',
+                          border: '1px solid rgba(var(--ink-rgb), 0.08)',
                           borderRadius: '6px',
                           padding: '3px 8px',
                           fontSize: '0.72rem',
-                          color: '#94a3b8',
+                          color: 'var(--text-muted)',
                           cursor: 'pointer',
                           display: 'inline-flex',
                           alignItems: 'center',
@@ -918,10 +918,10 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                       justifyContent: 'space-between',
                       padding: '6px 10px',
                       borderRadius: '8px',
-                      background: 'rgba(0, 0, 0, 0.25)',
+                      background: 'rgba(var(--ink-rgb), 0.037)',
                       fontSize: '0.78rem',
                       fontFamily: 'monospace',
-                      color: '#cbd5e1',
+                      color: 'var(--text-body)',
                     }}
                   >
                     <span>
@@ -936,7 +936,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                           setRevealedKeyIds((prev) => ({ ...prev, [key.id]: !prev[key.id] }))
                         }
                         title={isRevealed ? 'Mask key' : 'Show masked snippet'}
-                        style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
+                        style={{ background: 'none', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer' }}
                       >
                         {isRevealed ? <RiEyeOffLine size={14} /> : <RiEyeLine size={14} />}
                       </button>
@@ -945,7 +945,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                         onClick={() => handleDeleteKey(key.id)}
                         disabled={deletingId === key.id}
                         title="Disconnect API Key"
-                        style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer' }}
+                        style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer' }}
                       >
                         <TbTrash size={14} />
                       </button>

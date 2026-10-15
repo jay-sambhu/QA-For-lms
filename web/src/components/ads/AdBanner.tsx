@@ -236,7 +236,7 @@ export const AdBanner: React.FC<AdBannerProps> = ({ isAuthenticated, onCycleComp
       {/* Disclaimer */}
       <p style={S.disclaimer}>
         Ads powered by Google AdSense & certified partners. Scan continues in the background.{" "}
-        <a href="/pricing" style={{ color: "#818cf8", textDecoration: "none" }}>Upgrade to Pro</a>
+        <a href="/pricing" style={{ color: "#4f46e5", textDecoration: "none" }}>Upgrade to Pro</a>
         {" "}for an ad-free experience.
       </p>
     </div>
@@ -258,7 +258,7 @@ function CountdownRing({ timeLeft, total, accent }: { timeLeft: number; total: n
           style={{ transition: "stroke-dashoffset 0.9s linear" }}
         />
       </svg>
-      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", fontWeight: 700, color: "#f1f5f9" }}>
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", fontWeight: 700, color: "var(--text-main)" }}>
         {timeLeft}s
       </div>
     </div>
@@ -267,30 +267,30 @@ function CountdownRing({ timeLeft, total, accent }: { timeLeft: number; total: n
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const S: Record<string, React.CSSProperties> = {
-  wrapper: { background: "rgba(15,23,42,0.88)", border: "1px solid rgba(99,102,241,0.18)", borderRadius: 16, padding: "16px 20px 14px", backdropFilter: "blur(14px)", marginTop: 18 },
+  wrapper: { background: "rgba(var(--panel-rgb), 0.88)", border: "1px solid rgba(99,102,241,0.18)", borderRadius: 16, padding: "16px 20px 14px", backdropFilter: "blur(14px)", marginTop: 18 },
   header: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
-  adLabel: { display: "flex", alignItems: "center", gap: 6, fontSize: "0.63rem", fontWeight: 700, letterSpacing: "0.13em", color: "#94a3b8", textTransform: "uppercase" },
+  adLabel: { display: "flex", alignItems: "center", gap: 6, fontSize: "0.63rem", fontWeight: 700, letterSpacing: "0.13em", color: "var(--text-muted)", textTransform: "uppercase" },
   adDot: { width: 7, height: 7, borderRadius: "50%", background: "#4285f4", boxShadow: "0 0 6px #4285f4" },
   headerRight: { display: "flex", alignItems: "center", gap: 10 },
-  adsenseBadge: { fontSize: "0.71rem", fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "rgba(66,133,244,0.12)", color: "#93c5fd", border: "1px solid rgba(66,133,244,0.25)", display: "inline-flex", alignItems: "center" },
+  adsenseBadge: { fontSize: "0.71rem", fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "rgba(66,133,244,0.12)", color: "#2563eb", border: "1px solid rgba(66,133,244,0.25)", display: "inline-flex", alignItems: "center" },
   sponsorPill: { fontSize: "0.65rem", fontWeight: 600, padding: "1px 7px", borderRadius: 12 },
-  adCount: { fontSize: "0.71rem", color: "#64748b" },
+  adCount: { fontSize: "0.71rem", color: "var(--text-subtle)" },
   adsenseContainer: { marginBottom: 12, borderRadius: 8, overflow: "hidden" },
   card: { display: "flex", gap: 16, alignItems: "center" },
-  imageWrapper: { position: "relative", flexShrink: 0, width: 280, height: 158, borderRadius: 10, overflow: "hidden", border: "1px solid rgba(255,255,255,0.07)" },
+  imageWrapper: { position: "relative", flexShrink: 0, width: 280, height: 158, borderRadius: 10, overflow: "hidden", border: "1px solid rgba(var(--ink-rgb), 0.07)" },
   image: { width: "100%", height: "100%", objectFit: "cover" },
-  imageOverlay: { position: "absolute", inset: 0, background: "linear-gradient(90deg,rgba(0,0,0,0) 55%,rgba(0,0,0,0.4) 100%)", pointerEvents: "none" },
-  muteBtn: { position: "absolute", bottom: 8, right: 8, background: "rgba(0,0,0,0.5)", border: "none", borderRadius: 6, padding: "4px 6px", cursor: "pointer", color: "#cbd5e1", display: "flex", alignItems: "center" },
+  imageOverlay: { position: "absolute", inset: 0, background: "linear-gradient(90deg,rgba(var(--ink-rgb), 0) 55%,rgba(var(--ink-rgb), 0.06) 100%)", pointerEvents: "none" },
+  muteBtn: { position: "absolute", bottom: 8, right: 8, background: "rgba(15, 23, 42, 0.35)", border: "none", borderRadius: 6, padding: "4px 6px", cursor: "pointer", color: "var(--text-body)", display: "flex", alignItems: "center" },
   copy: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 },
-  sponsorName: { fontSize: "0.7rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", margin: 0 },
-  headline: { fontSize: "1rem", fontWeight: 700, color: "#f1f5f9", margin: 0, lineHeight: 1.35 },
-  subline: { fontSize: "0.81rem", color: "#94a3b8", margin: 0, lineHeight: 1.5 },
+  sponsorName: { fontSize: "0.7rem", fontWeight: 700, color: "var(--text-subtle)", textTransform: "uppercase", letterSpacing: "0.08em", margin: 0 },
+  headline: { fontSize: "1rem", fontWeight: 700, color: "var(--text-main)", margin: 0, lineHeight: 1.35 },
+  subline: { fontSize: "0.81rem", color: "var(--text-muted)", margin: 0, lineHeight: 1.5 },
   ctaBtn: { display: "inline-flex", alignItems: "center", padding: "8px 16px", borderRadius: 8, color: "#fff", fontWeight: 600, fontSize: "0.81rem", textDecoration: "none", alignSelf: "flex-start", marginTop: 4 },
   countdownWrapper: { display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" },
   footer: { display: "flex", alignItems: "center", gap: 12, marginTop: 14 },
   progressTrack: { flex: 1, height: 3, borderRadius: 4, background: "rgba(148,163,184,0.12)", overflow: "hidden" },
   progressFill: { height: "100%", borderRadius: 4, transition: "width 1s linear" },
-  skipBtn: { flexShrink: 0, background: "transparent", border: "1px solid rgba(148,163,184,0.18)", borderRadius: 6, padding: "3px 10px", cursor: "pointer", color: "#64748b", fontSize: "0.74rem", display: "flex", alignItems: "center", gap: 2 },
+  skipBtn: { flexShrink: 0, background: "transparent", border: "1px solid rgba(148,163,184,0.18)", borderRadius: 6, padding: "3px 10px", cursor: "pointer", color: "var(--text-subtle)", fontSize: "0.74rem", display: "flex", alignItems: "center", gap: 2 },
   dots: { display: "flex", justifyContent: "center", gap: 6, marginTop: 10 },
   dot: { width: 7, height: 7, borderRadius: "50%", transition: "all 0.3s ease" },
   disclaimer: { textAlign: "center", fontSize: "0.68rem", color: "#475569", marginTop: 10, marginBottom: 0 },
