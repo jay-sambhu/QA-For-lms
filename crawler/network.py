@@ -39,15 +39,19 @@ class NetworkMonitor:
             "failure": failure,
         })
 
-    def record_console(self, message, page_url):
-        """Record console error messages from Playwright.
+    @staticmethod
+    def _read(obj, name):
+        """Playwright for Python exposes ConsoleMessage.type/text/location as
+        properties (they are methods only in the JavaScript API). Accept both so
+        test doubles with methods keep working."""
+        value = getattr(obj, name)
+        return value() if callable(value) else value
 
-        Playwright's ConsoleMessage exposes `type()` and `text()` methods.
-        The original implementation accessed them as attributes, causing
-        attribute errors and preventing console errors from being captured.
-        """
+    def record_console(self, message, page_url):
+        """Record console error messages from Playwright."""
         try:
-            msg_type = message.type()
+            msg_type = self._read(message, "type")
+            text = self._read(message, "text")
         except Exception:
             return
         if msg_type != "error":
@@ -58,13 +62,13 @@ class NetworkMonitor:
             # Always "error" given the filter above, but kept so the recorded
             # schema stays compatible with existing crawl_*.json files.
             "type": msg_type,
-            "text": message.text(),
+            "text": text,
         }
 
         # Source location makes console errors far easier to act on. It is not
         # always populated, so failures here must not break the crawl.
         try:
-            location = message.location
+            location = self._read(message, "location")
         except Exception:
             location = None
 
@@ -76,3 +80,18 @@ class NetworkMonitor:
             }
 
         self.console_errors.append(entry)
+
+    def record_page_error(self, error, page_url):
+        """Record an uncaught JavaScript exception (Playwright "pageerror").
+
+        These never reach the console listener, so without this an unhandled
+        exception on page load goes unreported."""
+        name = getattr(error, "name", "") or ""
+        message = getattr(error, "message", "") or str(error)
+        text = f"Uncaught {name}: {message}" if name and not message.startswith(name) else f"Uncaught {message}"
+        self.console_errors.append({
+            "page": page_url,
+            "type": "error",
+            "source": "pageerror",
+            "text": text,
+        })
