@@ -1030,7 +1030,7 @@ def run_qa_pipeline(
                             "provider_id": k.provider_id or "gemini",
                             "model": k.model,
                             "endpoint": k.endpoint,
-                            "label": k.label or k.provider_id,
+                            "label": k.key_name or k.provider_id,
                         }
                         for k in user_keys
                         if k.api_key
@@ -1407,7 +1407,7 @@ async def create_scan(
                     "provider_id": k.provider_id or "gemini",
                     "model": k.model,
                     "endpoint": k.endpoint,
-                    "label": k.label or k.provider_id,
+                    "label": k.key_name or k.provider_id,
                 })
 
         if user_gemini_api_key and not any(k["api_key"] == user_gemini_api_key for k in ai_keys_pool):
