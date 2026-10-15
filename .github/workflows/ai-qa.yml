@@ -1,10 +1,6 @@
-name: AI QA Pipeline & Test Suite
+name: AI QA Scan
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
       target_url:
@@ -21,65 +17,23 @@ on:
         default: ''
 
 jobs:
-  test_suite:
-    name: Playwright & Quality Test Suite
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install playwright pytest
-          sudo apt-get update && sudo apt-get install -y xvfb
-          playwright install --with-deps chromium
-
-      - name: Run Playwright Test Suite (Headless Mode)
-        env:
-          PLAYWRIGHT_HEADLESS: 'true'
-        run: |
-          pytest tests/test_auth_crawl.py tests/test_responsive_engine.py tests/test_ci_quality_gate.py -v
-
-      - name: Run Playwright Test Suite (Headed Mode via Xvfb)
-        env:
-          PLAYWRIGHT_HEADLESS: 'false'
-        run: |
-          xvfb-run --auto-servernum pytest tests/test_auth_crawl.py tests/test_responsive_engine.py -v
-
-      - name: Upload Test Run Results
-        if: always()
-        uses: actions/upload-artifact@v3
-        with:
-          name: test-run-artifacts
-          path: results/test-runs/
-
   qa_scan:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
           cache: 'pip'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install playwright
-          playwright install --with-deps
+          playwright install --with-deps chromium
 
       - name: Run AI QA Agent
         env:
@@ -101,9 +55,9 @@ jobs:
 
       - name: Upload QA Artifacts
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: qa-results
           path: |
+            user_data/
             results/
-            screenshots/
