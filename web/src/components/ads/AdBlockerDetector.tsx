@@ -1,13 +1,34 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { ShieldAlert, RefreshCw, ExternalLink, X, CheckCircle2 } from "lucide-react";
+import {
+  LuShieldAlert as ShieldAlert,
+  LuRefreshCw as RefreshCw,
+  LuExternalLink as ExternalLink,
+  LuX as X,
+  LuCircleCheck as CheckCircle2,
+} from "react-icons/lu";
 import Link from "next/link";
+import { useAuth } from "../../context/AuthContext";
+
+const DISMISS_KEY = "adblock_dismissed";
 
 export const AdBlockerDetector: React.FC = () => {
   const [isBlocked, setIsBlocked] = useState<boolean>(false);
   const [isDismissed, setIsDismissed] = useState<boolean>(false);
   const [isChecking, setIsChecking] = useState<boolean>(false);
+  const { userPlan } = useAuth();
+  // Paid plans are ad-free, so never nag them about ad blockers
+  const isPaid = userPlan === "pro" || userPlan === "enterprise";
+
+  const dismiss = useCallback(() => {
+    setIsDismissed(true);
+    try {
+      sessionStorage.setItem(DISMISS_KEY, "1");
+    } catch {
+      // storage unavailable (private mode) — dismiss for this page view only
+    }
+  }, []);
 
   const checkAdBlocker = useCallback(async () => {
     setIsChecking(true);
@@ -71,15 +92,21 @@ export const AdBlockerDetector: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (isPaid) return;
+    try {
+      if (sessionStorage.getItem(DISMISS_KEY) === "1") return;
+    } catch {
+      // ignore
+    }
     // Initial check after component mounts
     const timer = setTimeout(() => {
       checkAdBlocker();
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, [checkAdBlocker]);
+  }, [checkAdBlocker, isPaid]);
 
-  if (!isBlocked || isDismissed) {
+  if (isPaid || !isBlocked || isDismissed) {
     return null;
   }
 
@@ -88,7 +115,7 @@ export const AdBlockerDetector: React.FC = () => {
       <div style={styles.modal} role="dialog" aria-modal="true" aria-labelledby="adblock-title">
         {/* Close / Dismiss icon */}
         <button
-          onClick={() => setIsDismissed(true)}
+          onClick={dismiss}
           style={styles.closeBtn}
           aria-label="Dismiss ad blocker warning"
         >
@@ -150,7 +177,7 @@ export const AdBlockerDetector: React.FC = () => {
             {isChecking ? "Checking..." : "Recheck & Reload Page"}
           </button>
 
-          <Link href="/pricing" onClick={() => setIsDismissed(true)} style={styles.secondaryBtn}>
+          <Link href="/pricing" onClick={dismiss} style={styles.secondaryBtn}>
             Upgrade to Pro (Ad-free) <ExternalLink size={14} style={{ marginLeft: 6 }} />
           </Link>
         </div>
@@ -158,7 +185,7 @@ export const AdBlockerDetector: React.FC = () => {
         {/* Temporary Dismiss Footer */}
         <div style={styles.dismissFooter}>
           <button
-            onClick={() => setIsDismissed(true)}
+            onClick={dismiss}
             style={styles.textDismissBtn}
           >
             Dismiss for this session
