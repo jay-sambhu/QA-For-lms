@@ -453,6 +453,14 @@ class WebsiteCrawler:
                         )
                     )
 
+                    page.on(
+                        "pageerror",
+                        lambda error, n=dev_name, p=page: monitor.record_page_error(
+                            error,
+                            f"{p.url} [{n}]"
+                        )
+                    )
+
                     pages[dev_name] = page
 
                 # If authentication is configured, perform login across pages before crawl
@@ -767,11 +775,15 @@ class WebsiteCrawler:
                     logger.debug("browser.close failed: %s", close_err)
 
         successful_pages = [p for p in self.pages if not p.get("error")]
+        # self.pages holds one record per URL per device; report unique pages so a
+        # one-page site crawled in 3 viewports isn't shown as "3 pages".
+        unique_pages = {p.get("url", "").rsplit(" [", 1)[0] for p in successful_pages}
 
         result = {
             "target": self.start_url,
             "run_id": self.run_id,
-            "pages_crawled": len(successful_pages),
+            "pages_crawled": len(unique_pages),
+            "page_views_crawled": len(successful_pages),
             "pages_attempted": len(self.pages),
             "pages": self.pages,
             "http_errors": monitor.http_errors,
@@ -806,7 +818,7 @@ class WebsiteCrawler:
         print("CRAWL COMPLETE")
         print("=" * 70)
 
-        print(f"Pages: {len(successful_pages)}")
+        print(f"Pages: {len(unique_pages)} ({len(successful_pages)} page views across devices)")
         if len(self.pages) != len(successful_pages):
             print(
                 f"Pages failed: "
