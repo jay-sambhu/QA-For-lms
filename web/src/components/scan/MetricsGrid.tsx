@@ -38,7 +38,8 @@ export const MetricsGrid: React.FC<MetricsGridProps> = ({ results }) => {
       const secs = Math.round(durationSec % 60);
       return `${mins}m ${secs}s`;
     }
-    return '00:15s';
+    // Unknown duration (older reports): never show a made-up number.
+    return '—';
   }, [durationSec, formattedDuration]);
 
   return (

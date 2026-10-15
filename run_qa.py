@@ -11,7 +11,7 @@ import asyncio
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 from core.state_machine import PipelineStateMachine, PipelineStage
 from core.agent.agent_orchestrator import AgentOrchestrator
@@ -76,6 +76,7 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
                        login_url=None, username=None, password=None, api_key=None, **kwargs):
     """Executes the complete autonomous quality engineering pipeline end-to-end."""
     run_id = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
+    pipeline_started_at = datetime.now(timezone.utc)
     base_dir = os.path.abspath(output_dir) if output_dir else ROOT_DIR
     results_dir = os.path.join(base_dir, "results")
     os.makedirs(results_dir, exist_ok=True)
@@ -194,6 +195,8 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
     report_gen = QAReportGenerator(results_dir=results_dir, base_dir=base_dir)
     report_gen.test_cases_file = generator.output_file
     report_gen.test_results_file = executor.output_file
+    report_gen.start_time = pipeline_started_at
+    report_gen.end_time = datetime.now(timezone.utc)
     final_report = report_gen.generate(source_path=gemini_result["json_path"], run_id=run_id)
 
     sm.transition_to(PipelineStage.COMPLETED, "Scan pipeline completed successfully.")

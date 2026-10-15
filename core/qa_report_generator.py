@@ -108,7 +108,8 @@ class QAReportGenerator:
             try:
                 with open(self.test_cases_file, "r") as f:
                     tc_data = json.load(f)
-                    test_cases = tc_data.get("test_cases", [])
+                    # The autonomous generator writes a bare list; older files wrapped it.
+                    test_cases = tc_data.get("test_cases", []) if isinstance(tc_data, dict) else list(tc_data or [])
             except Exception:
                 pass
 
@@ -118,7 +119,8 @@ class QAReportGenerator:
             try:
                 with open(self.test_results_file, "r") as f:
                     tr_data = json.load(f)
-                    test_results = tr_data.get("results", [])
+                    # The self-healing executor writes a bare list; older files wrapped it.
+                    test_results = tr_data.get("results", []) if isinstance(tr_data, dict) else list(tr_data or [])
                     for tc in test_cases:
                         for res in test_results:
                             if tc.get("id") == res.get("test_id"):
@@ -148,8 +150,18 @@ class QAReportGenerator:
                         tc["actual_result"] = "Blocked due to authentication failure."
 
         # Run Authoritative Calculation Engine
-        start_t = safe_data.get("metadata", {}).get("start_time") or safe_data.get("start_time")
-        end_t = safe_data.get("metadata", {}).get("end_time") or safe_data.get("end_time")
+        # The pipeline (run_qa.py) sets start_time/end_time on the generator;
+        # the source report rarely carries them itself.
+        start_t = (
+            safe_data.get("metadata", {}).get("start_time")
+            or safe_data.get("start_time")
+            or getattr(self, "start_time", None)
+        )
+        end_t = (
+            safe_data.get("metadata", {}).get("end_time")
+            or safe_data.get("end_time")
+            or getattr(self, "end_time", None)
+        )
         canonical = CalculationEngine.calculate_canonical_metrics(
             raw_data=safe_data,
             crawl_data=crawl_data,
