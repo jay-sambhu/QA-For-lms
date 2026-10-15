@@ -12,6 +12,10 @@
   overflow: hidden;
   perspective: 900px;
   perspective-origin: 50% 0%;
+  background-image:
+    radial-gradient(ellipse 70% 45% at 50% -10%, rgba(99, 102, 241, 0.14), transparent 70%),
+    radial-gradient(ellipse 45% 35% at 95% 30%, rgba(14, 165, 233, 0.10), transparent 60%),
+    radial-gradient(ellipse 45% 35% at 0% 70%, rgba(236, 72, 153, 0.07), transparent 60%);
 }
 
 .floor {
@@ -22,18 +26,25 @@
   height: 90%;
   transform: rotateX(72deg);
   transform-origin: 50% 100%;
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent 75%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent 75%);
+}
+
+/* The grid scrolls toward the viewer by translating one cell, so it never repaints */
+.floor::before {
+  content: "";
+  position: absolute;
+  inset: -64px 0 0 0;
   background-image:
     linear-gradient(rgba(79, 70, 229, 0.13) 1px, transparent 1px),
     linear-gradient(90deg, rgba(79, 70, 229, 0.13) 1px, transparent 1px);
   background-size: 64px 64px;
-  mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent 75%);
-  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent 75%);
   animation: floorDrift 18s linear infinite;
 }
 
 @keyframes floorDrift {
-  from { background-position: 0 0, 0 0; }
-  to { background-position: 0 64px, 0 0; }
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(0, 64px, 0); }
 }
 
 .orb {
@@ -61,16 +72,33 @@
   --gy: 50%;
   --lift: 0px;
   position: relative;
-  transform-style: preserve-3d;
-  transform: perspective(1000px) rotateX(var(--rx)) rotateY(var(--ry)) translateZ(var(--lift));
-  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.45s ease;
-  will-change: transform;
+  transition:
+    transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.45s ease,
+    translate 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.28s ease;
 }
 
-.tiltActive {
+/* Depth only where a precise pointer can tilt it; touch screens get flat, layer-free cards */
+@media (hover: hover) and (pointer: fine) {
+  .tilt {
+    transform-style: preserve-3d;
+    transform: perspective(1000px) rotateX(var(--rx)) rotateY(var(--ry)) translateZ(var(--lift));
+  }
+
+  .tilt :global([data-depth="1"]) { transform: translateZ(20px); }
+  .tilt :global([data-depth="2"]) { transform: translateZ(40px); }
+}
+
+.tilt.tiltActive {
   --lift: 12px;
-  transition: transform 0.08s linear, box-shadow 0.3s ease;
-  box-shadow: var(--shadow-3d);
+  will-change: transform;
+  transition:
+    transform 0.08s linear,
+    box-shadow 0.3s ease,
+    translate 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.28s ease;
+  box-shadow: var(--tilt-shadow, var(--shadow-3d));
 }
 
 .glare {
@@ -87,10 +115,6 @@
 .tiltActive .glare {
   opacity: 1;
 }
-
-/* Lift the card's children off its surface for real parallax depth */
-.tilt :global([data-depth="1"]) { transform: translateZ(20px); }
-.tilt :global([data-depth="2"]) { transform: translateZ(40px); }
 
 /* ── Scroll reveal ── */
 .reveal {
@@ -170,16 +194,20 @@
   overflow: visible;
 }
 
+.links {
+  animation: linksBreathe 2.4s ease-in-out infinite alternate;
+}
+
+@keyframes linksBreathe {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}
+
 .link {
   fill: none;
   stroke: rgba(79, 70, 229, 0.45);
   stroke-width: 0.6;
   stroke-dasharray: 2 2;
-  animation: linkFlow 2.4s linear infinite;
-}
-
-@keyframes linkFlow {
-  to { stroke-dashoffset: -16; }
 }
 
 /* Extruded page blocks standing on the plane */
@@ -286,10 +314,20 @@
   height: 18px;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 35%, #fda4af, #e11d48);
+  box-shadow: 0 0 0 4px var(--ring);
   transform: translateZ(56px) rotateX(-90deg);
-  animation: pinPulse 2.2s ease-in-out infinite;
-  animation-delay: var(--d, 0s);
   --ring: rgba(225, 29, 72, 0.2);
+}
+
+/* Expanding halo: scaled and faded, never repainted */
+.pinHead::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px var(--ring);
+  animation: pinPulse 2.2s ease-out infinite;
+  animation-delay: var(--d, 0s);
 }
 
 .pinOk .pinStem { background: linear-gradient(to top, rgba(5, 150, 105, 0), #059669); }
@@ -299,8 +337,8 @@
 }
 
 @keyframes pinPulse {
-  0%, 100% { box-shadow: 0 0 0 4px var(--ring); }
-  50% { box-shadow: 0 0 0 11px transparent; }
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.9); opacity: 0; }
 }
 
 /* Floating device frames above the map (screen-facing) */
@@ -320,8 +358,6 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   animation: deviceBob 6s ease-in-out infinite;
 }
 
@@ -406,7 +442,8 @@
 
 /* Respect users who ask for less motion */
 @media (prefers-reduced-motion: reduce) {
-  .floor, .orb, .beam, .link, .nodeBody, .pinHead, .device, .scoreChip { animation: none; }
+  .floor::before, .orb, .beam, .links, .nodeBody, .pinHead::after, .device, .scoreChip { animation: none; }
+  .pinHead::after { opacity: 0; }
   .reveal { opacity: 1; transform: none; transition: none; }
   .tilt, .stage { transition: none; }
 }

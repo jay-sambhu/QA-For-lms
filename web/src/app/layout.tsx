@@ -11,6 +11,7 @@ import { AdBlockerDetector } from "../components/ads/AdBlockerDetector";
 import { SideAdRails } from "../components/ads/SideAdRails";
 import { MotionProvider } from "../components/MotionProvider";
 import { Backdrop3D } from "../components/three/Backdrop3D";
+import { PageTransition } from "../components/three/PageTransition";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -123,7 +124,9 @@ export default function RootLayout({
               <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
                 <div className="siteContainer">
                   <NavBar />
-                  <main style={{ flex: 1 }}>{children}</main>
+                  <main style={{ flex: 1 }}>
+                    <PageTransition>{children}</PageTransition>
+                  </main>
                   <Footer />
                 </div>
               </div>
