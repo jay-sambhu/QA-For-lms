@@ -198,7 +198,7 @@ In a separate terminal, launch the Celery task queue worker:
 
 ```bash
 source .venv/bin/activate
-celery -A worker.celery_app worker --loglevel=info -Q qa_queue,priority_queue -c 2
+celery -A worker.celery_app worker --loglevel=info -Q qa_queue,priority_queue,celery -c 1
 ```
 
 #### Option B: Individual services (recommended for debugging)
@@ -214,20 +214,13 @@ celery -A worker.celery_app worker --loglevel=info -Q qa_queue,priority_queue -c
 
   ```bash
   source .venv/bin/activate
-  celery -A worker.celery_app worker --loglevel=info -Q qa_queue,priority_queue -c 2
+  celery -A worker.celery_app worker --loglevel=info -Q qa_queue,priority_queue,celery -c 1
   ```
 
 - **Terminal 3 — Next.js Web Frontend**:
 
   ```bash
   npm run dev --prefix web
-  ```
-
-- **Terminal 4 — Watchdog Microservice** (optional, pings health every 15 min):
-
-  ```bash
-  source .venv/bin/activate
-  API_BASE_URL=http://localhost:8000 PING_INTERVAL=900 python worker/watchdog.py
   ```
 
 ### Step 7: Verify connectivity
@@ -360,28 +353,23 @@ Use this before go-live. Items marked ⚠️ are the most common gaps.
 
 ## 11. Repository structure
 
-Current layout has Python modules and tests at the repository root. The recommended production layout (see [Restructuring notes](docs/DEPLOYMENT.md#10-repository-hygiene)) is:
-
 ```text
-jasuss/
-├── apps/
-│   ├── api/            # FastAPI: routers, schemas, dependencies
-│   ├── worker/         # Celery app and tasks
-│   └── web/            # Next.js frontend
-├── jasuss/             # Core python package
-│   ├── crawler/  interactive/  detection/  triage/  evidence/
-│   ├── scoring/        # calculation_engine
-│   ├── reporting/      # pdf, xlsx, json, md
-│   ├── billing/        # gateway adapters
-│   └── security/       # redactor, ssrf guard
-├── alembic/
-├── tests/              # unit/, integration/, e2e/
-├── deploy/             # docker, k8s, terraform
+├── api/            # FastAPI app: scans, admin, billing, blogs, rate limiter
+├── worker/         # Celery app and scan task
+├── run_qa.py       # Scan pipeline entry point (spawned by the worker)
+├── core/           # Pipeline stages: discovery, planning, generation, execution,
+│                   # defect detection, regression, AI report, scoring
+├── crawler/        # Playwright crawler, devices, network monitor
+├── billing/        # Payment gateway adapters
+├── security/       # Redactor and SSRF guard
+├── models.py  db.py  config.py
+├── alembic/        # Database migrations
+├── tests/
+├── web/            # Next.js frontend (standalone build, own Dockerfile)
+├── deploy/         # Caddyfile
 ├── docs/
-├── .github/workflows/
-├── pyproject.toml
-├── docker-compose.yml
-└── .env.example
+├── Dockerfile      # API + worker image
+└── docker-compose.yml
 ```
 
 ## 12. Contributing

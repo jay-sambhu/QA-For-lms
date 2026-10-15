@@ -77,7 +77,7 @@ flowchart TB
 
 Notes:
 
-- The current repo ships `render.yaml` and `render.yml` and a Vercel frontend; the diagram above is the target for a scaled production deployment. Render or a single VM with Compose is fine for early stage as long as Postgres, Redis and object storage are managed services.
+- The current repo ships a single-VM `docker-compose.yml` (see [DIGITALOCEAN.md](DIGITALOCEAN.md)); the diagram above is the target for a scaled production deployment.
 - The API must be stateless. Do **not** rely on local disk for reports or evidence once more than one API/worker instance exists; set `STORAGE_BACKEND=s3`.
 
 ## 3. Container images
@@ -439,7 +439,6 @@ Observed in the repository and recommended fixes before production:
 | Finding | Action |
 | --- | --- |
 | `.venv312/` is committed | Remove from git (`git rm -r --cached .venv312`), add to `.gitignore`; consider history rewrite if it is large |
-| Both `render.yaml` and `render.yml` exist | Keep one (`render.yaml`), delete the other to avoid drift |
 | Python modules and `test_*.py` files at repo root, plus a `tests/` folder | Move into a package (`jasuss/`) and `tests/`; add `pyproject.toml` |
 | `results/` directory in repo | Add to `.gitignore`; never commit scan output |
 | No `.env.example` visible | Add one with placeholders |
