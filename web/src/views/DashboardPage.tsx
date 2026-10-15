@@ -150,7 +150,7 @@ export const DashboardPage: React.FC = () => {
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        if (res.status === 400 && errData.detail?.includes('Gemini API key')) {
+        if (res.status === 400 && /API key is required/i.test(errData.detail || '')) {
           setHasApiKey(false);
           openProfileModal();
         }
