@@ -32,7 +32,7 @@ type AdminTab = 'overview' | 'users' | 'scans' | 'blogs' | 'ai' | 'system';
 
 export const AdminPage: React.FC = () => {
   const router = useRouter();
-  const { session, sessionLoaded, userRole, isAdmin } = useAuth();
+  const { session, sessionLoaded, roleLoaded, userRole, isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [metrics, setMetrics] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
@@ -75,11 +75,13 @@ export const AdminPage: React.FC = () => {
     if (sessionLoaded) {
       if (!session) {
         router.replace('/');
-      } else if (!isAdmin && userRole !== 'admin') {
+      } else if (roleLoaded && !isAdmin && userRole !== 'admin') {
+        // Only bounce once the backend role is known; before that the context
+        // still holds the default 'user' role and admins were sent away.
         router.replace('/dashboard');
       }
     }
-  }, [sessionLoaded, session, isAdmin, userRole, router]);
+  }, [sessionLoaded, roleLoaded, session, isAdmin, userRole, router]);
 
   useEffect(() => {
     if (isAdmin || userRole === 'admin') {
@@ -87,7 +89,7 @@ export const AdminPage: React.FC = () => {
     }
   }, [isAdmin, userRole, fetchAdminData]);
 
-  if (!sessionLoaded) {
+  if (!sessionLoaded || (session && !roleLoaded)) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
         <TbLoader2 size={36} className="pulse" color="#6366f1" />

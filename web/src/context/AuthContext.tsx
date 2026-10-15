@@ -22,6 +22,8 @@ export interface UserProfile {
 interface AuthContextType {
   session: Session | null;
   sessionLoaded: boolean;
+  /** True once the backend profile (role, plan) has been fetched for the current session. */
+  roleLoaded: boolean;
   userProfile: UserProfile | null;
   isAdmin: boolean;
   authModalOpen: boolean;
@@ -41,6 +43,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   session: null,
   sessionLoaded: false,
+  roleLoaded: false,
   userProfile: null,
   isAdmin: false,
   authModalOpen: false,
@@ -66,6 +69,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [userPlan, setUserPlan] = useState<string>('free');
   const [userRole, setUserRole] = useState<string>('user');
+  // Pages that gate on the role (admin console) must wait for this instead of
+  // acting on the default 'user' role while /api/v1/auth/me is still in flight.
+  const [roleLoaded, setRoleLoaded] = useState(false);
 
   const isAdmin = userRole === 'admin' || userProfile?.is_admin === true;
 
@@ -80,10 +86,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUserProfile(null);
       setUserRole('user');
       setUserPlan('free');
+      setRoleLoaded(true);
       return null;
     }
 
     const startUserId = sessionRef.current?.user?.id;
+    setRoleLoaded(false);
     try {
       const res = await fetch('/api/v1/auth/me', {
         headers: { Authorization: `Bearer ${token}` },
@@ -95,6 +103,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUserProfile(data);
         setUserRole(data.role || (data.is_admin ? 'admin' : 'user'));
         setUserPlan(data.plan_tier || 'free');
+        setRoleLoaded(true);
         return data;
       }
     } catch (e) {
@@ -110,6 +119,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const appRole = current.user.app_metadata?.role;
       setUserRole(appRole === 'admin' || email === 'dellizulter@gmail.com' ? 'admin' : 'user');
     }
+    setRoleLoaded(true);
     return null;
   }, []);
 
@@ -212,6 +222,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         session,
         sessionLoaded,
+        roleLoaded,
         userProfile,
         isAdmin,
         authModalOpen,
