@@ -96,7 +96,11 @@ class TestRealRedisCeleryIntegration(unittest.TestCase):
         # Execute task
         res = process_query_task.apply(args=[scan_id, user_id, url, max_pages, auth_token])
         self.assertTrue(res.successful())
-        mock_pipeline.assert_called_once_with(scan_id, user_id, url, max_pages, auth_token)
+        # The task forwards every (defaulted) argument, multi-provider kwargs included.
+        mock_pipeline.assert_called_once_with(
+            scan_id, user_id, url, max_pages, auth_token, None, None, None,
+            gemini_api_key=None, ai_keys_pool=None, provider_id=None, model_name=None, endpoint=None,
+        )
 
     @patch("worker.tasks.run_qa_pipeline", side_effect=RuntimeError("Controlled failure in QA stage"))
     @patch("api.main.update_scan")

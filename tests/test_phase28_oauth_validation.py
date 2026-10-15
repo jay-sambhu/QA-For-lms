@@ -55,8 +55,10 @@ def test_non_production_dev_token_allowed():
     assert response.status_code == 200
 
 
-def test_multi_user_scan_isolation():
+def test_multi_user_scan_isolation(seed_ai_key):
     """Verify that User A cannot access User B's scans."""
+    # Scan creation requires a BYOK AI key on the user.
+    seed_ai_key("00000000-0000-0000-0000-000000000001", "user_a@example.com")
     from api.main import supabase
     from unittest.mock import MagicMock, patch
 
@@ -74,7 +76,7 @@ def test_multi_user_scan_isolation():
 
     # User A creates a scan
     supabase.auth.get_user = MagicMock(return_value=user_a)
-    with patch("worker.tasks.process_query_task.delay"):
+    with patch("worker.tasks.process_query_task.apply_async"):
         create_res = client.post(
             "/api/v1/scans",
             json={"url": "https://example.com", "max_pages": 1},

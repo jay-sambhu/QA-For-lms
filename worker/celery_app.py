@@ -40,8 +40,10 @@ celery_app.conf.task_routes = {
 # Recommended production scalability settings
 celery_app.conf.update(
     result_expires=3600,               # keep results for 1 hour
-    task_time_limit=1800,              # hard limit (seconds)
-    task_soft_time_limit=1700,         # soft limit for graceful shutdown
+    # Kept above QA_PIPELINE_TIMEOUT (1800s) so the pipeline's own timeout
+    # fires first and marks the scan failed cleanly.
+    task_time_limit=int(os.getenv("CELERY_TASK_TIME_LIMIT", 2100)),          # hard limit (seconds)
+    task_soft_time_limit=int(os.getenv("CELERY_TASK_SOFT_TIME_LIMIT", 2000)),  # soft limit for graceful shutdown
     worker_prefetch_multiplier=1,      # avoid task hoarding
     task_acks_late=True,               # ensure tasks are re‑queued on failure
     worker_max_tasks_per_child=int(os.getenv("CELERY_MAX_TASKS_PER_CHILD", 10)),       # recycle child to release browser-automation leaks

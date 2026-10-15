@@ -9,8 +9,9 @@ import api.rate_limiter as rl
 
 client = TestClient(app)
 
-def test_rate_limiter_triggers_429_on_rapid_requests():
+def test_rate_limiter_triggers_429_on_rapid_requests(seed_ai_key):
     """Verify that rapid requests to /api/v1/scans trigger HTTP 429 using Redis (mocked with fakeredis)."""
+    seed_ai_key("test-rate-limit-user-id", "rl-test@example.com")
     mock_user = MagicMock()
     mock_user.user.id = "test-rate-limit-user-id"
     mock_user.user.email = "rl-test@example.com"
@@ -58,8 +59,9 @@ def test_rate_limiter_triggers_429_on_rapid_requests():
         rl.redis_client = orig_redis
 
 
-def test_rate_limiter_in_memory_fallback():
+def test_rate_limiter_in_memory_fallback(seed_ai_key):
     """Verify that rate limiter works via in-memory sliding window when Redis is absent."""
+    seed_ai_key("test-rate-limit-fallback-user", "rl-fallback@example.com")
     mock_user = MagicMock()
     mock_user.user.id = "test-rate-limit-fallback-user"
     mock_user.user.email = "rl-fallback@example.com"

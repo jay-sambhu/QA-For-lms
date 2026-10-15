@@ -17,10 +17,13 @@ from dotenv import load_dotenv
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 _env_file = os.path.join(ROOT_DIR, ".env")
+# override=False: real environment variables (systemd / docker / CI / the
+# test suite's isolated DATABASE_URL) must win over the .env file. With
+# override=True the .env silently redirected tests to the dev Postgres.
 if os.path.exists(_env_file):
-    load_dotenv(dotenv_path=_env_file, override=True)
+    load_dotenv(dotenv_path=_env_file, override=False)
 else:
-    load_dotenv(override=True)
+    load_dotenv(override=False)
 
 from fastapi import Depends, FastAPI, HTTPException, Header, BackgroundTasks, Response
 from fastapi.responses import FileResponse, JSONResponse

@@ -20,7 +20,9 @@ def _mock_user(plan="free"):
     with SessionLocal() as db:
         existing = db.query(User).filter(User.id == uid).first()
         if not existing:
-            db.add(User(id=uid, email=f"tier_test_{uid}@test.com", role="user", plan_tier=plan))
+            # BYOK: scan creation requires an AI provider key on the user.
+            db.add(User(id=uid, email=f"tier_test_{uid}@test.com", role="user", plan_tier=plan,
+                        gemini_api_key="AIzaSy_TEST_KEY_FOR_TIER_TESTS_00"))
             db.commit()
 
     class _User:

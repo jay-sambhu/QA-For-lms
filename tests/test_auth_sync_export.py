@@ -18,10 +18,12 @@ def test_auth_sync_creates_missing_user():
         mock_user.user.user_metadata = {"role": "user"}
         mock_supabase.auth.get_user.return_value = mock_user
         
-        resp = client.post(
+        # The sync happens in the require_user dependency shared by every
+        # authenticated route. (POST /scans now also requires a BYOK AI key,
+        # which is unrelated to what this test checks.)
+        resp = client.get(
             "/api/v1/scans",
             headers={"Authorization": "Bearer fake_token_123"},
-            json={"url": "https://example.com"}
         )
         assert resp.status_code == 200
         

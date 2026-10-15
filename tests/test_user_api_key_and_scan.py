@@ -93,7 +93,8 @@ async def test_create_scan_strictly_requires_user_api_key():
         )
 
     assert exc_info.value.status_code == 400
-    assert "Google Gemini API key is required" in exc_info.value.detail
+    # Multi-provider BYOK: the message names any AI provider, not only Gemini.
+    assert "API key is required" in exc_info.value.detail
 
 
 @pytest.mark.anyio
