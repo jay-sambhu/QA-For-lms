@@ -3,19 +3,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
 import {
   RiRefreshLine,
   RiShieldUserFill,
-  RiLockPasswordFill,
   RiArticleLine,
   RiDashboardLine,
   RiCpuLine,
-  RiKey2Line,
 } from 'react-icons/ri';
 import {
   TbLoader2,
-  TbArrowLeft,
   TbUsers,
   TbActivity,
   TbArrowRight,
@@ -35,7 +32,7 @@ type AdminTab = 'overview' | 'users' | 'scans' | 'blogs' | 'ai' | 'system';
 
 export const AdminPage: React.FC = () => {
   const router = useRouter();
-  const { session, sessionLoaded, userRole, isAdmin, openAuthModal } = useAuth();
+  const { session, sessionLoaded, userRole, isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [metrics, setMetrics] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
