@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   RiArticleLine,
@@ -14,7 +14,7 @@ import {
   RiDraftLine,
   RiSendPlaneLine,
 } from "react-icons/ri";
-import { TbSparkles, TbLoader2 } from "react-icons/tb";
+import { TbLoader2 } from "react-icons/tb";
 import { useAuth } from "../../context/AuthContext";
 import styles from "../../app/page.module.css";
 
@@ -80,10 +80,15 @@ export const BlogManager: React.FC = () => {
   const [formAuthorRole, setFormAuthorRole] = useState<string>("Platform Architecture Team");
   const [formStatus, setFormStatus] = useState<"published" | "draft">("published");
 
+  const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showNotification = (type: "success" | "error", text: string) => {
     setFeedbackMsg({ type, text });
-    setTimeout(() => setFeedbackMsg(null), 4000);
+    if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+    notifTimerRef.current = setTimeout(() => setFeedbackMsg(null), 4000);
   };
+  useEffect(() => () => {
+    if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+  }, []);
 
   const fetchBlogs = useCallback(async () => {
     setLoading(true);
@@ -139,10 +144,12 @@ export const BlogManager: React.FC = () => {
     setFormExcerpt(blog.excerpt);
 
     // Format content for textarea
-    if (blog.raw_content) {
-      setFormContent(blog.raw_content);
-    } else if (Array.isArray(blog.content)) {
+    // Prefer the parsed paragraph array: raw_content is the stored JSON string
+    // (e.g. '["p1","p2"]') and re-saving it would corrupt the post.
+    if (Array.isArray(blog.content) && blog.content.length) {
       setFormContent(blog.content.join("\n\n"));
+    } else if (blog.raw_content) {
+      setFormContent(blog.raw_content);
     } else {
       setFormContent(String(blog.content || ""));
     }
@@ -483,6 +490,7 @@ export const BlogManager: React.FC = () => {
                   </td>
                   <td style={{ textAlign: "right" }}>
                     <div style={{ display: "inline-flex", gap: "6px", alignItems: "center" }}>
+                      {b.status === "published" && (
                       <Link
                         href={`/blog/${b.slug}`}
                         target="_blank"
@@ -493,6 +501,7 @@ export const BlogManager: React.FC = () => {
                       >
                         <RiEyeLine size={14} /> View
                       </Link>
+                      )}
 
                       <button
                         onClick={() => openEditArticleModal(b)}
