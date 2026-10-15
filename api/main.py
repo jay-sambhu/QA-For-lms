@@ -205,6 +205,49 @@ def _get_plan_max_pages(plan_tier: str) -> int:
     plan_limit = plan.get("max_pages", 10)
     return min(plan_limit, MAX_PAGES_LIMIT)
 
+# A pending/running scan younger than this blocks the user from starting another;
+# older ones are treated as stuck so a dead worker can't lock a user out.
+_ACTIVE_SCAN_WINDOW_SECONDS = PIPELINE_TIMEOUT_SECONDS + 600
+
+
+def _enforce_scan_quota(user_id: str, plan_tier: str, is_admin: bool = False) -> None:
+    """Reject a new scan when the user already has one in flight or has used
+    their plan's monthly allowance (billing PLANS[*]["max_scans_per_month"])."""
+    if is_admin:
+        return
+    from billing.gateways import PLANS
+    plan = PLANS.get(plan_tier, PLANS.get("free", {}))
+    monthly_limit = plan.get("max_scans_per_month", 10)
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    with SessionLocal() as db:
+        active = (
+            db.query(Scan)
+            .filter(
+                Scan.user_id == user_id,
+                Scan.status.in_(("pending", "running")),
+                Scan.created_at >= now - timedelta(seconds=_ACTIVE_SCAN_WINDOW_SECONDS),
+            )
+            .count()
+        )
+        if active:
+            raise HTTPException(
+                status_code=409,
+                detail="You already have a scan in progress. Please wait for it to finish (or stop it) before starting another.",
+            )
+        if monthly_limit is not None and monthly_limit >= 0:
+            used = (
+                db.query(Scan)
+                # Scans that failed on our side don't use up the allowance
+                .filter(Scan.user_id == user_id, Scan.created_at >= month_start, Scan.status != "failed")
+                .count()
+            )
+            if used >= monthly_limit:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"You've used all {monthly_limit} scans included in your plan this month. Your allowance resets on the 1st.",
+                )
+
 
 class ScanAuthPayload(BaseModel):
     login_url: Optional[str] = None
@@ -1337,6 +1380,11 @@ async def create_scan(
             user_id_val, user_plan, request.max_pages, plan_max_pages,
         )
         request.max_pages = plan_max_pages
+
+    user_email = str(getattr(user, "email", "") or "")
+    user_app_meta = getattr(user, "app_metadata", None) or {}
+    is_admin = _is_admin_email(user_email) or (isinstance(user_app_meta, dict) and user_app_meta.get("role") == "admin")
+    await run_in_threadpool(_enforce_scan_quota, user_id_val, user_plan, is_admin)
 
 
     # Persist in SQLAlchemy database as single source of truth
