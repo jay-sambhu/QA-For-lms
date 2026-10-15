@@ -31,6 +31,60 @@ FETCHABLE_SCHEMES = ("http", "https")
 
 DEFAULT_PORTS = {"http": "80", "https": "443"}
 
+# Short aliases accepted in QA_VIEWPORTS (comma separated) to limit which
+# device profiles are crawled. Each extra viewport is another full render +
+# screenshot per page; on a 1 GB droplet "desktop" alone is the safe choice.
+VIEWPORT_ALIASES = {
+    "desktop": "Desktop Chrome",
+    "mobile": "iPhone 13",
+    "iphone": "iPhone 13",
+    "tablet": "iPad (gen 7)",
+    "ipad": "iPad (gen 7)",
+}
+
+
+def _chromium_launch_args():
+    """Memory-lean Chromium flags for small hosts."""
+    args = [
+        "--disable-dev-shm-usage",  # /dev/shm is 64 MB in Docker
+        "--disable-gpu",
+        "--disable-software-rasterizer",
+        "--disable-extensions",
+        "--disable-background-networking",
+        "--disable-component-update",
+        "--disable-default-apps",
+        "--disable-sync",
+        "--mute-audio",
+        "--no-first-run",
+        "--no-default-browser-check",
+        f"--renderer-process-limit={max(1, int(os.environ.get('QA_RENDERER_PROCESS_LIMIT', '2')))}",
+    ]
+    # The image runs as a non-root user under Docker's default seccomp
+    # profile, where Chromium's sandbox usually cannot start, so it stays
+    # disabled unless explicitly enabled.
+    if os.environ.get("PLAYWRIGHT_CHROMIUM_SANDBOX", "").lower() != "true":
+        args += ["--no-sandbox", "--disable-setuid-sandbox"]
+    return args
+
+
+def _selected_devices(devices_config):
+    raw = (os.environ.get("QA_VIEWPORTS") or "all").strip().lower()
+    if raw in ("", "all", "*"):
+        return devices_config
+    wanted = set()
+    for token in raw.split(","):
+        token = token.strip()
+        if token:
+            wanted.add(VIEWPORT_ALIASES.get(token, token))
+    selected = {k: v for k, v in devices_config.items() if k.lower() in {w.lower() for w in wanted}}
+    return selected or devices_config
+
+
+async def _maybe_await(value):
+    if inspect.isawaitable(value):
+        return await value
+    return value
+
 
 class WebsiteCrawler:
 
@@ -169,6 +223,28 @@ class WebsiteCrawler:
         else:
             return f"{scheme}://{netloc}{path}"
 
+    def _build_route_handler(self, block_private: bool):
+        """Route handler: same-site-only auth header + private network block."""
+        from security.url_guard import is_blocked_host
+
+        async def _handler(route, request=None):
+            req = request or route.request
+            req_url = req.url
+            parsed = urlparse(req_url)
+            if parsed.scheme in FETCHABLE_SCHEMES:
+                if block_private and is_blocked_host(parsed.hostname):
+                    logger.warning("Blocked request to private address: %s", req_url)
+                    await route.abort("blockedbyclient")
+                    return
+                if self.auth_token and self.is_internal_url(req_url):
+                    headers = dict(req.headers)
+                    headers["authorization"] = f"Bearer {self.auth_token}"
+                    await route.continue_(headers=headers)
+                    return
+            await route.continue_()
+
+        return _handler
+
     def is_internal_url(self, url):
         """Check if URL belongs to the target site (apex and www are equal)."""
         parsed = urlparse(url)
@@ -183,6 +259,9 @@ class WebsiteCrawler:
         Executes automated form login if login_url is provided, or if auto_detect is True.
         Returns a dict with {'success': bool, 'error': Optional[str], 'status': str}.
         """
+        # In auto-detect mode no navigation happens here, so `res` was
+        # unbound and the final status check raised UnboundLocalError.
+        res = None
         if not auto_detect:
             if not self.login_url:
                 return {"success": True, "status": "no_auth"}
@@ -304,15 +383,7 @@ class WebsiteCrawler:
         async with async_playwright() as p:
 
             headless_mode = os.environ.get("PLAYWRIGHT_HEADLESS", "true").lower() != "false"
-            launch_args = [
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--disable-software-rasterizer",
-                "--no-first-run",
-                "--no-default-browser-check",
-            ]
+            launch_args = _chromium_launch_args()
             try:
                 browser = await p.chromium.launch(
                     headless=headless_mode,
@@ -334,55 +405,62 @@ class WebsiteCrawler:
                 else:
                     raise
 
-            devices_config = DeviceConfigManager.get_devices_config(p)
+            devices_config = _selected_devices(DeviceConfigManager.get_devices_config(p))
 
             contexts = {}
             pages = {}
 
-            for dev_name, dev_config in devices_config.items():
-                # Make a copy so we don't mutate the global playwright device configs
-                ctx_kwargs = dict(dev_config)
-                ctx_kwargs["ignore_https_errors"] = True
-                if self.auth_token:
-                    ctx_kwargs["extra_http_headers"] = {"Authorization": f"Bearer {self.auth_token}"}
-                
-                context = await browser.new_context(**ctx_kwargs)
-                page = await context.new_page()
-                
-                page.on(
-                    "response",
-                    lambda response, n=dev_name, p=page: monitor.record_response(
-                        response,
-                        f"{p.url} [{n}]"
-                    )
-                )
-
-                page.on(
-                    "requestfailed",
-                    lambda request, n=dev_name, p=page: monitor.record_request_failure(
-                        request,
-                        f"{p.url} [{n}]"
-                    )
-                )
-
-                page.on(
-                    "console",
-                    lambda message, n=dev_name, p=page: monitor.record_console(
-                        message,
-                        f"{p.url} [{n}]"
-                    )
-                )
-                
-                contexts[dev_name] = context
-                pages[dev_name] = page
+            block_private = os.environ.get("QA_BLOCK_PRIVATE_NETWORK", "").lower() == "true"
+            route_handler = self._build_route_handler(block_private) if (self.auth_token or block_private) else None
 
             try:
+                for dev_name, dev_config in devices_config.items():
+                    # Make a copy so we don't mutate the global playwright device configs
+                    ctx_kwargs = dict(dev_config)
+                    ctx_kwargs["ignore_https_errors"] = True
+                    # The bearer token used to go in extra_http_headers, which
+                    # Chromium sends to EVERY origin (analytics, CDNs, ...),
+                    # leaking the customer's token. The route handler adds it only
+                    # to same-site requests.
+
+                    context = await browser.new_context(**ctx_kwargs)
+                    contexts[dev_name] = context
+                    if route_handler is not None:
+                        await _maybe_await(context.route("**/*", route_handler))
+                    page = await context.new_page()
+
+                    page.on(
+                        "response",
+                        lambda response, n=dev_name, p=page: monitor.record_response(
+                            response,
+                            f"{p.url} [{n}]"
+                        )
+                    )
+
+                    page.on(
+                        "requestfailed",
+                        lambda request, n=dev_name, p=page: monitor.record_request_failure(
+                            request,
+                            f"{p.url} [{n}]"
+                        )
+                    )
+
+                    page.on(
+                        "console",
+                        lambda message, n=dev_name, p=page: monitor.record_console(
+                            message,
+                            f"{p.url} [{n}]"
+                        )
+                    )
+
+                    pages[dev_name] = page
+
                 # If authentication is configured, perform login across pages before crawl
                 if self.login_url:
                     for dev_name, page in pages.items():
                         auth_res = await self.perform_login(page, dev_name)
                         if not auth_res.get("success"):
-                            if dev_name == "desktop":
+                            if dev_name in ("desktop", "Desktop Chrome"):
                                 self.auth_test_cases.append({
                                     "id": "TC-AUTH-001",
                                     "title": "Website Authentication & Session Initialization",
@@ -406,7 +484,7 @@ class WebsiteCrawler:
                                 })
                             break
                         else:
-                            if dev_name == "desktop":
+                            if dev_name in ("desktop", "Desktop Chrome"):
                                 self.auth_test_cases.append({
                                     "id": "TC-AUTH-001",
                                     "title": "Website Authentication & Session Initialization",
@@ -609,10 +687,14 @@ class WebsiteCrawler:
 
                             rel_screenshot = None
                             try:
+                                # scale="css": one pixel per CSS pixel. A 3x
+                                # DPR full-page iPhone capture is otherwise a
+                                # ~100 MB bitmap and a multi-MB PNG.
                                 await page.screenshot(
                                     path=screenshot_path,
                                     full_page=True,
                                     timeout=10000,
+                                    scale="css",
                                 )
                                 rel_screenshot = os.path.relpath(
                                     screenshot_path, self.base_dir
@@ -626,6 +708,7 @@ class WebsiteCrawler:
                                         path=screenshot_path,
                                         full_page=False,
                                         timeout=5000,
+                                        scale="css",
                                     )
                                     rel_screenshot = os.path.relpath(
                                         screenshot_path, self.base_dir
@@ -647,6 +730,16 @@ class WebsiteCrawler:
 
                             self.pages.append(page_data)
 
+                            # Drop the rendered DOM of this viewport before
+                            # moving to the next one, so only one heavy page
+                            # is alive at a time (cookies/session persist in
+                            # the context).
+                            if len(pages) > 1 and os.environ.get("QA_BLANK_IDLE_PAGES", "true").lower() != "false":
+                                try:
+                                    await page.goto("about:blank", timeout=5000)
+                                except Exception:
+                                    pass
+
                         except Exception as error:
                             print(f"ERROR on {dev_name}: {error}")
                             self.pages.append({
@@ -661,9 +754,17 @@ class WebsiteCrawler:
                                 "timestamp": datetime.now().isoformat(),
                             })
             finally:
+                # Close everything even if one close fails, so no Chromium
+                # renderer outlives the crawl.
                 for context in contexts.values():
-                    await context.close()
-                await browser.close()
+                    try:
+                        await context.close()
+                    except Exception as close_err:
+                        logger.debug("context.close failed: %s", close_err)
+                try:
+                    await browser.close()
+                except Exception as close_err:
+                    logger.debug("browser.close failed: %s", close_err)
 
         successful_pages = [p for p in self.pages if not p.get("error")]
 
