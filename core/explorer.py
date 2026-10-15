@@ -5,7 +5,6 @@ from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
-from browser_use import Agent, ChatGoogle
 from config import settings
 
 
@@ -22,6 +21,15 @@ RESULTS_DIR = MODULE_DIR / "results"
 
 
 async def explore(url):
+    # browser-use is an optional dependency used only by this standalone
+    # explorer; importing it at module level pulled it (and Playwright) into
+    # every process that imported ``core``.
+    try:
+        from browser_use import Agent, ChatGoogle
+    except ImportError as exc:
+        raise RuntimeError(
+            "browser-use is not installed: pip install browser-use to use explorer"
+        ) from exc
 
     api_key = settings.gemini_key
 
