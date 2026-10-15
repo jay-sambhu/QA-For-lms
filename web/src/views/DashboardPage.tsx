@@ -84,12 +84,22 @@ export const DashboardPage: React.FC = () => {
     if (!session?.access_token) return;
     setLoadingHistory(true);
     try {
-      const res = await fetch('/api/v1/scans', {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setRecentScans(data.scans || []);
+      // One retry: a transient backend/auth hiccup must not leave the
+      // dashboard claiming the user has never run a scan.
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        const res = await fetch('/api/v1/scans', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setRecentScans(data.scans || []);
+          break;
+        }
+        if (attempt === 1 && res.status !== 401) {
+          await new Promise((r) => setTimeout(r, 1500));
+          continue;
+        }
+        console.error('Failed to load scans: HTTP', res.status);
       }
     } catch (e) {
       console.error('Failed to load scans:', e);
