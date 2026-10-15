@@ -287,7 +287,7 @@ export const UserProfileModal: React.FC = () => {
       case 'local_llm':
         return <TbServer2 size={size} color="#10b981" />;
       default:
-        return <RiCpuLine size={size} color="#818cf8" />;
+        return <RiCpuLine size={size} color="#4f46e5" />;
     }
   };
 
@@ -334,13 +334,13 @@ export const UserProfileModal: React.FC = () => {
 
           <div className={styles.modalBody} style={{ gap: '18px' }}>
             {/* User Identity Card */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px', background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px' }}>
-              <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: userIsAdmin ? 'linear-gradient(135deg, #a855f7, #6366f1)' : 'linear-gradient(135deg, #6366f1, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#fff', boxShadow: '0 0 20px rgba(99, 102, 241, 0.4)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px', background: 'rgba(var(--ink-rgb), 0.03)', border: '1px solid rgba(var(--ink-rgb), 0.08)', borderRadius: '14px' }}>
+              <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: userIsAdmin ? 'linear-gradient(135deg, #a855f7, #6366f1)' : 'linear-gradient(135deg, #6366f1, #0284c7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#fff', boxShadow: '0 0 20px rgba(99, 102, 241, 0.4)' }}>
                 {avatarChar}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc' }}>{email}</span>
+                  <span style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)' }}>{email}</span>
                   <span
                     className={`${styles.tierPill} ${
                       userIsAdmin
@@ -355,7 +355,7 @@ export const UserProfileModal: React.FC = () => {
                       userIsAdmin
                         ? {
                             background: 'rgba(168, 85, 247, 0.2)',
-                            color: '#c084fc',
+                            color: '#9333ea',
                             border: '1px solid rgba(168, 85, 247, 0.4)',
                             fontWeight: 800,
                           }
@@ -365,9 +365,9 @@ export const UserProfileModal: React.FC = () => {
                     {userIsAdmin ? 'ADMIN' : userPlan.toUpperCase()}
                   </span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: '#64748b' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-subtle)' }}>
                   <span>ID: {userId.substring(0, 12)}...</span>
-                  <button onClick={handleCopyId} style={{ color: copiedId ? '#10b981' : '#94a3b8', display: 'inline-flex', alignItems: 'center', gap: '3px' }} title="Copy User ID">
+                  <button onClick={handleCopyId} style={{ color: copiedId ? '#10b981' : 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '3px' }} title="Copy User ID">
                     {copiedId ? <TbCheck size={12} /> : <TbCopy size={12} />}
                   </button>
                 </div>
@@ -376,7 +376,7 @@ export const UserProfileModal: React.FC = () => {
 
             {/* Direct Dashboard Launchpad */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b' }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-subtle)' }}>
                 Quick Dashboard Navigation
               </div>
 
@@ -398,7 +398,7 @@ export const UserProfileModal: React.FC = () => {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#e9d5ff', fontWeight: 700, fontSize: '0.88rem' }}>
-                      <RiShieldUserFill size={16} color="#c084fc" /> Admin Console
+                      <RiShieldUserFill size={16} color="#9333ea" /> Admin Console
                     </div>
                     <span style={{ fontSize: '0.72rem', color: '#c4b5fd' }}>Role governance, telemetry &amp; CMS</span>
                   </Link>
@@ -417,10 +417,10 @@ export const UserProfileModal: React.FC = () => {
                       textDecoration: 'none',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#818cf8', fontWeight: 700, fontSize: '0.88rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#4f46e5', fontWeight: 700, fontSize: '0.88rem' }}>
                       <TbDashboard size={16} /> QA Dashboard
                     </div>
-                    <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Multi-device autonomous scans</span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Multi-device autonomous scans</span>
                   </Link>
                 </div>
               ) : (
@@ -440,15 +440,15 @@ export const UserProfileModal: React.FC = () => {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(99, 102, 241, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#818cf8' }}>
+                    <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(99, 102, 241, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4f46e5' }}>
                       <TbDashboard size={20} />
                     </div>
                     <div>
-                      <div style={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem' }}>Open QA Automation Dashboard</div>
-                      <div style={{ color: '#94a3b8', fontSize: '0.78rem' }}>Launch multi-device crawl runs &amp; inspect reports</div>
+                      <div style={{ color: 'var(--text-main)', fontWeight: 700, fontSize: '0.92rem' }}>Open QA Automation Dashboard</div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Launch multi-device crawl runs &amp; inspect reports</div>
                     </div>
                   </div>
-                  <TbArrowRight size={18} color="#818cf8" />
+                  <TbArrowRight size={18} color="#4f46e5" />
                 </Link>
               )}
             </div>
@@ -467,8 +467,8 @@ export const UserProfileModal: React.FC = () => {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <RiCpuLine size={20} color="#818cf8" />
-                  <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#f8fafc' }}>
+                  <RiCpuLine size={20} color="#4f46e5" />
+                  <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-main)' }}>
                     Multi-Model &amp; AI Provider Integrations
                   </span>
                 </div>
@@ -488,7 +488,7 @@ export const UserProfileModal: React.FC = () => {
                         ? '#e9d5ff'
                         : apiKeys.length >= 3
                         ? '#facc15'
-                        : '#38bdf8',
+                        : '#0284c7',
                       border: `1px solid ${
                         quotaData?.is_paid
                           ? 'rgba(168, 85, 247, 0.4)'
@@ -505,7 +505,7 @@ export const UserProfileModal: React.FC = () => {
                 </div>
               </div>
 
-              <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: 0, lineHeight: 1.45 }}>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.45 }}>
                 Connect your personal API keys for Google Gemini, OpenAI GPT-4o, Anthropic Claude, DeepSeek, or local clusters. Free accounts include up to 3 API keys; upgrade to a subscription plan to add unlimited keys.
               </p>
 
@@ -522,14 +522,14 @@ export const UserProfileModal: React.FC = () => {
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '10px',
-                    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25)',
+                    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.075)',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#facc15', fontWeight: 800, fontSize: '0.9rem' }}>
                     <RiVipCrownFill size={18} />
                     <span>API Integration Limit Reached (3 / 3 Keys)</span>
                   </div>
-                  <p style={{ color: '#e2e8f0', fontSize: '0.82rem', margin: 0, lineHeight: 1.5 }}>
+                  <p style={{ color: 'var(--text-main)', fontSize: '0.82rem', margin: 0, lineHeight: 1.5 }}>
                     Free tier workspaces are limited to a maximum of 3 API keys. Please start a subscription plan (Pro or Enterprise) to add unlimited AI models, custom endpoints, and priority scan workers.
                   </p>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -587,8 +587,8 @@ export const UserProfileModal: React.FC = () => {
 
               {/* Configured Keys List */}
               {loadingKeys ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '16px', color: '#94a3b8' }}>
-                  <TbLoader2 size={18} className="pulse" color="#818cf8" />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '16px', color: 'var(--text-muted)' }}>
+                  <TbLoader2 size={18} className="pulse" color="#4f46e5" />
                   <span style={{ fontSize: '0.82rem' }}>Loading configured AI integrations...</span>
                 </div>
               ) : apiKeys.length > 0 ? (
@@ -602,28 +602,28 @@ export const UserProfileModal: React.FC = () => {
                         alignItems: 'center',
                         flexWrap: 'wrap',
                         gap: '10px',
-                        background: k.is_default ? 'rgba(99, 102, 241, 0.12)' : 'rgba(0, 0, 0, 0.3)',
+                        background: k.is_default ? 'rgba(99, 102, 241, 0.12)' : 'rgba(var(--ink-rgb), 0.045)',
                         padding: '10px 14px',
                         borderRadius: '10px',
-                        border: `1px solid ${k.is_default ? 'rgba(99, 102, 241, 0.4)' : 'rgba(255, 255, 255, 0.08)'}`,
+                        border: `1px solid ${k.is_default ? 'rgba(99, 102, 241, 0.4)' : 'rgba(var(--ink-rgb), 0.08)'}`,
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(var(--ink-rgb), 0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {getProviderIcon(k.provider_id, 18)}
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#f8fafc' }}>
+                            <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-main)' }}>
                               {k.key_name}
                             </span>
                             {k.model && (
-                              <span style={{ fontSize: '0.68rem', padding: '1px 6px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '4px', color: '#cbd5e1' }}>
+                              <span style={{ fontSize: '0.68rem', padding: '1px 6px', background: 'rgba(var(--ink-rgb), 0.08)', borderRadius: '4px', color: 'var(--text-body)' }}>
                                 {k.model}
                               </span>
                             )}
                           </div>
-                          <span style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: '#94a3b8' }}>
+                          <span style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                             {k.masked_key}
                           </span>
                         </div>
@@ -638,7 +638,7 @@ export const UserProfileModal: React.FC = () => {
                               padding: '2px 8px',
                               borderRadius: '6px',
                               background: 'rgba(16, 185, 129, 0.2)',
-                              color: '#34d399',
+                              color: '#059669',
                               border: '1px solid rgba(16, 185, 129, 0.35)',
                               display: 'inline-flex',
                               alignItems: 'center',
@@ -662,7 +662,7 @@ export const UserProfileModal: React.FC = () => {
                           type="button"
                           onClick={() => handleDeleteKey(k.id, k.key_name)}
                           className="btn btn-secondary"
-                          style={{ padding: '5px 8px', fontSize: '0.75rem', borderRadius: '6px', color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.3)' }}
+                          style={{ padding: '5px 8px', fontSize: '0.75rem', borderRadius: '6px', color: '#dc2626', borderColor: 'rgba(239, 68, 68, 0.3)' }}
                           title="Remove API Key"
                         >
                           <TbTrash size={14} />
@@ -727,20 +727,20 @@ export const UserProfileModal: React.FC = () => {
                     flexDirection: 'column',
                     gap: '12px',
                     padding: '14px',
-                    background: 'rgba(15, 23, 42, 0.7)',
+                    background: 'rgba(var(--panel-rgb), 0.7)',
                     borderRadius: '12px',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(var(--ink-rgb), 0.08)',
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
                       Configure New Model Integration
                     </span>
                     {apiKeys.length > 0 && (
                       <button
                         type="button"
                         onClick={() => setShowAddForm(false)}
-                        style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '0.8rem' }}
+                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem' }}
                       >
                         Cancel
                       </button>
@@ -749,7 +749,7 @@ export const UserProfileModal: React.FC = () => {
 
                   {/* Provider Selector */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                       AI Provider Platform
                     </label>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: '6px' }}>
@@ -774,9 +774,9 @@ export const UserProfileModal: React.FC = () => {
                               gap: '6px',
                               padding: '8px 6px',
                               borderRadius: '8px',
-                              background: isSel ? 'rgba(99, 102, 241, 0.25)' : 'rgba(255, 255, 255, 0.03)',
-                              border: `1px solid ${isSel ? '#6366f1' : 'rgba(255, 255, 255, 0.08)'}`,
-                              color: isSel ? '#ffffff' : '#94a3b8',
+                              background: isSel ? 'rgba(99, 102, 241, 0.25)' : 'rgba(var(--ink-rgb), 0.03)',
+                              border: `1px solid ${isSel ? '#6366f1' : 'rgba(var(--ink-rgb), 0.08)'}`,
+                              color: isSel ? '#4338ca' : 'var(--text-muted)',
                               fontSize: '0.76rem',
                               fontWeight: isSel ? 700 : 500,
                               cursor: 'pointer',
@@ -793,16 +793,16 @@ export const UserProfileModal: React.FC = () => {
                   {/* Model Selector & Key Label */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>
                         Model Selection
                       </label>
                       <select
                         value={selectedModel}
                         onChange={(e) => setSelectedModel(e.target.value)}
                         style={{
-                          background: '#1e293b',
-                          color: '#f8fafc',
-                          border: '1px solid rgba(255, 255, 255, 0.12)',
+                          background: 'var(--surface-elevated)',
+                          color: 'var(--text-main)',
+                          border: '1px solid rgba(var(--ink-rgb), 0.12)',
                           borderRadius: '8px',
                           padding: '8px 10px',
                           fontSize: '0.8rem',
@@ -820,7 +820,7 @@ export const UserProfileModal: React.FC = () => {
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>
                         Integration Label
                       </label>
                       <input
@@ -829,11 +829,11 @@ export const UserProfileModal: React.FC = () => {
                         onChange={(e) => setKeyNameInput(e.target.value)}
                         placeholder={`e.g. My ${selectedProvider.toUpperCase()} Key`}
                         style={{
-                          background: 'rgba(15, 23, 42, 0.9)',
-                          border: '1px solid rgba(255, 255, 255, 0.12)',
+                          background: 'rgba(var(--panel-rgb), 0.9)',
+                          border: '1px solid rgba(var(--ink-rgb), 0.12)',
                           borderRadius: '8px',
                           padding: '8px 10px',
-                          color: '#f8fafc',
+                          color: 'var(--text-main)',
                           fontSize: '0.8rem',
                           outline: 'none',
                         }}
@@ -843,7 +843,7 @@ export const UserProfileModal: React.FC = () => {
 
                   {/* Secret Key Input */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8' }}>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>
                       Secret API Key
                     </label>
                     <div style={{ position: 'relative' }}>
@@ -864,11 +864,11 @@ export const UserProfileModal: React.FC = () => {
                         }
                         style={{
                           width: '100%',
-                          background: 'rgba(15, 23, 42, 0.9)',
+                          background: 'rgba(var(--panel-rgb), 0.9)',
                           border: '1px solid rgba(99, 102, 241, 0.4)',
                           borderRadius: '8px',
                           padding: '9px 36px 9px 12px',
-                          color: '#f8fafc',
+                          color: 'var(--text-main)',
                           fontSize: '0.85rem',
                           fontFamily: 'monospace',
                           outline: 'none',
@@ -884,7 +884,7 @@ export const UserProfileModal: React.FC = () => {
                           transform: 'translateY(-50%)',
                           background: 'none',
                           border: 'none',
-                          color: '#94a3b8',
+                          color: 'var(--text-muted)',
                           cursor: 'pointer',
                         }}
                       >
@@ -896,7 +896,7 @@ export const UserProfileModal: React.FC = () => {
                   {/* Optional Custom Endpoint for DeepSeek / Local */}
                   {(selectedProvider === 'deepseek' || selectedProvider === 'local_llm') && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>
                         Custom API Endpoint URL
                       </label>
                       <input
@@ -905,11 +905,11 @@ export const UserProfileModal: React.FC = () => {
                         onChange={(e) => setEndpointInput(e.target.value)}
                         placeholder={selectedProvider === 'deepseek' ? 'https://api.deepseek.com/v1' : 'http://localhost:11434/v1'}
                         style={{
-                          background: 'rgba(15, 23, 42, 0.9)',
-                          border: '1px solid rgba(255, 255, 255, 0.12)',
+                          background: 'rgba(var(--panel-rgb), 0.9)',
+                          border: '1px solid rgba(var(--ink-rgb), 0.12)',
                           borderRadius: '8px',
                           padding: '8px 10px',
-                          color: '#f8fafc',
+                          color: 'var(--text-main)',
                           fontSize: '0.8rem',
                           fontFamily: 'monospace',
                           outline: 'none',
@@ -919,7 +919,7 @@ export const UserProfileModal: React.FC = () => {
                   )}
 
                   {/* Default Checkbox */}
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: '#cbd5e1' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-body)' }}>
                     <input
                       type="checkbox"
                       checked={isDefaultInput}
@@ -961,12 +961,12 @@ export const UserProfileModal: React.FC = () => {
               )}
 
               {/* Helpful provider documentation links */}
-              <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', paddingTop: '4px', borderTop: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', paddingTop: '4px', borderTop: '1px solid rgba(var(--ink-rgb), 0.05)' }}>
                 <a
                   href="https://aistudio.google.com/app/apikey"
                   target="_blank"
                   rel="noreferrer"
-                  style={{ fontSize: '0.74rem', color: '#818cf8', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                  style={{ fontSize: '0.74rem', color: '#4f46e5', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                 >
                   <RiGoogleFill size={12} /> Google AI Studio <TbExternalLink size={11} />
                 </a>
@@ -974,7 +974,7 @@ export const UserProfileModal: React.FC = () => {
                   href="https://platform.openai.com/api-keys"
                   target="_blank"
                   rel="noreferrer"
-                  style={{ fontSize: '0.74rem', color: '#34d399', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                  style={{ fontSize: '0.74rem', color: '#059669', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                 >
                   <RiOpenaiFill size={12} /> OpenAI Platform <TbExternalLink size={11} />
                 </a>
@@ -982,7 +982,7 @@ export const UserProfileModal: React.FC = () => {
                   href="https://console.anthropic.com/"
                   target="_blank"
                   rel="noreferrer"
-                  style={{ fontSize: '0.74rem', color: '#fbbf24', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                  style={{ fontSize: '0.74rem', color: '#d97706', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                 >
                   <SiAnthropic size={11} /> Anthropic Console <TbExternalLink size={11} />
                 </a>
@@ -1003,8 +1003,8 @@ export const UserProfileModal: React.FC = () => {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <TbDatabase size={20} color="#38bdf8" />
-                  <span style={{ fontSize: '0.92rem', fontWeight: 700, color: '#f8fafc' }}>
+                  <TbDatabase size={20} color="#0284c7" />
+                  <span style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-main)' }}>
                     Supabase Cloud Report Storage
                   </span>
                 </div>
@@ -1016,7 +1016,7 @@ export const UserProfileModal: React.FC = () => {
                       padding: '3px 8px',
                       borderRadius: '6px',
                       background: 'rgba(56, 189, 248, 0.15)',
-                      color: '#38bdf8',
+                      color: '#0284c7',
                       border: '1px solid rgba(56, 189, 248, 0.3)',
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -1031,13 +1031,13 @@ export const UserProfileModal: React.FC = () => {
               {/* Progress bar & metrics */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                  <span style={{ color: '#94a3b8' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>
                     Storage Used ({storageData?.file_count ?? 0} files)
                   </span>
-                  <span style={{ fontWeight: 700, color: storageData?.is_quota_exceeded ? '#ef4444' : '#f8fafc' }}>
+                  <span style={{ fontWeight: 700, color: storageData?.is_quota_exceeded ? '#ef4444' : 'var(--text-main)' }}>
                     {storageData ? `${storageData.used_mb.toFixed(2)} MB / ${storageData.limit_mb.toFixed(0)} MB` : '0.00 MB / 20 MB'}
                     {' '}
-                    <span style={{ color: '#64748b', fontWeight: 500 }}>
+                    <span style={{ color: 'var(--text-subtle)', fontWeight: 500 }}>
                       ({storageData ? `${storageData.used_percent.toFixed(1)}%` : '0%'})
                     </span>
                   </span>
@@ -1048,7 +1048,7 @@ export const UserProfileModal: React.FC = () => {
                     width: '100%',
                     height: '8px',
                     borderRadius: '4px',
-                    background: 'rgba(255, 255, 255, 0.08)',
+                    background: 'rgba(var(--ink-rgb), 0.08)',
                     overflow: 'hidden',
                   }}
                 >
@@ -1057,10 +1057,10 @@ export const UserProfileModal: React.FC = () => {
                       height: '100%',
                       width: `${Math.min(storageData?.used_percent ?? 0, 100)}%`,
                       background: storageData?.is_quota_exceeded
-                        ? 'linear-gradient(90deg, #ef4444, #f87171)'
+                        ? 'linear-gradient(90deg, #ef4444, #dc2626)'
                         : (storageData?.used_percent ?? 0) > 75
-                        ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
-                        : 'linear-gradient(90deg, #38bdf8, #6366f1)',
+                        ? 'linear-gradient(90deg, #f59e0b, #d97706)'
+                        : 'linear-gradient(90deg, #0284c7, #6366f1)',
                       borderRadius: '4px',
                       transition: 'width 0.4s ease',
                     }}
@@ -1068,9 +1068,9 @@ export const UserProfileModal: React.FC = () => {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.74rem', color: '#64748b' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-subtle)' }}>
                 <span>Dedicated 20 MB bucket quota per user</span>
-                <span style={{ color: '#94a3b8' }}>Reports stored in Supabase bucket</span>
+                <span style={{ color: 'var(--text-muted)' }}>Reports stored in Supabase bucket</span>
               </div>
 
               {storageData?.is_quota_exceeded && (
@@ -1080,7 +1080,7 @@ export const UserProfileModal: React.FC = () => {
                     borderRadius: '8px',
                     background: 'rgba(239, 68, 68, 0.1)',
                     border: '1px solid rgba(239, 68, 68, 0.3)',
-                    color: '#fca5a5',
+                    color: '#b91c1c',
                     fontSize: '0.75rem',
                     display: 'flex',
                     alignItems: 'center',
@@ -1096,8 +1096,8 @@ export const UserProfileModal: React.FC = () => {
             {/* Subscription & Plan Status */}
             <div style={{ padding: '14px', background: 'rgba(99, 102, 241, 0.06)', border: '1px solid rgba(99, 102, 241, 0.2)', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#c7d2fe' }}>Current Subscription</div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#ffffff', textTransform: 'capitalize' }}>{userPlan} Tier</div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#4338ca' }}>Current Subscription</div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-heading)', textTransform: 'capitalize' }}>{userPlan} Tier</div>
               </div>
               <Link
                 href="/pricing"
@@ -1111,13 +1111,13 @@ export const UserProfileModal: React.FC = () => {
 
             {/* Account Preferences */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ fontSize: '0.82rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-subtle)' }}>
                 Preferences
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: '10px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                <span style={{ fontSize: '0.88rem', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <TbBell size={16} color="#818cf8" /> Email Scan Reports
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'rgba(var(--ink-rgb), 0.02)', borderRadius: '10px', border: '1px solid rgba(var(--ink-rgb), 0.05)' }}>
+                <span style={{ fontSize: '0.88rem', color: 'var(--text-body)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <TbBell size={16} color="#4f46e5" /> Email Scan Reports
                 </span>
                 <input
                   type="checkbox"
@@ -1127,14 +1127,14 @@ export const UserProfileModal: React.FC = () => {
                 />
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: '10px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                <span style={{ fontSize: '0.88rem', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <TbDeviceDesktop size={16} color="#38bdf8" /> Default Testing Viewport
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'rgba(var(--ink-rgb), 0.02)', borderRadius: '10px', border: '1px solid rgba(var(--ink-rgb), 0.05)' }}>
+                <span style={{ fontSize: '0.88rem', color: 'var(--text-body)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <TbDeviceDesktop size={16} color="#0284c7" /> Default Testing Viewport
                 </span>
                 <select
                   value={defaultViewport}
                   onChange={(e) => setDefaultViewport(e.target.value)}
-                  style={{ background: '#1e293b', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '6px', padding: '4px 8px', fontSize: '0.8rem' }}
+                  style={{ background: 'var(--surface-elevated)', color: 'var(--text-main)', border: '1px solid rgba(var(--ink-rgb), 0.1)', borderRadius: '6px', padding: '4px 8px', fontSize: '0.8rem' }}
                 >
                   <option value="all">Desktop + Mobile + Tablet</option>
                   <option value="desktop">Desktop Only</option>
@@ -1151,7 +1151,7 @@ export const UserProfileModal: React.FC = () => {
                 await signOut();
               }}
               className="btn btn-secondary"
-              style={{ padding: '10px 16px', color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.3)', background: 'rgba(239, 68, 68, 0.06)', width: '100%', marginTop: '4px' }}
+              style={{ padding: '10px 16px', color: '#dc2626', borderColor: 'rgba(239, 68, 68, 0.3)', background: 'rgba(239, 68, 68, 0.06)', width: '100%', marginTop: '4px' }}
             >
               <RiLogoutBoxRLine size={16} />
               <span>Log Out</span>

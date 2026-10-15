@@ -115,7 +115,7 @@ export default function AuthCallbackPage() {
         alignItems: "center",
         justifyContent: "center",
         background: "#080c14",
-        color: "#f8fafc",
+        color: "var(--text-main)",
         fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
         padding: "20px",
       }}
@@ -125,7 +125,7 @@ export default function AuthCallbackPage() {
           maxWidth: "460px",
           width: "100%",
           padding: "36px 32px",
-          background: "rgba(15, 23, 42, 0.8)",
+          background: "rgba(var(--panel-rgb), 0.8)",
           borderRadius: "16px",
           border: errorMessage ? "1px solid rgba(239, 68, 68, 0.4)" : "1px solid rgba(56, 189, 248, 0.2)",
           boxShadow: errorMessage
@@ -143,7 +143,7 @@ export default function AuthCallbackPage() {
                 height: "44px",
                 margin: "0 auto 20px",
                 border: "3px solid rgba(56, 189, 248, 0.2)",
-                borderTopColor: "#38bdf8",
+                borderTopColor: "#0284c7",
                 borderRadius: "50%",
                 animation: "spin 1s linear infinite",
               }}
@@ -151,7 +151,7 @@ export default function AuthCallbackPage() {
             <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0 0 8px" }}>
               Verifying Authentication
             </h2>
-            <p style={{ color: "#94a3b8", fontSize: "0.9rem", margin: 0 }}>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", margin: 0 }}>
               Completing secure session exchange and loading your QA dashboard...
             </p>
             <style>{`
@@ -180,16 +180,16 @@ export default function AuthCallbackPage() {
             >
               !
             </div>
-            <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0 0 8px", color: "#f87171" }}>
+            <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0 0 8px", color: "#dc2626" }}>
               Sign-In Incomplete
             </h2>
             <p
               style={{
-                color: "#cbd5e1",
+                color: "var(--text-body)",
                 fontSize: "0.875rem",
                 lineHeight: 1.5,
                 margin: "0 0 24px",
-                background: "rgba(15, 23, 42, 0.6)",
+                background: "rgba(var(--panel-rgb), 0.7)",
                 padding: "12px 14px",
                 borderRadius: "8px",
                 border: "1px solid rgba(239, 68, 68, 0.2)",
@@ -206,8 +206,8 @@ export default function AuthCallbackPage() {
                 style={{
                   padding: "10px 18px",
                   borderRadius: "8px",
-                  background: "#1e293b",
-                  color: "#94a3b8",
+                  background: "var(--surface-elevated)",
+                  color: "var(--text-muted)",
                   border: "1px solid rgba(148, 163, 184, 0.2)",
                   fontSize: "0.875rem",
                   fontWeight: 500,

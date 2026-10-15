@@ -332,7 +332,7 @@ export const AuthModal: React.FC = () => {
                 disabled={loading}
                 className={`${styles.socialAuthBtn} ${styles.socialAuthBtnGithub}`}
               >
-                <RiGithubFill size={18} color="#ffffff" />
+                <RiGithubFill size={18} color="var(--text-heading)" />
                 <span>GitHub</span>
               </button>
             </div>
