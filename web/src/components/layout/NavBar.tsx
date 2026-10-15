@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   RiHome5Line,
-  RiShieldUserLine,
   RiShieldUserFill,
   RiLoginCircleLine,
   RiUser3Line,

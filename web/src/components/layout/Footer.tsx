@@ -1,6 +1,5 @@
 import React from "react";
 import Link from "next/link";
-import { RiShieldFlashFill } from "react-icons/ri";
 
 export const Footer: React.FC = () => {
   return (
