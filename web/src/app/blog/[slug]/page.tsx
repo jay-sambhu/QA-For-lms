@@ -2,19 +2,23 @@ import React from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { RiArrowLeftLine, RiTimeLine, RiCalendarLine, RiShareForwardLine } from "react-icons/ri";
+import { RiArrowLeftLine, RiTimeLine, RiCalendarLine } from "react-icons/ri";
 import { TbSparkles, TbArrowRight } from "react-icons/tb";
+import { serverApiBase } from "../../../lib/serverApiBase";
 import { BLOG_POSTS, type BlogPost } from "../../../data/blogPosts";
 
 export const dynamicParams = true;
 export const revalidate = 15;
 
 async function getPostBySlug(slug: string): Promise<BlogPost | null> {
-  const apiUrl = (process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
+  const apiUrl = serverApiBase();
   try {
     const res = await fetch(`${apiUrl}/api/v1/blogs/${encodeURIComponent(slug)}`, {
       next: { revalidate: 10 },
     });
+    // Backend is the source of truth (it seeds the static posts): a 404 means the post was
+    // unpublished or deleted, so don't resurrect it from the static fallback.
+    if (res.status === 404) return null;
     if (res.ok) {
       const data = await res.json();
       if (data.post) {
@@ -34,7 +38,7 @@ interface BlogPostPageProps {
 }
 
 export async function generateStaticParams() {
-  const apiUrl = (process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
+  const apiUrl = serverApiBase();
   try {
     const res = await fetch(`${apiUrl}/api/v1/blogs?limit=100`, { next: { revalidate: 60 } });
     if (res.ok) {
@@ -128,7 +132,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
       {/* Structured Schema for Search Engines */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
       />
 
       {/* Back button */}

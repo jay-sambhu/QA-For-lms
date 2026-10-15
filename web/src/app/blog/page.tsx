@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { RiArticleLine, RiTimeLine, RiCalendarLine, RiArrowRightLine } from "react-icons/ri";
 import { HiSparkles } from "react-icons/hi2";
+import { serverApiBase } from "../../lib/serverApiBase";
 import { BLOG_POSTS, type BlogPost } from "../../data/blogPosts";
 
 export const metadata: Metadata = {
@@ -25,7 +26,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 async function getDynamicBlogPosts(): Promise<BlogPost[]> {
-  const apiUrl = (process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
+  const apiUrl = serverApiBase();
   try {
     const res = await fetch(`${apiUrl}/api/v1/blogs?limit=50`, {
       next: { revalidate: 10 },

@@ -1,14 +1,15 @@
 import type { MetadataRoute } from "next";
+import { serverApiBase } from "../lib/serverApiBase";
 import { BLOG_POSTS, type BlogPost } from "../data/blogPosts";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.jasuss.tech";
-  const apiUrl = (process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
+  const apiUrl = serverApiBase();
   const currentDate = new Date();
 
   let posts: BlogPost[] = BLOG_POSTS;
   try {
-    const res = await fetch(`${apiUrl}/api/v1/blogs?limit=200`, { next: { revalidate: 60 } });
+    const res = await fetch(`${apiUrl}/api/v1/blogs?limit=100`, { next: { revalidate: 60 } });
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.posts) && data.posts.length > 0) {
@@ -37,18 +38,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: currentDate,
       changeFrequency: "weekly",
       priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/dashboard`,
-      lastModified: currentDate,
-      changeFrequency: "daily",
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/auth/callback`,
-      lastModified: currentDate,
-      changeFrequency: "monthly",
-      priority: 0.3,
     },
   ];
 
