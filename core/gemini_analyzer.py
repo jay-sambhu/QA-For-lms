@@ -614,15 +614,17 @@ class GeminiQAAnalyzer:
                 last_error = error
                 message = str(error)
                 if "429" in message or "quota" in message.lower():
-                    # Every model is rate limited. A per-minute limit clears
-                    # quickly (Google says how long in retryDelay); a daily
-                    # quota will not, so don't make the scan wait for it.
+                    # A daily quota will not clear during this run, so only
+                    # give up when every model in the chain has hit it;
+                    # otherwise the others merely answered "overloaded" or a
+                    # per-minute limit, which a short wait fixes.
+                    usable = [m for m in GEMINI_FALLBACK_MODELS if m not in self._exhausted_models]
+                    if not usable:
+                        return self.fallback("Gemini quota limit reached; manual review required.", candidate=candidate)
                     delay = re.search(r"retryDelay\W+(\d+)s", message)
                     wait_s = int(delay.group(1)) if delay else 0
-                    if attempt < 2 and 0 < wait_s <= 60:
-                        await asyncio.sleep(wait_s + 1)
-                        continue
-                    return self.fallback("Gemini quota limit reached; manual review required.", candidate=candidate)
+                    await asyncio.sleep(min(wait_s, 60) + 1 if 0 < wait_s <= 60 else RETRY_DELAY_SECONDS * (attempt + 1))
+                    continue
                 await asyncio.sleep(RETRY_DELAY_SECONDS * (attempt + 1))
         return self.fallback(
             "Gemini analysis failed; manual review required.", str(last_error), candidate=candidate

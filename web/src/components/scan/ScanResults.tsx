@@ -72,8 +72,9 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
           <RiErrorWarningFill size={22} style={{ flexShrink: 0 }} />
           <div>
             <strong>AI Analysis Incomplete:</strong>{' '}
-            {results.report_metadata.ai_analysis_failures} findings used deterministic fallbacks
-            because the AI endpoint was unreachable.
+            {results.report_metadata.ai_analysis_failures} finding(s) kept the deterministic triage
+            because the AI model did not return a valid analysis (overloaded or out of quota).
+            Re-run the scan later to get the AI verdict.
           </div>
         </div>
       )}
