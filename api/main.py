@@ -371,12 +371,24 @@ def require_user(authorization: str = Header(None)):
             detail=f"Authentication service unavailable: missing environment variable(s) {missing_desc}",
         )
 
-    try:
-        user_response = supabase.auth.get_user(token)
-        user = user_response.user
-    except Exception as error:
-        logger.warning("Token verification failed: %s", error, exc_info=True)
-        raise HTTPException(status_code=401, detail="Invalid token")
+    user = None
+    for attempt in (1, 2):
+        try:
+            user = supabase.auth.get_user(token).user
+            break
+        except Exception as error:
+            # A rejected token is final. A transport failure (typically the
+            # server closing an idle HTTP/2 connection: "ConnectionTerminated")
+            # is retried once; reporting it as 401 made the UI drop the user's
+            # data as if they were signed out.
+            is_rejection = type(error).__module__.startswith("supabase_auth") or hasattr(error, "status")
+            if is_rejection:
+                logger.warning("Token verification failed: %s", error)
+                raise HTTPException(status_code=401, detail="Invalid token")
+            if attempt == 2:
+                logger.error("Auth service unreachable while verifying token: %s", error, exc_info=True)
+                raise HTTPException(status_code=503, detail="Authentication service temporarily unavailable, please retry")
+            logger.warning("Auth transport error (%s); retrying token verification once", error)
 
 
     if not user:
