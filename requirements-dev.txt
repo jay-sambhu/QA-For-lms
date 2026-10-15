@@ -1,5 +1,0 @@
-# Development & Test dependencies for JASUSS
--r requirements.txt
-pytest==9.1.1
-fakeredis==2.37.1
-requests==2.33.0
