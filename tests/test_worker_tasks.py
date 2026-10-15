@@ -29,8 +29,10 @@ class TestCeleryConfiguration(unittest.TestCase):
         """Verify broker, backend, timeouts, prefetch, and ack settings."""
         self.assertTrue(celery_app.conf.broker_url)
         self.assertTrue(celery_app.conf.result_backend)
-        self.assertEqual(celery_app.conf.task_time_limit, 1800)
-        self.assertEqual(celery_app.conf.task_soft_time_limit, 1700)
+        # The pipeline's own timeout must fire before Celery's limits.
+        from api.main import PIPELINE_TIMEOUT_SECONDS
+        self.assertGreater(celery_app.conf.task_soft_time_limit, PIPELINE_TIMEOUT_SECONDS)
+        self.assertGreater(celery_app.conf.task_time_limit, celery_app.conf.task_soft_time_limit)
         self.assertEqual(celery_app.conf.worker_prefetch_multiplier, 1)
         self.assertTrue(celery_app.conf.task_acks_late)
 
