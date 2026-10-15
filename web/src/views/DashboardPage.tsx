@@ -3,35 +3,33 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion } from 'framer-motion';
 import {
   RiRefreshLine,
   RiShieldUserLine,
   RiCheckDoubleLine,
-  RiTimeLine,
   RiSearchLine,
-  RiArrowRightLine,
+  RiFileExcel2Line,
 } from 'react-icons/ri';
+import { FaRegFilePdf } from 'react-icons/fa6';
 import {
   TbLoader2,
   TbArrowRight,
   TbChecklist,
   TbKey,
   TbActivity,
-  TbDeviceDesktop,
-  TbDeviceMobile,
   TbDevices,
-  TbSparkles,
   TbExternalLink,
 } from 'react-icons/tb';
 import { useAuth } from '../context/AuthContext';
+import { downloadScanReport, type ServerReportFormat } from '../utils/download';
 import { ScanForm } from '../components/scan/ScanForm';
 import { ApiKeyManager } from '../components/dashboard/ApiKeyManager';
 import styles from '../app/page.module.css';
 
 export const DashboardPage: React.FC = () => {
   const router = useRouter();
-  const { session, sessionLoaded, userRole, userPlan, isAdmin, openAuthModal, openProfileModal } = useAuth();
+  const { session, sessionLoaded, userPlan, isAdmin, openAuthModal, openProfileModal } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [recentScans, setRecentScans] = useState<any[]>([]);
@@ -40,6 +38,21 @@ export const DashboardPage: React.FC = () => {
   const [apiKeysCount, setApiKeysCount] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'running' | 'failed'>('all');
+  const [downloadingScanId, setDownloadingScanId] = useState<string | null>(null);
+
+  const handleDirectDownload = async (scanId: string, format: ServerReportFormat) => {
+    if (!session?.access_token) return;
+    setDownloadingScanId(`${scanId}-${format}`);
+    try {
+      await downloadScanReport(scanId, format, session.access_token);
+    } catch (e) {
+      console.error('Download error:', e);
+      const reason = e instanceof Error ? e.message : '';
+      alert(`Could not download the requested report${reason ? `: ${reason}` : ''}. You can open the scan report to view details.`);
+    } finally {
+      setDownloadingScanId(null);
+    }
+  };
 
   const checkApiKey = useCallback(async () => {
     if (!session?.access_token) return;
@@ -84,12 +97,12 @@ export const DashboardPage: React.FC = () => {
     }
   }, [session?.access_token]);
 
+  // Depend on the token (via the callbacks), not the session object: Supabase emits a new
+  // session object on tab refocus/token refresh, which used to trigger redundant refetches.
   useEffect(() => {
-    if (session) {
-      fetchScanHistory();
-      checkApiKey();
-    }
-  }, [session, fetchScanHistory, checkApiKey]);
+    fetchScanHistory();
+    checkApiKey();
+  }, [fetchScanHistory, checkApiKey]);
 
   const scrollToAiManager = () => {
     const el = document.getElementById('ai-models-manager');
@@ -567,7 +580,7 @@ export const DashboardPage: React.FC = () => {
                 <th>Run Status</th>
                 <th>Auth Session</th>
                 <th>Initiated At</th>
-                <th>Inspect</th>
+                <th>Actions &amp; Reports</th>
               </tr>
             </thead>
             <tbody>
@@ -608,7 +621,7 @@ export const DashboardPage: React.FC = () => {
                         }}
                       >
                         {isRunning && <TbLoader2 size={12} className="pulse" />}
-                        {s.status.toUpperCase()}
+                        {String(s.status || 'unknown').toUpperCase()}
                       </span>
                     </td>
                     <td>
@@ -620,25 +633,84 @@ export const DashboardPage: React.FC = () => {
                       {s.created_at ? new Date(s.created_at).toLocaleString() : 'N/A'}
                     </td>
                     <td>
-                      <Link
-                        href={`/dashboard/scan/${s.id}`}
-                        className="btn btn-secondary"
-                        style={{
-                          padding: '6px 14px',
-                          fontSize: '0.8rem',
-                          borderRadius: '8px',
-                          textDecoration: 'none',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          background: isRunning ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-                          borderColor: isRunning ? 'rgba(99, 102, 241, 0.35)' : 'rgba(255, 255, 255, 0.1)',
-                          color: isRunning ? '#818cf8' : '#f8fafc',
-                        }}
-                      >
-                        <span>{isRunning ? 'Live Monitor' : 'View Report'}</span>
-                        <TbArrowRight size={14} />
-                      </Link>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <Link
+                          href={`/dashboard/scan/${s.id}`}
+                          className="btn btn-secondary"
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '0.8rem',
+                            borderRadius: '8px',
+                            textDecoration: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            background: isRunning ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                            borderColor: isRunning ? 'rgba(99, 102, 241, 0.35)' : 'rgba(255, 255, 255, 0.1)',
+                            color: isRunning ? '#818cf8' : '#f8fafc',
+                          }}
+                        >
+                          <span>{isRunning ? 'Live Monitor' : 'View Report'}</span>
+                          <TbArrowRight size={14} />
+                        </Link>
+
+                        {isCompleted && (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleDirectDownload(s.id, 'pdf')}
+                              disabled={downloadingScanId === `${s.id}-pdf`}
+                              className="btn btn-secondary"
+                              title="Direct Cloud Download PDF Report"
+                              style={{
+                                padding: '6px 10px',
+                                fontSize: '0.78rem',
+                                borderRadius: '8px',
+                                color: '#f87171',
+                                borderColor: 'rgba(239, 68, 68, 0.3)',
+                                background: 'rgba(239, 68, 68, 0.08)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {downloadingScanId === `${s.id}-pdf` ? (
+                                <TbLoader2 size={13} className="pulse" />
+                              ) : (
+                                <FaRegFilePdf size={13} color="#ef4444" />
+                              )}
+                              <span>PDF</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDirectDownload(s.id, 'xlsx')}
+                              disabled={downloadingScanId === `${s.id}-xlsx`}
+                              className="btn btn-secondary"
+                              title="Direct Cloud Download Excel Workbook"
+                              style={{
+                                padding: '6px 10px',
+                                fontSize: '0.78rem',
+                                borderRadius: '8px',
+                                color: '#34d399',
+                                borderColor: 'rgba(16, 185, 129, 0.3)',
+                                background: 'rgba(16, 185, 129, 0.08)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {downloadingScanId === `${s.id}-xlsx` ? (
+                                <TbLoader2 size={13} className="pulse" />
+                              ) : (
+                                <RiFileExcel2Line size={13} color="#10b981" />
+                              )}
+                              <span>Excel</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
