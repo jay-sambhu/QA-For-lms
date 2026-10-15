@@ -110,6 +110,8 @@ class ResumableDiscoveryEngine:
                 "forms": [fm.model_dump() for fm in form_models],
                 "api_calls": p.get("api_calls", []),
                 "console_errors": p.get("console_errors", []),
+                # Kept so run_qa can report *why* discovery failed.
+                "error": p.get("error"),
             })
 
         discovery_summary = {
