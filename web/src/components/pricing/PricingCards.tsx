@@ -1,107 +1,29 @@
 "use client";
 
-import React, { useState } from 'react';
-import { FaStripe, FaPaypal } from 'react-icons/fa6';
-import { SiLemonsqueezy, SiRazorpay } from 'react-icons/si';
+import React from 'react';
+import Link from 'next/link';
 import { HiCheck, HiOutlineSparkles } from 'react-icons/hi2';
-import { RiShieldStarLine, RiCheckboxCircleFill, RiErrorWarningLine } from 'react-icons/ri';
+import { RiShieldStarLine, RiInformationLine } from 'react-icons/ri';
 import { useAuth } from '../../context/AuthContext';
 import styles from '../../app/page.module.css';
 import { Tilt3D } from '../three/Tilt3D';
 
+// Paid checkout is paused during the free beta. Set NEXT_PUBLIC_CONTACT_EMAIL at
+// build time to show a "Contact us" button on the Enterprise plan.
+const CONTACT_EMAIL = process.env.NEXT_PUBLIC_CONTACT_EMAIL || '';
+
 export const PricingCards: React.FC = () => {
-  const { session, openAuthModal, refreshPlan } = useAuth();
-  const [selectedGateway, setSelectedGateway] = useState<'stripe' | 'lemonsqueezy' | 'razorpay' | 'paypal'>('stripe');
-  const [billingLoading, setBillingLoading] = useState(false);
-  const [billingMessage, setBillingMessage] = useState('');
-  const [billingOk, setBillingOk] = useState(true);
-
-  const handleCheckout = async (planId: string) => {
-    if (!session) {
-      openAuthModal('signin');
-      return;
-    }
-
-    setBillingLoading(true);
-    setBillingMessage('');
-    try {
-      const res = await fetch('/api/v1/billing/checkout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          plan_id: planId,
-          gateway: selectedGateway,
-          // Without these the backend defaults to http://localhost:3000 after payment
-          success_url: `${window.location.origin}/dashboard?billing=success`,
-          cancel_url: `${window.location.origin}/pricing?billing=cancel`,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'Checkout failed');
-
-      setBillingOk(true);
-      if (data.checkout_url) {
-        setBillingMessage(`Redirecting to secure ${selectedGateway.toUpperCase()} checkout...`);
-        setTimeout(() => {
-          window.location.href = data.checkout_url;
-        }, 1000);
-      } else {
-        setBillingMessage(data.message || 'Plan upgraded successfully!');
-        await refreshPlan();
-      }
-    } catch (err) {
-      setBillingOk(false);
-      setBillingMessage(err instanceof Error ? err.message : 'Checkout failed.');
-    } finally {
-      setBillingLoading(false);
-    }
-  };
-
-  const gateways = [
-    { id: 'stripe', name: 'Stripe', icon: <FaStripe size={24} color="#635bff" /> },
-    { id: 'lemonsqueezy', name: 'LemonSqueezy', icon: <SiLemonsqueezy size={20} color="#ffc233" /> },
-    { id: 'razorpay', name: 'Razorpay', icon: <SiRazorpay size={20} color="#0c2340" /> },
-    { id: 'paypal', name: 'PayPal', icon: <FaPaypal size={20} color="#00457c" /> },
-  ];
+  const { session, openAuthModal } = useAuth();
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
-      {billingMessage && (
-        <div className={`${styles.authBanner} ${billingOk ? styles.authBannerSuccess : styles.authBannerError}`}>
-          {billingOk ? (
-            <RiCheckboxCircleFill size={18} />
-          ) : (
-            <RiErrorWarningLine size={18} />
-          )}
-          <span>{billingMessage}</span>
-        </div>
-      )}
-
-      {/* Gateway Selector */}
-      <div className={styles.gatewaySelectSection}>
-        <div className={styles.gatewaySelectLabel}>
-          <span>Choose Preferred Payment Gateway & Currency</span>
-          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Global 256-Bit SSL Encrypted Checkout</span>
-        </div>
-        <div className={styles.gatewayGrid}>
-          {gateways.map((gw) => (
-            <button
-              key={gw.id}
-              type="button"
-              onClick={() => setSelectedGateway(gw.id as any)}
-              className={`${styles.gatewayOption} ${selectedGateway === gw.id ? styles.gatewayOptionActive : ''}`}
-            >
-              {gw.icon}
-              <span>{gw.name}</span>
-            </button>
-          ))}
-        </div>
+      <div className={styles.betaNotice}>
+        <RiInformationLine size={18} />
+        <span>
+          JASUSS is <strong>free during the beta</strong>. Paid plans are coming soon — the Starter plan is open to everyone today.
+        </span>
       </div>
 
-      {/* 3 Plan Cards */}
       <div className={styles.pricingGrid}>
         {/* Starter Plan */}
         <Tilt3D className={styles.planCard} max={6}>
@@ -116,29 +38,31 @@ export const PricingCards: React.FC = () => {
 
           <div className={styles.planFeaturesList}>
             <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> 10 Automated Scans / mo</div>
+            <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> Up to 10 Pages per Scan</div>
             <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> Multi-Viewport (Desktop, Mobile, Tablet)</div>
             <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> Deterministic Defect Triage</div>
-            <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> Executive Score & Grading</div>
+            <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> PDF &amp; Excel Report Downloads</div>
           </div>
 
-          <button
-            type="button"
-            disabled={billingLoading}
-            onClick={() => {
-              if (window.confirm('Switch to the free Starter plan? Paid features will be removed.')) {
-                handleCheckout('free');
-              }
-            }}
-            className={styles.planSelectBtn}
-          >
-            Select Starter ($0)
-          </button>
+          {session ? (
+            <Link href="/dashboard" className={`${styles.planSelectBtn} ${styles.planSelectBtnPrimary}`}>
+              Go to dashboard
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => openAuthModal('signup')}
+              className={`${styles.planSelectBtn} ${styles.planSelectBtnPrimary}`}
+            >
+              Start free
+            </button>
+          )}
         </Tilt3D>
 
         {/* Pro Plan */}
         <Tilt3D className={`${styles.planCard} ${styles.planCardHighlighted}`} max={6}>
           <div className={styles.planPopularBadge}>
-            <HiOutlineSparkles size={13} /> Recommended
+            <HiOutlineSparkles size={13} /> Coming soon
           </div>
           <div className={styles.planHeader}>
             <div className={styles.planName}>Professional QA</div>
@@ -157,13 +81,8 @@ export const PricingCards: React.FC = () => {
             <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> Priority Processing Queue</div>
           </div>
 
-          <button
-            type="button"
-            disabled={billingLoading}
-            onClick={() => handleCheckout('pro')}
-            className={`${styles.planSelectBtn} ${styles.planSelectBtnPrimary}`}
-          >
-            {billingLoading ? 'Processing...' : `Upgrade with ${selectedGateway.toUpperCase()}`}
+          <button type="button" disabled className={styles.planSelectBtn}>
+            Coming soon
           </button>
         </Tilt3D>
 
@@ -171,7 +90,7 @@ export const PricingCards: React.FC = () => {
         <Tilt3D className={styles.planCard} max={6}>
           <div className={styles.planHeader}>
             <div className={styles.planName}>
-              <RiShieldStarLine size={18} color="#a855f7" style={{ display: 'inline', marginRight: '6px' }} />
+              <RiShieldStarLine size={18} color="#9333ea" style={{ display: 'inline', marginRight: '6px' }} />
               Enterprise Suite
             </div>
             <div className={styles.planPriceRow}>
@@ -189,14 +108,18 @@ export const PricingCards: React.FC = () => {
             <div className={styles.planFeatureItem}><HiCheck size={16} color="#10b981" /> 24/7 Priority Support</div>
           </div>
 
-          <button
-            type="button"
-            disabled={billingLoading}
-            onClick={() => handleCheckout('enterprise')}
-            className={styles.planSelectBtn}
-          >
-            {billingLoading ? 'Processing...' : `Select Enterprise (${selectedGateway.toUpperCase()})`}
-          </button>
+          {CONTACT_EMAIL ? (
+            <a
+              href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('JASUSS Enterprise')}`}
+              className={styles.planSelectBtn}
+            >
+              Contact us
+            </a>
+          ) : (
+            <button type="button" disabled className={styles.planSelectBtn}>
+              Coming soon
+            </button>
+          )}
         </Tilt3D>
       </div>
     </div>

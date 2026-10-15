@@ -16,14 +16,14 @@ export const PricingPage: React.FC = () => {
         transition={{ duration: 0.35 }}
       >
         <div className={styles.badge}>
-          <Sparkles size={14} /> Transparent & Flexible Plans
+          <Sparkles size={14} /> Free during beta
         </div>
         <h1 className={styles.title}>
           Scale Your QA With{' '}
           <span className={styles.gradientText}>JASUSS Enterprise</span>
         </h1>
         <p className={styles.subtitle}>
-          Choose the automated testing plan that fits your engineering team. Multiple secure payment gateways supported globally.
+          Start free today. Paid plans for growing teams are coming soon.
         </p>
       </motion.section>
 
