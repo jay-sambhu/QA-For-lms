@@ -2,9 +2,8 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
 import {
-  RiShieldFlashFill,
   RiCloseLine,
   RiLoginCircleLine,
   RiUserAddLine,
@@ -76,7 +75,7 @@ export const AuthModal: React.FC = () => {
               client_id: string;
               callback: (response: { credential?: string; error?: string }) => void;
             }) => void;
-            prompt: (notification?: (n: { isNotDisplayed: () => boolean; isSkippedMoment: () => boolean }) => void) => void;
+            prompt: (notification?: (n: { isNotDisplayed?: () => boolean; isSkippedMoment?: () => boolean }) => void) => void;
           };
         };
       };
@@ -119,7 +118,7 @@ export const AuthModal: React.FC = () => {
 
       google.accounts.id.prompt((notification) => {
         // If One Tap is not displayed or skipped, fall back to standard Supabase OAuth redirect
-        if (notification?.isNotDisplayed() || notification?.isSkippedMoment()) {
+        if (notification?.isNotDisplayed?.() || notification?.isSkippedMoment?.()) {
           triggerStandardOAuth();
         }
       });
