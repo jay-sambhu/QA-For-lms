@@ -93,9 +93,9 @@ export const ApiKeyManager: React.FC = () => {
   };
 
   return (
-    <div style={{ background: 'rgba(30, 41, 59, 0.4)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(148, 163, 184, 0.1)' }}>
+    <div style={{ background: 'rgba(var(--panel-rgb), 0.7)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(148, 163, 184, 0.1)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h3 style={{ fontSize: '1.2rem', color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <h3 style={{ fontSize: '1.2rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <RiKey2Line color="#10b981" /> Gemini API Key Rotation Manager
         </h3>
         <button onClick={fetchKeys} className={styles.exportBtn} disabled={loading} style={{ padding: '6px 12px', fontSize: '0.85rem' }}>
@@ -103,7 +103,7 @@ export const ApiKeyManager: React.FC = () => {
         </button>
       </div>
 
-      <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '20px' }}>
+      <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '20px' }}>
         Add multiple Gemini API keys to automatically rotate them if one hits a `429 Too Many Requests` limit.
       </p>
 
@@ -119,7 +119,7 @@ export const ApiKeyManager: React.FC = () => {
           value={newKey}
           onChange={(e) => setNewKey(e.target.value)}
           placeholder="Paste new Gemini API Key here (AIzaSy...)"
-          style={{ flex: 1, padding: '10px 16px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(148, 163, 184, 0.2)', color: '#f8fafc' }}
+          style={{ flex: 1, padding: '10px 16px', borderRadius: '8px', background: 'rgba(var(--panel-rgb), 0.7)', border: '1px solid rgba(148, 163, 184, 0.2)', color: 'var(--text-main)' }}
         />
         <button type="submit" disabled={loading || !newKey.trim()} className="btn btn-primary" style={{ padding: '0 20px', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <RiAddLine /> Add Key
@@ -129,7 +129,7 @@ export const ApiKeyManager: React.FC = () => {
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
           <thead>
-            <tr style={{ borderBottom: '1px solid rgba(148, 163, 184, 0.1)', color: '#94a3b8', textAlign: 'left' }}>
+            <tr style={{ borderBottom: '1px solid rgba(148, 163, 184, 0.1)', color: 'var(--text-muted)', textAlign: 'left' }}>
               <th style={{ padding: '12px' }}>Key (Masked)</th>
               <th style={{ padding: '12px' }}>Status</th>
               <th style={{ padding: '12px' }}>Added At</th>
@@ -139,12 +139,12 @@ export const ApiKeyManager: React.FC = () => {
           <tbody>
             {keys.length === 0 ? (
               <tr>
-                <td colSpan={4} style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>No API keys configured. Using fallback from .env</td>
+                <td colSpan={4} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-subtle)' }}>No API keys configured. Using fallback from .env</td>
               </tr>
             ) : (
               keys.map(key => (
                 <tr key={key.id} style={{ borderBottom: '1px solid rgba(148, 163, 184, 0.05)' }}>
-                  <td style={{ padding: '12px', color: '#f8fafc', fontFamily: 'monospace' }}>{key.key_value}</td>
+                  <td style={{ padding: '12px', color: 'var(--text-main)', fontFamily: 'monospace' }}>{key.key_value}</td>
                   <td style={{ padding: '12px' }}>
                     <span style={{ 
                       padding: '4px 8px', 
@@ -157,7 +157,7 @@ export const ApiKeyManager: React.FC = () => {
                       {key.rate_limit_reset_at && ` (Resets: ${new Date(key.rate_limit_reset_at).toLocaleTimeString()})`}
                     </span>
                   </td>
-                  <td style={{ padding: '12px', color: '#94a3b8' }}>{new Date(key.created_at!).toLocaleString()}</td>
+                  <td style={{ padding: '12px', color: 'var(--text-muted)' }}>{new Date(key.created_at!).toLocaleString()}</td>
                   <td style={{ padding: '12px' }}>
                     <button onClick={() => handleDeleteKey(key.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
                       <RiDeleteBinLine size={18} />

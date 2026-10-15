@@ -159,9 +159,9 @@ export const AIProviderConfig: React.FC = () => {
     <div className={styles.adminTableCard}>
       <div className={styles.adminTableCardTitle}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-          <RiCpuLine size={20} color="#818cf8" /> Multi-AI Provider & Engine Setup
+          <RiCpuLine size={20} color="#4f46e5" /> Multi-AI Provider & Engine Setup
         </span>
-        <span style={{ fontSize: '0.8rem', color: '#34d399', fontWeight: 600 }}>
+        <span style={{ fontSize: '0.8rem', color: '#059669', fontWeight: 600 }}>
           ACTIVE: {providersData?.active_provider?.toUpperCase()} ({providersData?.active_model})
         </span>
       </div>
@@ -190,8 +190,8 @@ export const AIProviderConfig: React.FC = () => {
                   flexDirection: 'column',
                   gap: '8px',
                   padding: '14px',
-                  background: isSelected ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255, 255, 255, 0.03)',
-                  border: `1px solid ${isSelected ? '#6366f1' : 'rgba(255, 255, 255, 0.08)'}`,
+                  background: isSelected ? 'rgba(99, 102, 241, 0.15)' : 'rgba(var(--ink-rgb), 0.03)',
+                  border: `1px solid ${isSelected ? '#6366f1' : 'rgba(var(--ink-rgb), 0.08)'}`,
                   borderRadius: '14px',
                   textAlign: 'left',
                   cursor: 'pointer',
@@ -201,13 +201,13 @@ export const AIProviderConfig: React.FC = () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   {getProviderIcon(p.id)}
                   {isActive && (
-                    <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 6px', background: 'rgba(16, 185, 129, 0.2)', color: '#34d399', borderRadius: '4px' }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 6px', background: 'rgba(16, 185, 129, 0.2)', color: '#059669', borderRadius: '4px' }}>
                       IN USE
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#f8fafc' }}>{p.name}</div>
-                <div style={{ fontSize: '0.75rem', color: p.is_configured ? '#34d399' : '#94a3b8' }}>
+                <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-main)' }}>{p.name}</div>
+                <div style={{ fontSize: '0.75rem', color: p.is_configured ? '#059669' : 'var(--text-muted)' }}>
                   {p.is_configured ? `● Configured (${p.masked_key || 'Active'})` : '○ Key Required'}
                 </div>
               </button>
@@ -217,8 +217,8 @@ export const AIProviderConfig: React.FC = () => {
 
         {/* Selected Provider Form */}
         {currentProviderMeta && (
-          <form onSubmit={handleSaveConfig} style={{ display: 'flex', flexDirection: 'column', gap: '18px', background: 'rgba(0, 0, 0, 0.25)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
-            <div style={{ fontSize: '0.88rem', color: '#94a3b8' }}>
+          <form onSubmit={handleSaveConfig} style={{ display: 'flex', flexDirection: 'column', gap: '18px', background: 'rgba(var(--ink-rgb), 0.037)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(var(--ink-rgb), 0.06)' }}>
+            <div style={{ fontSize: '0.88rem', color: 'var(--text-muted)' }}>
               {currentProviderMeta.description}
             </div>
 
@@ -256,7 +256,7 @@ export const AIProviderConfig: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setShowKey(!showKey)}
-                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}
+                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}
                   >
                     {showKey ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
                   </button>
@@ -282,8 +282,8 @@ export const AIProviderConfig: React.FC = () => {
 
             {/* Temperature Slider */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#cbd5e1' }}>
-                <TbAdjustments size={16} color="#818cf8" /> Inference Temperature: <strong style={{ color: '#ffffff' }}>{temperature}</strong>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: 'var(--text-body)' }}>
+                <TbAdjustments size={16} color="#4f46e5" /> Inference Temperature: <strong style={{ color: 'var(--text-heading)' }}>{temperature}</strong>
               </div>
               <input
                 type="range"

@@ -65,16 +65,16 @@ export const TenantTable: React.FC<TenantTableProps> = ({ users, sessionToken, o
     <div className={styles.adminTableCard}>
       <div className={styles.adminTableCardTitle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <RiShieldUserFill size={20} color="#818cf8" />
+          <RiShieldUserFill size={20} color="#4f46e5" />
           <span>Registered Platform Tenants & Role Governance</span>
         </div>
-        <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 500 }}>
+        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>
           {localUsers.length} total users in database
         </span>
       </div>
 
       {errorMsg && (
-        <div style={{ margin: '12px 20px', padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '10px', color: '#f87171', fontSize: '0.85rem' }}>
+        <div style={{ margin: '12px 20px', padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '10px', color: '#dc2626', fontSize: '0.85rem' }}>
           {errorMsg}
         </div>
       )}
@@ -100,11 +100,11 @@ export const TenantTable: React.FC<TenantTableProps> = ({ users, sessionToken, o
 
               return (
                 <tr key={u.id}>
-                  <td style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: '#818cf8' }}>
+                  <td style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: '#4f46e5' }}>
                     {u.id.substring(0, 8)}...
                   </td>
                   <td>
-                    <span style={{ color: '#f8fafc', fontWeight: 600 }}>{u.email}</span>
+                    <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>{u.email}</span>
                   </td>
                   <td>
                     <span
@@ -120,7 +120,7 @@ export const TenantTable: React.FC<TenantTableProps> = ({ users, sessionToken, o
                     </span>
                   </td>
                   <td>
-                    <span style={{ color: '#cbd5e1' }}>{u.scans_count} scans</span>
+                    <span style={{ color: 'var(--text-body)' }}>{u.scans_count} scans</span>
                   </td>
                   <td>
                     <span
@@ -134,7 +134,7 @@ export const TenantTable: React.FC<TenantTableProps> = ({ users, sessionToken, o
                         fontWeight: 700,
                         textTransform: 'uppercase',
                         background: isAdmin ? 'rgba(168, 85, 247, 0.18)' : 'rgba(148, 163, 184, 0.14)',
-                        color: isAdmin ? '#c084fc' : '#94a3b8',
+                        color: isAdmin ? '#9333ea' : 'var(--text-muted)',
                         border: `1px solid ${isAdmin ? 'rgba(168, 85, 247, 0.35)' : 'rgba(148, 163, 184, 0.2)'}`,
                       }}
                     >
@@ -154,7 +154,7 @@ export const TenantTable: React.FC<TenantTableProps> = ({ users, sessionToken, o
                           fontWeight: 600,
                           borderRadius: '8px',
                           background: isAdmin ? 'rgba(239, 68, 68, 0.1)' : 'rgba(99, 102, 241, 0.15)',
-                          color: isAdmin ? '#f87171' : '#818cf8',
+                          color: isAdmin ? '#dc2626' : '#4f46e5',
                           border: `1px solid ${isAdmin ? 'rgba(239, 68, 68, 0.25)' : 'rgba(99, 102, 241, 0.35)'}`,
                           cursor: isUpdating ? 'not-allowed' : 'pointer',
                           display: 'inline-flex',
@@ -187,7 +187,7 @@ export const TenantTable: React.FC<TenantTableProps> = ({ users, sessionToken, o
             })}
             {localUsers.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: '32px', color: '#94a3b8' }}>
+                <td colSpan={7} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
                   No users recorded yet.
                 </td>
               </tr>

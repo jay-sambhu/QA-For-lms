@@ -327,7 +327,7 @@ export const BlogManager: React.FC = () => {
           alignItems: "center",
           flexWrap: "wrap",
           gap: "14px",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          borderBottom: "1px solid rgba(var(--ink-rgb), 0.08)",
           paddingBottom: "16px",
         }}
       >
@@ -336,7 +336,7 @@ export const BlogManager: React.FC = () => {
             style={{
               fontSize: "1.2rem",
               fontWeight: 700,
-              color: "#f8fafc",
+              color: "var(--text-main)",
               display: "flex",
               alignItems: "center",
               gap: "8px",
@@ -346,7 +346,7 @@ export const BlogManager: React.FC = () => {
             <RiArticleLine color="#6366f1" size={22} />
             Dynamic Blog Management &amp; Content Engine
           </h3>
-          <p style={{ color: "#94a3b8", fontSize: "0.85rem", margin: "4px 0 0" }}>
+          <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", margin: "4px 0 0" }}>
             Create and maintain dynamic articles served directly to the public blog and search engine crawlers.
           </p>
         </div>
@@ -403,7 +403,7 @@ export const BlogManager: React.FC = () => {
             alignItems: "center",
             gap: "8px",
             background: feedbackMsg.type === "success" ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
-            color: feedbackMsg.type === "success" ? "#34d399" : "#f87171",
+            color: feedbackMsg.type === "success" ? "#059669" : "#dc2626",
             border: `1px solid ${feedbackMsg.type === "success" ? "rgba(16, 185, 129, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
           }}
         >
@@ -429,7 +429,7 @@ export const BlogManager: React.FC = () => {
           <tbody>
             {blogs.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ textAlign: "center", padding: "32px", color: "#94a3b8" }}>
+                <td colSpan={7} style={{ textAlign: "center", padding: "32px", color: "var(--text-muted)" }}>
                   {loading ? "Loading articles from database..." : "No articles found. Click 'Write New Article' to create one."}
                 </td>
               </tr>
@@ -437,7 +437,7 @@ export const BlogManager: React.FC = () => {
               blogs.map((b) => (
                 <tr key={b.id}>
                   <td>
-                    <div style={{ fontWeight: 600, color: "#f1f5f9", fontSize: "0.92rem", marginBottom: "4px" }}>
+                    <div style={{ fontWeight: 600, color: "var(--text-main)", fontSize: "0.92rem", marginBottom: "4px" }}>
                       {b.title}
                     </div>
                     <div style={{ fontSize: "0.78rem", color: "#6366f1", fontFamily: "monospace" }}>
@@ -452,14 +452,14 @@ export const BlogManager: React.FC = () => {
                         fontSize: "0.75rem",
                         fontWeight: 600,
                         background: "rgba(99, 102, 241, 0.15)",
-                        color: "#a5b4fc",
+                        color: "#4f46e5",
                         border: "1px solid rgba(99, 102, 241, 0.3)",
                       }}
                     >
                       {b.category}
                     </span>
                   </td>
-                  <td style={{ fontSize: "0.82rem", color: "#cbd5e1" }}>{b.reading_time || "5 min read"}</td>
+                  <td style={{ fontSize: "0.82rem", color: "var(--text-body)" }}>{b.reading_time || "5 min read"}</td>
                   <td>
                     <span
                       style={{
@@ -473,7 +473,7 @@ export const BlogManager: React.FC = () => {
                         textTransform: "uppercase",
                         letterSpacing: "0.04em",
                         background: b.status === "published" ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)",
-                        color: b.status === "published" ? "#34d399" : "#fbbf24",
+                        color: b.status === "published" ? "#059669" : "#d97706",
                         border: `1px solid ${b.status === "published" ? "rgba(16, 185, 129, 0.3)" : "rgba(245, 158, 11, 0.3)"}`,
                       }}
                     >
@@ -481,11 +481,11 @@ export const BlogManager: React.FC = () => {
                       {b.status}
                     </span>
                   </td>
-                  <td style={{ fontSize: "0.82rem", color: "#94a3b8" }}>
+                  <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
                     <div>{b.author?.name || "Admin"}</div>
-                    <div style={{ fontSize: "0.74rem", color: "#64748b" }}>{b.author?.role || ""}</div>
+                    <div style={{ fontSize: "0.74rem", color: "var(--text-subtle)" }}>{b.author?.role || ""}</div>
                   </td>
-                  <td style={{ fontSize: "0.8rem", color: "#94a3b8" }}>
+                  <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
                     {b.published_at ? new Date(b.published_at).toLocaleDateString() : "Draft"}
                   </td>
                   <td style={{ textAlign: "right" }}>
@@ -519,7 +519,7 @@ export const BlogManager: React.FC = () => {
                         style={{
                           padding: "6px 10px",
                           fontSize: "0.78rem",
-                          color: b.status === "published" ? "#fbbf24" : "#34d399",
+                          color: b.status === "published" ? "#d97706" : "#059669",
                         }}
                         title={b.status === "published" ? "Unpublish to draft" : "Publish immediately"}
                       >
@@ -536,7 +536,7 @@ export const BlogManager: React.FC = () => {
                         onClick={() => handleDelete(b)}
                         disabled={actionLoading === `delete-${b.id}`}
                         className="btn btn-secondary"
-                        style={{ padding: "6px 10px", fontSize: "0.78rem", color: "#f87171" }}
+                        style={{ padding: "6px 10px", fontSize: "0.78rem", color: "#dc2626" }}
                         title="Delete article"
                       >
                         {actionLoading === `delete-${b.id}` ? (
@@ -560,10 +560,10 @@ export const BlogManager: React.FC = () => {
           <div style={S.modalCard}>
             <div style={S.modalHeader}>
               <div>
-                <h3 style={{ margin: 0, fontSize: "1.3rem", fontWeight: 700, color: "#f8fafc" }}>
+                <h3 style={{ margin: 0, fontSize: "1.3rem", fontWeight: 700, color: "var(--text-main)" }}>
                   {editingBlogId ? "Edit Blog Article" : "Write Dynamic Blog Article"}
                 </h3>
-                <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "0.85rem" }}>
+                <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: "0.85rem" }}>
                   Changes are saved directly to PostgreSQL and served to public viewers.
                 </p>
               </div>
@@ -708,7 +708,7 @@ export const BlogManager: React.FC = () => {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
                   <label style={S.label}>
                     Article Content *{" "}
-                    <span style={{ fontWeight: 400, color: "#64748b" }}>
+                    <span style={{ fontWeight: 400, color: "var(--text-subtle)" }}>
                       (Separate paragraphs with a blank line. Supports headers `### Title` and lists `- Item`)
                     </span>
                   </label>
@@ -718,7 +718,7 @@ export const BlogManager: React.FC = () => {
                     style={{
                       background: "transparent",
                       border: "none",
-                      color: "#818cf8",
+                      color: "#4f46e5",
                       fontSize: "0.82rem",
                       cursor: "pointer",
                       display: "flex",
@@ -733,18 +733,18 @@ export const BlogManager: React.FC = () => {
 
                 {previewMode ? (
                   <div style={S.previewBox}>
-                    <h3 style={{ color: "#f8fafc", marginTop: 0 }}>{formTitle || "Article Title Preview"}</h3>
-                    <p style={{ color: "#94a3b8", fontStyle: "italic", borderLeft: "3px solid #6366f1", paddingLeft: "12px" }}>
+                    <h3 style={{ color: "var(--text-main)", marginTop: 0 }}>{formTitle || "Article Title Preview"}</h3>
+                    <p style={{ color: "var(--text-muted)", fontStyle: "italic", borderLeft: "3px solid #6366f1", paddingLeft: "12px" }}>
                       {formExcerpt || "Excerpt preview will render here..."}
                     </p>
-                    <div style={{ marginTop: "16px", color: "#e2e8f0", lineHeight: 1.8 }}>
+                    <div style={{ marginTop: "16px", color: "var(--text-main)", lineHeight: 1.8 }}>
                       {formContent
                         .split("\n\n")
                         .filter(Boolean)
                         .map((para, i) => {
                           if (para.startsWith("### ")) {
                             return (
-                              <h4 key={i} style={{ color: "#818cf8", marginTop: "18px", marginBottom: "8px" }}>
+                              <h4 key={i} style={{ color: "#4f46e5", marginTop: "18px", marginBottom: "8px" }}>
                                 {para.replace("### ", "")}
                               </h4>
                             );
@@ -775,7 +775,7 @@ export const BlogManager: React.FC = () => {
                   display: "flex",
                   justifyContent: "flex-end",
                   gap: "12px",
-                  borderTop: "1px solid rgba(255,255,255,0.08)",
+                  borderTop: "1px solid rgba(var(--ink-rgb), 0.08)",
                   paddingTop: "16px",
                   marginTop: "8px",
                 }}
@@ -818,12 +818,12 @@ const S: Record<string, React.CSSProperties> = {
   statCard: {
     padding: "12px 16px",
     borderRadius: "12px",
-    background: "rgba(255,255,255,0.03)",
-    border: "1px solid rgba(255,255,255,0.06)",
+    background: "rgba(var(--ink-rgb), 0.03)",
+    border: "1px solid rgba(var(--ink-rgb), 0.06)",
   },
   statLabel: {
     fontSize: "0.75rem",
-    color: "#94a3b8",
+    color: "var(--text-muted)",
     fontWeight: 600,
     textTransform: "uppercase",
     letterSpacing: "0.05em",
@@ -832,7 +832,7 @@ const S: Record<string, React.CSSProperties> = {
   statVal: {
     fontSize: "1.5rem",
     fontWeight: 800,
-    color: "#f8fafc",
+    color: "var(--text-main)",
   },
   modalOverlay: {
     position: "fixed",
@@ -840,7 +840,7 @@ const S: Record<string, React.CSSProperties> = {
     left: 0,
     right: 0,
     bottom: 0,
-    background: "rgba(0, 0, 0, 0.75)",
+    background: "rgba(15, 23, 42, 0.35)",
     backdropFilter: "blur(8px)",
     zIndex: 9999,
     display: "flex",
@@ -853,25 +853,25 @@ const S: Record<string, React.CSSProperties> = {
     maxWidth: "840px",
     maxHeight: "90vh",
     overflowY: "auto",
-    background: "rgba(15, 23, 42, 0.96)",
+    background: "rgba(var(--panel-rgb), 0.96)",
     border: "1px solid rgba(99, 102, 241, 0.3)",
     borderRadius: "20px",
     padding: "28px",
-    boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.7)",
+    boxShadow: "0 25px 50px -12px rgba(15, 23, 42, 0.21)",
   },
   modalHeader: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "flex-start",
     marginBottom: "20px",
-    borderBottom: "1px solid rgba(255,255,255,0.08)",
+    borderBottom: "1px solid rgba(var(--ink-rgb), 0.08)",
     paddingBottom: "14px",
   },
   closeModalBtn: {
-    background: "rgba(255,255,255,0.05)",
-    border: "1px solid rgba(255,255,255,0.1)",
+    background: "rgba(var(--ink-rgb), 0.05)",
+    border: "1px solid rgba(var(--ink-rgb), 0.1)",
     borderRadius: "8px",
-    color: "#94a3b8",
+    color: "var(--text-muted)",
     padding: "6px",
     cursor: "pointer",
     display: "flex",
@@ -892,16 +892,16 @@ const S: Record<string, React.CSSProperties> = {
     display: "block",
     fontSize: "0.82rem",
     fontWeight: 600,
-    color: "#cbd5e1",
+    color: "var(--text-body)",
     marginBottom: "6px",
   },
   input: {
     width: "100%",
     padding: "10px 14px",
     borderRadius: "10px",
-    background: "rgba(0, 0, 0, 0.35)",
-    border: "1px solid rgba(255, 255, 255, 0.12)",
-    color: "#f8fafc",
+    background: "rgba(var(--ink-rgb), 0.052)",
+    border: "1px solid rgba(var(--ink-rgb), 0.12)",
+    color: "var(--text-main)",
     fontSize: "0.88rem",
     outline: "none",
     boxSizing: "border-box",
@@ -910,9 +910,9 @@ const S: Record<string, React.CSSProperties> = {
     width: "100%",
     padding: "12px 14px",
     borderRadius: "10px",
-    background: "rgba(0, 0, 0, 0.35)",
-    border: "1px solid rgba(255, 255, 255, 0.12)",
-    color: "#f8fafc",
+    background: "rgba(var(--ink-rgb), 0.052)",
+    border: "1px solid rgba(var(--ink-rgb), 0.12)",
+    color: "var(--text-main)",
     fontSize: "0.88rem",
     outline: "none",
     boxSizing: "border-box",
@@ -921,7 +921,7 @@ const S: Record<string, React.CSSProperties> = {
   previewBox: {
     padding: "18px",
     borderRadius: "10px",
-    background: "rgba(0,0,0,0.4)",
+    background: "rgba(var(--ink-rgb), 0.06)",
     border: "1px solid rgba(99, 102, 241, 0.25)",
     maxHeight: "350px",
     overflowY: "auto",

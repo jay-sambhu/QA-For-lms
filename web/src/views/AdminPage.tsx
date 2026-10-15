@@ -91,7 +91,7 @@ export const AdminPage: React.FC = () => {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
         <TbLoader2 size={36} className="pulse" color="#6366f1" />
-        <p style={{ color: '#94a3b8' }}>Verifying administrator credentials...</p>
+        <p style={{ color: 'var(--text-muted)' }}>Verifying administrator credentials...</p>
       </div>
     );
   }
@@ -100,7 +100,7 @@ export const AdminPage: React.FC = () => {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
         <TbLoader2 size={36} className="pulse" color="#6366f1" />
-        <p style={{ color: '#94a3b8' }}>Session unauthenticated. Redirecting to home...</p>
+        <p style={{ color: 'var(--text-muted)' }}>Session unauthenticated. Redirecting to home...</p>
       </div>
     );
   }
@@ -110,7 +110,7 @@ export const AdminPage: React.FC = () => {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
         <TbLoader2 size={36} className="pulse" color="#6366f1" />
-        <p style={{ color: '#94a3b8' }}>Administrator privileges required. Redirecting to dashboard...</p>
+        <p style={{ color: 'var(--text-muted)' }}>Administrator privileges required. Redirecting to dashboard...</p>
       </div>
     );
   }
@@ -136,12 +136,12 @@ export const AdminPage: React.FC = () => {
       <div
         className={styles.adminTopBar}
         style={{
-          background: 'rgba(15, 23, 42, 0.65)',
+          background: 'rgba(var(--panel-rgb), 0.7)',
           backdropFilter: 'blur(20px)',
           border: '1px solid rgba(168, 85, 247, 0.25)',
           borderRadius: '20px',
           padding: '24px',
-          boxShadow: '0 10px 30px rgba(0, 0, 0, 0.35)',
+          boxShadow: '0 10px 30px rgba(15, 23, 42, 0.105)',
         }}
       >
         <div className={styles.adminTitleBlock}>
@@ -156,7 +156,7 @@ export const AdminPage: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#c084fc',
+                color: '#9333ea',
               }}
             >
               <RiShieldUserFill size={24} />
@@ -172,14 +172,14 @@ export const AdminPage: React.FC = () => {
                     fontWeight: 800,
                     letterSpacing: '0.05em',
                     background: 'rgba(168, 85, 247, 0.2)',
-                    color: '#c084fc',
+                    color: '#9333ea',
                     border: '1px solid rgba(168, 85, 247, 0.4)',
                   }}
                 >
                   SUPER ADMIN
                 </span>
               </div>
-              <p style={{ margin: '2px 0 0', fontSize: '0.86rem', color: '#94a3b8' }}>
+              <p style={{ margin: '2px 0 0', fontSize: '0.86rem', color: 'var(--text-muted)' }}>
                 System-wide governance, user role promotion, cluster health, and dynamic content.
               </p>
             </div>
@@ -199,7 +199,7 @@ export const AdminPage: React.FC = () => {
               gap: '6px',
               background: 'rgba(99, 102, 241, 0.1)',
               borderColor: 'rgba(99, 102, 241, 0.3)',
-              color: '#818cf8',
+              color: '#4f46e5',
             }}
           >
             <span>Launch QA Scanner (User View)</span>
@@ -224,10 +224,10 @@ export const AdminPage: React.FC = () => {
           gap: '8px',
           overflowX: 'auto',
           padding: '6px',
-          background: 'rgba(15, 23, 42, 0.6)',
+          background: 'rgba(var(--panel-rgb), 0.7)',
           backdropFilter: 'blur(16px)',
           borderRadius: '14px',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
+          border: '1px solid rgba(var(--ink-rgb), 0.08)',
         }}
       >
         {tabs.map((tab) => {
@@ -244,7 +244,7 @@ export const AdminPage: React.FC = () => {
                 borderRadius: '10px',
                 fontSize: '0.86rem',
                 fontWeight: 600,
-                color: isActive ? '#ffffff' : '#94a3b8',
+                color: isActive ? '#4338ca' : 'var(--text-muted)',
                 background: isActive
                   ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.4) 0%, rgba(168, 85, 247, 0.4) 100%)'
                   : 'transparent',
@@ -263,8 +263,8 @@ export const AdminPage: React.FC = () => {
                     padding: '1px 6px',
                     borderRadius: '999px',
                     fontSize: '0.72rem',
-                    background: isActive ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.08)',
-                    color: isActive ? '#fff' : '#64748b',
+                    background: isActive ? 'rgba(var(--ink-rgb), 0.2)' : 'rgba(var(--ink-rgb), 0.08)',
+                    color: isActive ? '#4338ca' : 'var(--text-subtle)',
                   }}
                 >
                   {tab.count}

@@ -28,7 +28,7 @@ export const SystemTelemetry: React.FC<SystemTelemetryProps> = ({ system }) => {
         <div className={styles.telemetryValue}>
           {system.runtime?.cpu_utilization_percent ?? 0}%
         </div>
-        <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Real-time host processor load</span>
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Real-time host processor load</span>
       </div>
 
       <div className={styles.telemetryCard}>
@@ -36,7 +36,7 @@ export const SystemTelemetry: React.FC<SystemTelemetryProps> = ({ system }) => {
         <div className={styles.telemetryValue}>
           {system.runtime?.memory_used_mb ?? 0} MB
         </div>
-        <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
           of {system.runtime?.memory_total_mb ?? 0} MB Total ({system.runtime?.memory_percent ?? 0}%)
         </span>
       </div>
@@ -46,7 +46,7 @@ export const SystemTelemetry: React.FC<SystemTelemetryProps> = ({ system }) => {
         <div className={styles.telemetryValue}>
           {system.crawler_workers?.active_nodes ?? 2} Nodes
         </div>
-        <span style={{ fontSize: '0.78rem', color: '#34d399' }}>
+        <span style={{ fontSize: '0.78rem', color: '#059669' }}>
           {system.crawler_workers?.broker ?? 'Redis Queue'}
         </span>
       </div>

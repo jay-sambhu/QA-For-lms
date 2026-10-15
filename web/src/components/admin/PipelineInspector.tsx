@@ -20,7 +20,7 @@ export const PipelineInspector: React.FC<PipelineInspectorProps> = ({ scans }) =
     <div className={styles.adminTableCard}>
       <div className={styles.adminTableCardTitle}>
         <span>Global Scan Pipeline Inspector</span>
-        <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 500 }}>
+        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>
           Showing {scans.length} scans
         </span>
       </div>
@@ -39,11 +39,11 @@ export const PipelineInspector: React.FC<PipelineInspectorProps> = ({ scans }) =
           <tbody>
             {scans.map((s) => (
               <tr key={s.id}>
-                <td style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: '#94a3b8' }}>
+                <td style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                   {s.id.substring(0, 8)}...
                 </td>
                 <td style={{ maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  <span style={{ color: '#f8fafc', fontWeight: 500 }}>{s.url}</span>
+                  <span style={{ color: 'var(--text-main)', fontWeight: 500 }}>{s.url}</span>
                 </td>
                 <td>
                   <span
@@ -57,10 +57,10 @@ export const PipelineInspector: React.FC<PipelineInspectorProps> = ({ scans }) =
                           : 'rgba(99, 102, 241, 0.15)',
                       color:
                         s.status === 'completed'
-                          ? '#34d399'
+                          ? '#059669'
                           : s.status === 'failed'
-                          ? '#f87171'
-                          : '#818cf8',
+                          ? '#dc2626'
+                          : '#4f46e5',
                     }}
                   >
                     {s.status.toUpperCase()}
@@ -72,7 +72,7 @@ export const PipelineInspector: React.FC<PipelineInspectorProps> = ({ scans }) =
             ))}
             {scans.length === 0 && (
               <tr>
-                <td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: '#94a3b8' }}>
+                <td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
                   No scans recorded in pipeline yet.
                 </td>
               </tr>

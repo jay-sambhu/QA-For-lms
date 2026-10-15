@@ -36,7 +36,7 @@ export const AdminMetrics: React.FC<AdminMetricsProps> = ({
       <div className={styles.statCard}>
         <div className={styles.statHeader}>
           <span>Registered Tenants</span>
-          <FaUsers size={18} color="#818cf8" />
+          <FaUsers size={18} color="#4f46e5" />
         </div>
         <div className={styles.statValue}>{totalUsers}</div>
         <div className={styles.statSub}>Multi-tenant workspace accounts</div>
@@ -45,7 +45,7 @@ export const AdminMetrics: React.FC<AdminMetricsProps> = ({
       <div className={styles.statCard}>
         <div className={styles.statHeader}>
           <span>Total Scans Executed</span>
-          <TbActivityHeartbeat size={20} color="#38bdf8" />
+          <TbActivityHeartbeat size={20} color="#0284c7" />
         </div>
         <div className={styles.statValue}>{totalScans}</div>
         <div className={styles.statSub}>{successRate}% Platform Success Rate</div>
@@ -54,7 +54,7 @@ export const AdminMetrics: React.FC<AdminMetricsProps> = ({
       <div className={styles.statCard}>
         <div className={styles.statHeader}>
           <span>Cluster Worker Pool</span>
-          <TbServer2 size={20} color="#34d399" />
+          <TbServer2 size={20} color="#059669" />
         </div>
         <div className={styles.statValue}>Operational</div>
         <div className={styles.statSub}>Redis Queue · Playwright Workers</div>
