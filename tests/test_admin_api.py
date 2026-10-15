@@ -10,6 +10,9 @@ def _setup_admin_auth():
     mock_user.user.email = "admin@example.com"
     mock_user.user.role = "admin"
     mock_user.user.user_metadata = {"role": "admin"}
+    # Admin is granted via app_metadata (server-controlled); user_metadata is
+    # user-editable and must not grant admin.
+    mock_user.user.app_metadata = {"role": "admin"}
     supabase.auth.get_user = MagicMock(return_value=mock_user)
     return {"Authorization": "Bearer mocked_admin_token"}
 
@@ -57,7 +60,10 @@ def test_billing_plans_endpoint():
     assert len(data["supported_gateways"]) == 4
 
 def test_billing_checkout_endpoint():
-    res = client.post("/api/v1/billing/checkout", json={"plan_id": "pro", "gateway": "stripe"})
+    # Checkout acts on the caller's account, so it must require auth.
+    assert client.post("/api/v1/billing/checkout", json={"plan_id": "pro", "gateway": "stripe"}).status_code == 401
+    headers = _setup_admin_auth()
+    res = client.post("/api/v1/billing/checkout", json={"plan_id": "pro", "gateway": "stripe"}, headers=headers)
     assert res.status_code == 200
     data = res.json()
     assert data["status"] == "success"
