@@ -71,6 +71,7 @@ Full C4 diagrams, sequence diagrams and state machines: see [docs/ARCHITECTURE.m
 | [docs/SECURITY.md](docs/SECURITY.md) | Threat model, SSRF defence, secrets, RBAC, compliance |
 | [docs/BILLING.md](docs/BILLING.md) | Multi-gateway checkout, webhook idempotency, subscription lifecycle |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Topology, Docker, Kubernetes, CI/CD, environment variables |
+| [docs/DIGITALOCEAN.md](docs/DIGITALOCEAN.md) | Low-cost single-droplet deployment with docker compose |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | SLOs, metrics, alerts, runbooks, backup and DR |
 
 ## 4. Quick start (Docker)
