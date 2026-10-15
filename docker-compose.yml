@@ -1,67 +1,138 @@
+# Low-cost single-droplet deployment (tested sizing: 2 GB RAM / 1 vCPU).
+#
+#   cp .env.example .env   # fill in secrets, set SITE_ADDRESS to your domain
+#   docker compose up -d --build
+#
+# Only Caddy is published (80/443). Redis and Postgres stay on the private
+# compose network. See docs/DIGITALOCEAN.md for the full walkthrough.
+
+x-backend: &backend
+  build: .
+  image: jasuss-backend:latest
+  env_file: .env
+  environment:
+    REDIS_URL: redis://redis:6379/0
+    DATABASE_URL: postgresql://${POSTGRES_USER:-jasuss}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-jasuss}
+    ENVIRONMENT: production
+    DB_POOL_SIZE: "3"
+    DB_MAX_OVERFLOW: "2"
+  volumes:
+    - user_data:/app/user_data
+    - results:/app/results
+  depends_on:
+    redis:
+      condition: service_healthy
+    db:
+      condition: service_healthy
+  restart: unless-stopped
+  logging: &logging
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
 services:
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [api, web]
+    mem_limit: 64m
+    restart: unless-stopped
+    logging: *logging
+
+  web:
+    build:
+      context: ./web
+      args:
+        # Rewrites are compiled at build time; /api is normally served by Caddy
+        # directly, this is the fallback inside the compose network.
+        API_URL: http://api:8000
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-}
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
+    environment:
+      NODE_OPTIONS: --max-old-space-size=192
+      # Blog pages and sitemap fetch the API server-side at request time
+      API_URL: http://api:8000
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-}
+    mem_limit: 256m
+    restart: unless-stopped
+    logging: *logging
+
+  api:
+    <<: *backend
+    mem_limit: 384m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  worker:
+    <<: *backend
+    command: >
+      celery -A worker.celery_app worker --loglevel=info
+      -Q qa_queue,priority_queue,celery
+      --concurrency=${WORKER_CONCURRENCY:-1}
+      --without-gossip --without-mingle
+    # Chromium peaks here during a scan; raise if you increase concurrency.
+    mem_limit: ${WORKER_MEM_LIMIT:-1g}
+    shm_size: 256m
+
   redis:
     image: redis:7-alpine
-    container_name: ai_qa_redis
-    ports:
-      - "6379:6379"
+    command: redis-server --maxmemory 48mb --maxmemory-policy noeviction --save 300 1 --appendonly no
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
+      interval: 10s
       timeout: 3s
       retries: 5
+    mem_limit: 64m
     restart: unless-stopped
+    logging: *logging
 
   db:
-    image: postgres:15-alpine
-    container_name: ai_qa_postgres
+    image: postgres:16-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-ai_qa_db}
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-jasuss}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-jasuss}
+    command: >
+      postgres
+      -c max_connections=30
+      -c shared_buffers=32MB
+      -c effective_cache_size=96MB
+      -c work_mem=2MB
+      -c maintenance_work_mem=16MB
+      -c wal_buffers=1MB
+      -c max_wal_size=256MB
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ai_qa_db}"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
       timeout: 3s
       retries: 5
+    mem_limit: 160m
+    shm_size: 64m
     restart: unless-stopped
-
-  api:
-    build: .
-    container_name: ai_qa_api
-    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
-    ports:
-      - "8000:8000"
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-ai_qa_db}
-      - ENVIRONMENT=production
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-    depends_on:
-      redis:
-        condition: service_healthy
-      db:
-        condition: service_healthy
-    restart: unless-stopped
-
-  worker:
-    build: .
-    container_name: ai_qa_worker
-    command: celery -A worker.celery_app worker --loglevel=info -Q qa_queue,priority_queue -c ${WORKER_CONCURRENCY:-2}
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-ai_qa_db}
-      - ENVIRONMENT=production
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-    depends_on:
-      redis:
-        condition: service_healthy
-      db:
-        condition: service_healthy
-    restart: unless-stopped
+    logging: *logging
 
 volumes:
   pgdata:
+  redis_data:
+  user_data:
+  results:
+  caddy_data:
+  caddy_config:
