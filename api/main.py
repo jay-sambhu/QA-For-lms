@@ -881,6 +881,33 @@ def _progress_mtime(user_id: str, scan_id: str) -> Optional[float]:
     return None
 
 
+def _record_failure_reason(user_id: str, scan_id: str, message: str) -> None:
+    """Write a user-facing failure reason to the scan's progress file so the
+    scan page explains what happened. Keeps a more specific reason the
+    pipeline itself already recorded (stage FAILED)."""
+    path = os.path.join(ROOT_DIR, "user_data", str(user_id), "results", f"progress_{scan_id}.json")
+    current = {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            current = json.load(f) or {}
+    except (OSError, ValueError):
+        pass
+    if current.get("stage") == "FAILED" and current.get("message"):
+        return
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({
+                "scan_id": str(scan_id),
+                "stage": "FAILED",
+                "percent": current.get("percent", 0),
+                "message": message,
+                "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }, f)
+    except OSError as error:
+        logger.debug("Could not record failure reason for %s: %s", scan_id, error)
+
+
 def _reap_stale_scans(db, scans) -> None:
     """Mark orphaned pending/running scans as failed.
 
@@ -908,6 +935,10 @@ def _reap_stale_scans(db, scans) -> None:
             logger.warning("Marking stale %s scan %s as failed (no heartbeat for %ds)", scan.status, scan.id, int(now - heartbeat))
             scan.status = "failed"
             scan.completed_at = datetime.now(timezone.utc)
+            _record_failure_reason(
+                scan.user_id, scan.id,
+                "The scan stopped responding and was marked as failed. Please start a new scan.",
+            )
             changed = True
     if changed:
         try:
@@ -1158,6 +1189,10 @@ def run_qa_pipeline(
         result_returncode = process.wait()
     except Exception as error:
         # Includes Celery's SoftTimeLimitExceeded raised inside the read loop.
+        _record_failure_reason(
+            user_id, scan_id,
+            "The scan stopped unexpectedly. Please try again, or scan fewer pages.",
+        )
         update_scan(scan_id, "failed")
         logger.exception("Background task exception for scan %s: %s", scan_id, error)
         return
@@ -1177,6 +1212,11 @@ def run_qa_pipeline(
         logger.info("Scan %s was cancelled by the user; pipeline terminated.", scan_id)
         return
     if outcome["timed_out"]:
+        _record_failure_reason(
+            user_id, scan_id,
+            f"The scan took longer than {PIPELINE_TIMEOUT_SECONDS // 60} minutes and was stopped. "
+            "Try again with fewer pages.",
+        )
         update_scan(scan_id, "failed")
         logger.error(
             "Scan %s timed out after %ss and was terminated.",
@@ -1237,6 +1277,14 @@ def run_qa_pipeline(
             _relative_to_root(json_path),
         )
     else:
+        if result_returncode is not None and result_returncode < 0:
+            # Killed by a signal, most often the OOM killer on a small server
+            reason = ("The scan was stopped by the server, possibly because it ran out of memory. "
+                      "Try again with fewer pages.")
+        else:
+            reason = ("The scan could not finish. The site may be unreachable, "
+                      "blocking automated browsers, or the AI provider may have rejected the request.")
+        _record_failure_reason(user_id, scan_id, reason)
         update_scan(scan_id, "failed")
         logger.error(
             "Scan %s failed. Return code: %s\nStdout tail:\n%s",
