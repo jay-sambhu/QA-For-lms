@@ -23,7 +23,15 @@ celery_app = Celery(
     include=["worker.tasks"],
 )
 
+from kombu import Queue
+
 # Multi-queue routing for standard and priority scans
+celery_app.conf.task_default_queue = "qa_queue"
+celery_app.conf.task_queues = (
+    Queue("qa_queue"),
+    Queue("celery"),
+    Queue("priority_queue"),
+)
 celery_app.conf.task_routes = {
     "worker.tasks.process_query": {"queue": "qa_queue"},
     "worker.tasks.process_query_priority": {"queue": "priority_queue"},
@@ -32,15 +40,23 @@ celery_app.conf.task_routes = {
 # Recommended production scalability settings
 celery_app.conf.update(
     result_expires=3600,               # keep results for 1 hour
-    task_time_limit=1800,              # hard limit (seconds)
-    task_soft_time_limit=1700,         # soft limit for graceful shutdown
+    # Kept above QA_PIPELINE_TIMEOUT (1800s) so the pipeline's own timeout
+    # fires first and marks the scan failed cleanly.
+    task_time_limit=int(os.getenv("CELERY_TASK_TIME_LIMIT", 2100)),          # hard limit (seconds)
+    task_soft_time_limit=int(os.getenv("CELERY_TASK_SOFT_TIME_LIMIT", 2000)),  # soft limit for graceful shutdown
     worker_prefetch_multiplier=1,      # avoid task hoarding
     task_acks_late=True,               # ensure tasks are re‑queued on failure
-    worker_max_tasks_per_child=20,     # recycle worker process to prevent memory leaks from browser automation
-    worker_max_memory_per_child=500000, # recycle worker child process if RAM usage exceeds 500MB (in KB)
-    
+    worker_max_tasks_per_child=int(os.getenv("CELERY_MAX_TASKS_PER_CHILD", 10)),       # recycle child to release browser-automation leaks
+    worker_max_memory_per_child=int(os.getenv("CELERY_MAX_MEMORY_PER_CHILD_KB", 400000)), # recycle child above ~400MB RSS
+    worker_concurrency=int(os.getenv("WORKER_CONCURRENCY", 1)),  # each scan runs Chromium; 1 fits a 1-2 GB droplet
+    task_ignore_result=True,           # scan status lives in the DB; don't keep task payloads in Redis
+    task_track_started=False,
+    worker_send_task_events=False,
+    broker_transport_options={"visibility_timeout": 3600},  # > task_time_limit so acks_late tasks aren't redelivered mid-run
+
+    # Retry the broker on worker startup (Redis may come up after the worker)
+    broker_connection_retry_on_startup=True,
     # Prevent delay() from hanging indefinitely if Redis is down
-    broker_connection_retry_on_startup=False,
     broker_connection_max_retries=1,
     broker_connection_timeout=2.0,
     
