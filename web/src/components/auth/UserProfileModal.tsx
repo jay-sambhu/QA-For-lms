@@ -1,14 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
 import {
   RiUser3Fill,
   RiCloseLine,
-  RiShieldUserLine,
   RiShieldUserFill,
-  RiDashboardLine,
   RiLogoutBoxRLine,
   RiGoogleFill,
   RiOpenaiFill,
@@ -19,7 +17,6 @@ import {
   RiStarFill,
   RiStarLine,
   RiAddLine,
-  RiCheckDoubleFill,
 } from 'react-icons/ri';
 import { SiAnthropic } from 'react-icons/si';
 import {
@@ -28,7 +25,6 @@ import {
   TbBell,
   TbCopy,
   TbCheck,
-  TbKey,
   TbExternalLink,
   TbTrash,
   TbAlertCircle,
@@ -87,7 +83,7 @@ export const UserProfileModal: React.FC = () => {
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
 
   // Fetch all user API keys & quotas whenever modal opens
-  const fetchUserApiKeys = async () => {
+  const fetchUserApiKeys = useCallback(async () => {
     if (!session?.access_token) return;
     setLoadingKeys(true);
     try {
@@ -114,7 +110,7 @@ export const UserProfileModal: React.FC = () => {
     } finally {
       setLoadingKeys(false);
     }
-  };
+  }, [session?.access_token]);
 
   // Supabase Storage Quota (20 MB per user)
   const [storageData, setStorageData] = useState<{
@@ -126,9 +122,9 @@ export const UserProfileModal: React.FC = () => {
     file_count: number;
     is_quota_exceeded: boolean;
   } | null>(null);
-  const [loadingStorage, setLoadingStorage] = useState(false);
+  const [, setLoadingStorage] = useState(false);
 
-  const fetchStorageUsage = async () => {
+  const fetchStorageUsage = useCallback(async () => {
     if (!session?.access_token) return;
     setLoadingStorage(true);
     try {
@@ -144,14 +140,14 @@ export const UserProfileModal: React.FC = () => {
     } finally {
       setLoadingStorage(false);
     }
-  };
+  }, [session?.access_token]);
 
   useEffect(() => {
     if (profileModalOpen && session?.access_token) {
       fetchUserApiKeys();
       fetchStorageUsage();
     }
-  }, [profileModalOpen, session?.access_token]);
+  }, [profileModalOpen, session?.access_token, fetchUserApiKeys, fetchStorageUsage]);
 
   // Close on Escape key press
   useEffect(() => {
@@ -216,7 +212,7 @@ export const UserProfileModal: React.FC = () => {
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 403) {
           setShowUpgradePrompt(true);
@@ -249,6 +245,8 @@ export const UserProfileModal: React.FC = () => {
         await fetchUserApiKeys();
         setKeyFeedback({ type: 'success', msg: 'Default AI model updated for upcoming scans.' });
         setTimeout(() => setKeyFeedback(null), 3000);
+      } else {
+        setKeyFeedback({ type: 'error', msg: `Failed to update default key (HTTP ${res.status})` });
       }
     } catch {
       setKeyFeedback({ type: 'error', msg: 'Failed to update default key' });
@@ -268,6 +266,8 @@ export const UserProfileModal: React.FC = () => {
         await fetchUserApiKeys();
         setKeyFeedback({ type: 'success', msg: 'API Key removed.' });
         setTimeout(() => setKeyFeedback(null), 3000);
+      } else {
+        setKeyFeedback({ type: 'error', msg: `Failed to remove API key (HTTP ${res.status})` });
       }
     } catch {
       setKeyFeedback({ type: 'error', msg: 'Failed to remove API key' });

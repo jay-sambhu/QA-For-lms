@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
 import {
   RiGoogleFill,
   RiOpenaiFill,
@@ -13,7 +13,6 @@ import {
   RiStarFill,
   RiStarLine,
   RiAddLine,
-  RiCheckDoubleFill,
 } from 'react-icons/ri';
 import { SiAnthropic } from 'react-icons/si';
 import {
@@ -24,22 +23,18 @@ import {
   TbServer2,
   TbSparkles,
   TbLoader2,
-  TbShieldCheck,
   TbCheck,
-  TbInfoCircle,
   TbArrowRight,
-  TbChevronDown,
   TbChevronUp,
 } from 'react-icons/tb';
 import { useAuth } from '../../context/AuthContext';
-import styles from '../../app/page.module.css';
 
 interface ApiKeyManagerProps {
   onKeysUpdated?: () => void;
 }
 
 export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) => {
-  const { session, userPlan } = useAuth();
+  const { session } = useAuth();
 
   const [apiKeys, setApiKeys] = useState<any[]>([]);
   const [quotaData, setQuotaData] = useState<{
@@ -150,7 +145,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 403) {
           setShowUpgradeModal(true);
