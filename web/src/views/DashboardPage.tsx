@@ -26,6 +26,7 @@ import { downloadScanReport, type ServerReportFormat } from '../utils/download';
 import { ScanForm } from '../components/scan/ScanForm';
 import { ApiKeyManager } from '../components/dashboard/ApiKeyManager';
 import styles from '../app/page.module.css';
+import { Tilt3D } from '../components/three/Tilt3D';
 
 export const DashboardPage: React.FC = () => {
   const router = useRouter();
@@ -194,7 +195,7 @@ export const DashboardPage: React.FC = () => {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
         <TbLoader2 size={36} className="pulse" color="#6366f1" />
-        <p style={{ color: '#94a3b8' }}>Loading workspace...</p>
+        <p style={{ color: 'var(--text-muted)' }}>Loading workspace...</p>
       </div>
     );
   }
@@ -203,7 +204,7 @@ export const DashboardPage: React.FC = () => {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
         <TbLoader2 size={36} className="pulse" color="#6366f1" />
-        <p style={{ color: '#94a3b8' }}>Session unauthenticated. Redirecting to home...</p>
+        <p style={{ color: 'var(--text-muted)' }}>Session unauthenticated. Redirecting to home...</p>
       </div>
     );
   }
@@ -219,16 +220,16 @@ export const DashboardPage: React.FC = () => {
           flexWrap: 'wrap',
           gap: '16px',
           padding: '24px',
-          background: 'rgba(15, 23, 42, 0.65)',
+          background: 'rgba(var(--panel-rgb), 0.7)',
           backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
+          border: '1px solid rgba(var(--ink-rgb), 0.08)',
           borderRadius: '20px',
-          boxShadow: '0 12px 32px rgba(0, 0, 0, 0.35)',
+          boxShadow: '0 12px 32px rgba(15, 23, 42, 0.105)',
         }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#f8fafc' }}>
+            <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)' }}>
               QA Automation Dashboard
             </h2>
             <span
@@ -243,7 +244,7 @@ export const DashboardPage: React.FC = () => {
               {userPlan.toUpperCase()} TIER
             </span>
           </div>
-          <p style={{ margin: 0, fontSize: '0.9rem', color: '#94a3b8' }}>
+          <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
             Launch autonomous multi-device browser testing agents and inspect AI-verified defect reports.
           </p>
         </div>
@@ -261,7 +262,7 @@ export const DashboardPage: React.FC = () => {
                 borderRadius: '10px',
                 background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(99, 102, 241, 0.2))',
                 border: '1px solid rgba(168, 85, 247, 0.4)',
-                color: '#c084fc',
+                color: '#9333ea',
                 fontSize: '0.84rem',
                 fontWeight: 700,
                 textDecoration: 'none',
@@ -295,59 +296,62 @@ export const DashboardPage: React.FC = () => {
         }}
       >
         {/* Card 1: Total Scans */}
-        <div
+        <Tilt3D
+          max={7}
           style={{
             padding: '20px',
             borderRadius: '16px',
-            background: 'rgba(15, 23, 42, 0.65)',
+            background: 'rgba(var(--panel-rgb), 0.7)',
             backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
+            border: '1px solid rgba(var(--ink-rgb), 0.08)',
             display: 'flex',
             flexDirection: 'column',
             gap: '8px',
-            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25)',
+            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.075)',
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#94a3b8' }}>Total Automated Scans</span>
-            <TbActivity size={20} color="#818cf8" />
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>Total Automated Scans</span>
+            <TbActivity size={20} color="#4f46e5" />
           </div>
-          <div style={{ fontSize: '1.9rem', fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.02em' }}>
+          <div style={{ fontSize: '1.9rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
             {totalScansCount}
           </div>
-          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)' }}>
             {completedCount} completed · {runningCount} active
           </div>
-        </div>
+        </Tilt3D>
 
         {/* Card 2: Success Rate */}
-        <div
+        <Tilt3D
+          max={7}
           style={{
             padding: '20px',
             borderRadius: '16px',
-            background: 'rgba(15, 23, 42, 0.65)',
+            background: 'rgba(var(--panel-rgb), 0.7)',
             backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
+            border: '1px solid rgba(var(--ink-rgb), 0.08)',
             display: 'flex',
             flexDirection: 'column',
             gap: '8px',
-            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25)',
+            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.075)',
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#94a3b8' }}>Verification Pass Rate</span>
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>Verification Pass Rate</span>
             <RiCheckDoubleLine size={20} color="#10b981" />
           </div>
-          <div style={{ fontSize: '1.9rem', fontWeight: 800, color: '#34d399', letterSpacing: '-0.02em' }}>
+          <div style={{ fontSize: '1.9rem', fontWeight: 800, color: '#059669', letterSpacing: '-0.02em' }}>
             {successRate}%
           </div>
-          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)' }}>
             Across all crawled pages & viewport states
           </div>
-        </div>
+        </Tilt3D>
 
         {/* Card 3: AI Engine BYOK Status */}
-        <div
+        <Tilt3D
+          max={7}
           onClick={scrollToAiManager}
           style={{
             padding: '20px',
@@ -362,14 +366,14 @@ export const DashboardPage: React.FC = () => {
             gap: '8px',
             cursor: 'pointer',
             transition: 'all 0.2s ease',
-            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25)',
+            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.075)',
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#94a3b8' }}>AI Models & BYOK</span>
-            <TbKey size={20} color={hasApiKey ? '#34d399' : '#f87171'} />
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>AI Models & BYOK</span>
+            <TbKey size={20} color={hasApiKey ? '#059669' : '#dc2626'} />
           </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: hasApiKey ? '#34d399' : '#f87171', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: hasApiKey ? '#059669' : '#dc2626', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span
               style={{
                 width: '9px',
@@ -381,36 +385,37 @@ export const DashboardPage: React.FC = () => {
             />
             {hasApiKey ? `${apiKeysCount} ${apiKeysCount === 1 ? 'Key' : 'Keys'} Active` : 'Key Required'}
           </div>
-          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)' }}>
             {hasApiKey ? 'Click to manage multi-model keys ↓' : 'Click to configure AI API Key ↓'}
           </div>
-        </div>
+        </Tilt3D>
 
         {/* Card 4: Viewports Pool */}
-        <div
+        <Tilt3D
+          max={7}
           style={{
             padding: '20px',
             borderRadius: '16px',
-            background: 'rgba(15, 23, 42, 0.65)',
+            background: 'rgba(var(--panel-rgb), 0.7)',
             backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
+            border: '1px solid rgba(var(--ink-rgb), 0.08)',
             display: 'flex',
             flexDirection: 'column',
             gap: '8px',
-            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25)',
+            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.075)',
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#94a3b8' }}>Browser Matrix</span>
-            <TbDevices size={20} color="#38bdf8" />
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>Browser Matrix</span>
+            <TbDevices size={20} color="#0284c7" />
           </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#38bdf8' }}>
+          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0284c7' }}>
             3 Active Viewports
           </div>
-          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)' }}>
             Desktop (1920p) · Tablet (768p) · Mobile (375p)
           </div>
-        </div>
+        </Tilt3D>
       </div>
 
       {/* Reminder if user has not yet configured their AI API key */}
@@ -441,16 +446,16 @@ export const DashboardPage: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#f87171',
+                color: '#dc2626',
               }}
             >
               <TbKey size={22} />
             </div>
             <div>
-              <div style={{ fontSize: '0.98rem', fontWeight: 700, color: '#f8fafc' }}>
+              <div style={{ fontSize: '0.98rem', fontWeight: 700, color: 'var(--text-main)' }}>
                 AI API Key Required for AI QA Analysis
               </div>
-              <div style={{ fontSize: '0.84rem', color: '#94a3b8', marginTop: '3px' }}>
+              <div style={{ fontSize: '0.84rem', color: 'var(--text-muted)', marginTop: '3px' }}>
                 Your tests crawl freely, but generating AI defect reports requires an active AI API key (Gemini, OpenAI, Claude, DeepSeek, or Local LLM).
               </div>
             </div>
@@ -467,7 +472,7 @@ export const DashboardPage: React.FC = () => {
               alignItems: 'center',
               gap: '6px',
               background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-              borderColor: 'rgba(255, 255, 255, 0.2)',
+              borderColor: 'rgba(var(--ink-rgb), 0.2)',
             }}
           >
             <TbKey size={16} /> Configure API Keys Below ↓
@@ -487,10 +492,10 @@ export const DashboardPage: React.FC = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
         style={{
-          background: 'rgba(15, 23, 42, 0.65)',
+          background: 'rgba(var(--panel-rgb), 0.7)',
           backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
+          border: '1px solid rgba(var(--ink-rgb), 0.08)',
+          boxShadow: '0 20px 50px rgba(15, 23, 42, 0.12)',
         }}
       >
         <ScanForm onSubmit={handleStartScan} loading={loading} error={error} />
@@ -500,10 +505,10 @@ export const DashboardPage: React.FC = () => {
       <div
         className={styles.adminTableCard}
         style={{
-          background: 'rgba(15, 23, 42, 0.65)',
+          background: 'rgba(var(--panel-rgb), 0.7)',
           backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          boxShadow: '0 16px 40px rgba(0, 0, 0, 0.35)',
+          border: '1px solid rgba(var(--ink-rgb), 0.08)',
+          boxShadow: '0 16px 40px rgba(15, 23, 42, 0.105)',
         }}
       >
         <div
@@ -517,9 +522,9 @@ export const DashboardPage: React.FC = () => {
           }}
         >
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-            <TbChecklist size={20} color="#818cf8" />
+            <TbChecklist size={20} color="#4f46e5" />
             <span style={{ fontWeight: 700 }}>Autonomous QA Run History</span>
-            <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 500, marginLeft: '6px' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500, marginLeft: '6px' }}>
               ({filteredScans.length} of {recentScans.length} scans)
             </span>
           </div>
@@ -529,7 +534,7 @@ export const DashboardPage: React.FC = () => {
             <div style={{ position: 'relative' }}>
               <RiSearchLine
                 size={14}
-                style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }}
+                style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-subtle)' }}
               />
               <input
                 type="text"
@@ -537,18 +542,18 @@ export const DashboardPage: React.FC = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.04)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  background: 'rgba(var(--ink-rgb), 0.04)',
+                  border: '1px solid rgba(var(--ink-rgb), 0.1)',
                   borderRadius: '8px',
                   padding: '5px 10px 5px 30px',
                   fontSize: '0.8rem',
-                  color: '#f8fafc',
+                  color: 'var(--text-main)',
                   outline: 'none',
                 }}
               />
             </div>
 
-            <div style={{ display: 'flex', gap: '4px', background: 'rgba(255, 255, 255, 0.03)', padding: '2px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
+            <div style={{ display: 'flex', gap: '4px', background: 'rgba(var(--ink-rgb), 0.03)', padding: '2px', borderRadius: '8px', border: '1px solid rgba(var(--ink-rgb), 0.06)' }}>
               {(['all', 'completed', 'running', 'failed'] as const).map((filter) => (
                 <button
                   key={filter}
@@ -560,7 +565,7 @@ export const DashboardPage: React.FC = () => {
                     fontWeight: 600,
                     textTransform: 'capitalize',
                     background: statusFilter === filter ? 'rgba(99, 102, 241, 0.3)' : 'transparent',
-                    color: statusFilter === filter ? '#ffffff' : '#94a3b8',
+                    color: statusFilter === filter ? '#4338ca' : 'var(--text-muted)',
                     border: `1px solid ${statusFilter === filter ? 'rgba(99, 102, 241, 0.4)' : 'transparent'}`,
                     cursor: 'pointer',
                   }}
@@ -592,7 +597,7 @@ export const DashboardPage: React.FC = () => {
                 return (
                   <tr key={s.id}>
                     <td style={{ maxWidth: '340px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      <span style={{ color: '#f8fafc', fontWeight: 600 }}>{s.url}</span>
+                      <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>{s.url}</span>
                     </td>
                     <td>
                       <span
@@ -607,10 +612,10 @@ export const DashboardPage: React.FC = () => {
                             ? 'rgba(239, 68, 68, 0.15)'
                             : 'rgba(99, 102, 241, 0.15)',
                           color: isCompleted
-                            ? '#34d399'
+                            ? '#059669'
                             : isFailed
-                            ? '#f87171'
-                            : '#818cf8',
+                            ? '#dc2626'
+                            : '#4f46e5',
                           border: `1px solid ${
                             isCompleted
                               ? 'rgba(16, 185, 129, 0.3)'
@@ -625,11 +630,11 @@ export const DashboardPage: React.FC = () => {
                       </span>
                     </td>
                     <td>
-                      <span style={{ fontSize: '0.82rem', color: s.is_authenticated ? '#34d399' : '#64748b' }}>
+                      <span style={{ fontSize: '0.82rem', color: s.is_authenticated ? '#059669' : 'var(--text-subtle)' }}>
                         {s.is_authenticated ? '🔒 Authenticated' : 'Public'}
                       </span>
                     </td>
-                    <td style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
+                    <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
                       {s.created_at ? new Date(s.created_at).toLocaleString() : 'N/A'}
                     </td>
                     <td>
@@ -645,9 +650,9 @@ export const DashboardPage: React.FC = () => {
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '5px',
-                            background: isRunning ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-                            borderColor: isRunning ? 'rgba(99, 102, 241, 0.35)' : 'rgba(255, 255, 255, 0.1)',
-                            color: isRunning ? '#818cf8' : '#f8fafc',
+                            background: isRunning ? 'rgba(99, 102, 241, 0.15)' : 'rgba(var(--ink-rgb), 0.05)',
+                            borderColor: isRunning ? 'rgba(99, 102, 241, 0.35)' : 'rgba(var(--ink-rgb), 0.1)',
+                            color: isRunning ? '#4f46e5' : 'var(--text-main)',
                           }}
                         >
                           <span>{isRunning ? 'Live Monitor' : 'View Report'}</span>
@@ -666,7 +671,7 @@ export const DashboardPage: React.FC = () => {
                                 padding: '6px 10px',
                                 fontSize: '0.78rem',
                                 borderRadius: '8px',
-                                color: '#f87171',
+                                color: '#dc2626',
                                 borderColor: 'rgba(239, 68, 68, 0.3)',
                                 background: 'rgba(239, 68, 68, 0.08)',
                                 display: 'inline-flex',
@@ -692,7 +697,7 @@ export const DashboardPage: React.FC = () => {
                                 padding: '6px 10px',
                                 fontSize: '0.78rem',
                                 borderRadius: '8px',
-                                color: '#34d399',
+                                color: '#059669',
                                 borderColor: 'rgba(16, 185, 129, 0.3)',
                                 background: 'rgba(16, 185, 129, 0.08)',
                                 display: 'inline-flex',
@@ -718,7 +723,7 @@ export const DashboardPage: React.FC = () => {
 
               {filteredScans.length === 0 && (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: '42px', color: '#94a3b8' }}>
+                  <td colSpan={5} style={{ textAlign: 'center', padding: '42px', color: 'var(--text-muted)' }}>
                     {recentScans.length === 0
                       ? 'No scans launched yet. Enter a target URL in the panel above to begin your first automated QA run!'
                       : 'No scans match your search query.'}
