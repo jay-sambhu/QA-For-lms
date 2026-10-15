@@ -214,18 +214,23 @@ async def main():
     password = args.password or os.environ.get("QA_AUTH_PASSWORD")
     user_api_key = args.api_key or os.environ.get("GEMINI_API_KEY")
 
+    # The API passes secrets via env (QA_AI_KEYS_POOL / QA_AUTH_TOKEN /
+    # QA_AUTH_PASSWORD / GEMINI_API_KEY) so they never appear in argv.
+    auth_token = args.auth_token or os.environ.get("QA_AUTH_TOKEN") or None
+
     ai_keys_pool = None
-    if args.ai_keys_pool:
+    raw_pool = args.ai_keys_pool or os.environ.get("QA_AI_KEYS_POOL")
+    if raw_pool:
         try:
-            ai_keys_pool = json.loads(args.ai_keys_pool)
+            ai_keys_pool = json.loads(raw_pool)
         except Exception as e:
-            print(f"[WARNING] Failed to parse --ai-keys-pool JSON: {e}")
+            print(f"[WARNING] Failed to parse AI keys pool JSON: {e}")
 
     try:
         result = await run_pipeline(
             args.url,
             max_pages=args.max_pages,
-            auth_token=args.auth_token,
+            auth_token=auth_token,
             run_id=args.run_id,
             output_dir=args.output_dir,
             login_url=args.login_url,
