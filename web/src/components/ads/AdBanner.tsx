@@ -236,7 +236,7 @@ export const AdBanner: React.FC<AdBannerProps> = ({ isAuthenticated, onCycleComp
       {/* Disclaimer */}
       <p style={S.disclaimer}>
         Ads powered by Google AdSense & certified partners. Scan continues in the background.{" "}
-        <a href="/pricing" style={{ color: "#4f46e5", textDecoration: "none" }}>Upgrade to Pro</a>
+        <a href="/pricing" style={{ color: "#4f46e5", textDecoration: "none" }}>Pro plans coming soon</a>
         {" "}for an ad-free experience.
       </p>
     </div>

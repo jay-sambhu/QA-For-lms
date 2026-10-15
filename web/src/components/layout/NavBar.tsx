@@ -118,7 +118,7 @@ export const NavBar: React.FC = () => {
                   borderRadius: '10px',
                   background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(99, 102, 241, 0.25))',
                   border: '1px solid rgba(168, 85, 247, 0.45)',
-                  color: '#e9d5ff',
+                  color: '#7e22ce',
                   fontSize: '0.82rem',
                   fontWeight: 700,
                   boxShadow: '0 0 16px rgba(168, 85, 247, 0.25)',

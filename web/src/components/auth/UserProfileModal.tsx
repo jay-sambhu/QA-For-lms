@@ -397,7 +397,7 @@ export const UserProfileModal: React.FC = () => {
                       boxShadow: '0 4px 15px rgba(168, 85, 247, 0.15)',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#e9d5ff', fontWeight: 700, fontSize: '0.88rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#7e22ce', fontWeight: 700, fontSize: '0.88rem' }}>
                       <RiShieldUserFill size={16} color="#9333ea" /> Admin Console
                     </div>
                     <span style={{ fontSize: '0.72rem', color: '#c4b5fd' }}>Role governance, telemetry &amp; CMS</span>
@@ -485,9 +485,9 @@ export const UserProfileModal: React.FC = () => {
                         ? 'rgba(234, 179, 8, 0.18)'
                         : 'rgba(56, 189, 248, 0.15)',
                       color: quotaData?.is_paid
-                        ? '#e9d5ff'
+                        ? '#7e22ce'
                         : apiKeys.length >= 3
-                        ? '#facc15'
+                        ? '#b45309'
                         : '#0284c7',
                       border: `1px solid ${
                         quotaData?.is_paid
@@ -525,12 +525,12 @@ export const UserProfileModal: React.FC = () => {
                     boxShadow: '0 8px 24px rgba(15, 23, 42, 0.075)',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#facc15', fontWeight: 800, fontSize: '0.9rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309', fontWeight: 800, fontSize: '0.9rem' }}>
                     <RiVipCrownFill size={18} />
                     <span>API Integration Limit Reached (3 / 3 Keys)</span>
                   </div>
                   <p style={{ color: 'var(--text-main)', fontSize: '0.82rem', margin: 0, lineHeight: 1.5 }}>
-                    Free tier workspaces are limited to a maximum of 3 API keys. Please start a subscription plan (Pro or Enterprise) to add unlimited AI models, custom endpoints, and priority scan workers.
+                    Free workspaces can connect up to 3 API keys. Remove a key to add another one — Pro and Enterprise plans with more slots are coming soon.
                   </p>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                     <Link
@@ -551,7 +551,7 @@ export const UserProfileModal: React.FC = () => {
                         borderRadius: '8px',
                       }}
                     >
-                      <TbSparkles size={15} /> Activate Subscription Plan →
+                      <TbSparkles size={15} /> View plans →
                     </Link>
                     <button
                       type="button"
@@ -686,7 +686,7 @@ export const UserProfileModal: React.FC = () => {
                         fontSize: '0.82rem',
                         borderRadius: '8px',
                         borderColor: 'rgba(234, 179, 8, 0.4)',
-                        color: '#facc15',
+                        color: '#b45309',
                         background: 'rgba(234, 179, 8, 0.08)',
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -1105,7 +1105,7 @@ export const UserProfileModal: React.FC = () => {
                 className="btn btn-primary"
                 style={{ padding: '7px 14px', fontSize: '0.82rem', borderRadius: '8px' }}
               >
-                <TbCreditCard size={14} /> Upgrade Plan
+                <TbCreditCard size={14} /> View plans
               </Link>
             </div>
 

@@ -178,7 +178,7 @@ export const AdBlockerDetector: React.FC = () => {
           </button>
 
           <Link href="/pricing" onClick={dismiss} style={styles.secondaryBtn}>
-            Upgrade to Pro (Ad-free) <ExternalLink size={14} style={{ marginLeft: 6 }} />
+            Ad-free Pro (coming soon) <ExternalLink size={14} style={{ marginLeft: 6 }} />
           </Link>
         </div>
 

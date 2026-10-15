@@ -296,9 +296,9 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                     ? 'rgba(234, 179, 8, 0.2)'
                     : 'rgba(56, 189, 248, 0.15)',
                   color: quotaData?.is_paid
-                    ? '#e9d5ff'
+                    ? '#7e22ce'
                     : isFreeLimitReached
-                    ? '#facc15'
+                    ? '#b45309'
                     : '#0284c7',
                   border: `1px solid ${
                     quotaData?.is_paid
@@ -398,18 +398,18 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#facc15',
+                color: '#b45309',
                 flexShrink: 0,
               }}
             >
               <RiVipCrownFill size={22} />
             </div>
             <div>
-              <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#facc15' }}>
+              <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#b45309' }}>
                 Free Tier Maximum Reached (3 of 3 Allowed Keys)
               </div>
               <div style={{ fontSize: '0.82rem', color: 'var(--text-body)', marginTop: '3px', lineHeight: 1.4 }}>
-                You have reached the maximum quota for the Free plan. To connect additional AI models, custom Ollama endpoints, and prevent rate limits, activate an official Pro or Enterprise subscription.
+                The Free plan supports up to 3 AI model keys. Remove a key to add another one — Pro and Enterprise plans with more slots are coming soon.
               </div>
             </div>
           </div>
@@ -432,7 +432,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                 boxShadow: '0 4px 18px rgba(245, 158, 11, 0.35)',
               }}
             >
-              <TbSparkles size={16} /> Start Subscription Plan <TbArrowRight size={16} />
+              <TbSparkles size={16} /> View plans <TbArrowRight size={16} />
             </Link>
             <button
               type="button"
