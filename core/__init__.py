@@ -1,46 +1,48 @@
 """
 JASUSS Core QA Pipeline & Defect Analysis Modules (Powered by Nexus)
+
+Re-exports are resolved lazily (PEP 562). Importing a light submodule such as
+``core.ai_config`` or ``core.supabase_storage`` from the API process must not
+drag Playwright, browser-use or the LLM SDKs into memory; those are only
+needed by the worker that actually runs the pipeline.
 """
 
-from .bug_detector import QAFindingClassifier, generate_qa_findings
-from .bug_triage import BugTriageEngine
-from .calculation_engine import (
-    CalculationEngine,
-    CanonicalQAMetrics,
-    QualityScore,
-    FindingMetrics,
-    TestCaseMetrics,
-)
-from .evidence_engine import EvidenceEngine
-from .explorer import explore
-from .gemini_analyzer import GeminiQAAnalyzer, generate_report
-from .interactive_tester import InteractiveTester
-from .model_router import select_model, get_model_name
-from .qa_report_generator import QAReportGenerator
-from .regression_detector import RegressionDetector
-from .ci_quality_gate import evaluate_quality_gate
-from .test_case_generator import TestCaseGenerator
-from .test_case_executor import TestCaseExecutor
+import importlib
 
-__all__ = [
-    "QAFindingClassifier",
-    "generate_qa_findings",
-    "BugTriageEngine",
-    "CalculationEngine",
-    "CanonicalQAMetrics",
-    "QualityScore",
-    "FindingMetrics",
-    "TestCaseMetrics",
-    "EvidenceEngine",
-    "explore",
-    "GeminiQAAnalyzer",
-    "generate_report",
-    "InteractiveTester",
-    "select_model",
-    "get_model_name",
-    "QAReportGenerator",
-    "RegressionDetector",
-    "evaluate_quality_gate",
-    "TestCaseGenerator",
-    "TestCaseExecutor",
-]
+_LAZY_EXPORTS = {
+    "QAFindingClassifier": ".bug_detector",
+    "generate_qa_findings": ".bug_detector",
+    "BugTriageEngine": ".bug_triage",
+    "CalculationEngine": ".calculation_engine",
+    "CanonicalQAMetrics": ".calculation_engine",
+    "QualityScore": ".calculation_engine",
+    "FindingMetrics": ".calculation_engine",
+    "TestCaseMetrics": ".calculation_engine",
+    "EvidenceEngine": ".evidence_engine",
+    "explore": ".explorer",
+    "GeminiQAAnalyzer": ".gemini_analyzer",
+    "generate_report": ".gemini_analyzer",
+    "InteractiveTester": ".interactive_tester",
+    "select_model": ".model_router",
+    "get_model_name": ".model_router",
+    "QAReportGenerator": ".qa_report_generator",
+    "RegressionDetector": ".regression_detector",
+    "evaluate_quality_gate": ".ci_quality_gate",
+    "TestCaseGenerator": ".test_case_generator",
+    "TestCaseExecutor": ".test_case_executor",
+}
+
+__all__ = list(_LAZY_EXPORTS)
+
+
+def __getattr__(name):
+    module_name = _LAZY_EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(importlib.import_module(module_name, __name__), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__():
+    return sorted(set(globals()) | set(__all__))
