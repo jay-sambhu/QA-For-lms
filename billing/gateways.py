@@ -124,8 +124,10 @@ class StripeAdapter(PaymentGatewayAdapter):
         }
 
     def verify_webhook(self, payload: bytes, signature: str, secret: str) -> bool:
+        # Fail closed: an unsigned request, or a deployment without a
+        # configured secret, must never be able to change a user's plan.
         if not signature or not secret:
-            return True
+            return False
         computed = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
         return hmac.compare_digest(computed, signature)
 
@@ -174,8 +176,10 @@ class LemonSqueezyAdapter(PaymentGatewayAdapter):
         }
 
     def verify_webhook(self, payload: bytes, signature: str, secret: str) -> bool:
+        # Fail closed: an unsigned request, or a deployment without a
+        # configured secret, must never be able to change a user's plan.
         if not signature or not secret:
-            return True
+            return False
         computed = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
         return hmac.compare_digest(computed, signature)
 
@@ -229,8 +233,10 @@ class RazorpayAdapter(PaymentGatewayAdapter):
         }
 
     def verify_webhook(self, payload: bytes, signature: str, secret: str) -> bool:
+        # Fail closed: an unsigned request, or a deployment without a
+        # configured secret, must never be able to change a user's plan.
         if not signature or not secret:
-            return True
+            return False
         computed = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
         return hmac.compare_digest(computed, signature)
 
@@ -282,7 +288,13 @@ class PayPalAdapter(PaymentGatewayAdapter):
         }
 
     def verify_webhook(self, payload: bytes, signature: str, secret: str) -> bool:
-        return True  # PayPal signature verification simulation
+        # Real PayPal verification needs the verify-webhook-signature API call,
+        # which is not implemented. Accepting everything let anyone grant
+        # themselves a paid plan, so require a shared-secret HMAC instead.
+        if not signature or not secret:
+            return False
+        computed = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(computed, signature)
 
     def parse_webhook_event(self, data: Dict[str, Any]) -> Dict[str, Any]:
         event_type = data.get("event_type", "BILLING.SUBSCRIPTION.ACTIVATED")
