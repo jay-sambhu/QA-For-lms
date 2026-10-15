@@ -39,16 +39,30 @@ export const GoogleAdSenseUnit: React.FC<GoogleAdSenseUnitProps> = ({
     const host = window.location.hostname;
     const isLocal = host === "localhost" || host === "127.0.0.1" || host.endsWith(".local");
     setIsTestMode(isLocal);
-    if (pushedRef.current || !adRef.current) return;
+    const el = adRef.current;
+    if (pushedRef.current || !el) return;
     // Set test mode on the element before the first push (state would apply too late)
-    if (isLocal) adRef.current.setAttribute("data-ad-test", "on");
-    pushedRef.current = true;
-    try {
-      (window.adsbygoogle = window.adsbygoogle || []).push({});
-      setAdLoaded(true);
-    } catch (e) {
-      console.warn("[Google AdSense] Ad request push warning:", e);
-    }
+    if (isLocal) el.setAttribute("data-ad-test", "on");
+
+    // AdSense throws "No slot size for availableWidth=0" if pushed while the slot is
+    // hidden (e.g. side rails below their breakpoint), so wait until it has a width.
+    const push = () => {
+      if (pushedRef.current || el.offsetWidth === 0) return false;
+      pushedRef.current = true;
+      try {
+        (window.adsbygoogle = window.adsbygoogle || []).push({});
+        setAdLoaded(true);
+      } catch (e) {
+        console.warn("[Google AdSense] Ad request push warning:", e);
+      }
+      return true;
+    };
+    if (push() || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (push()) ro.disconnect();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   return (
@@ -72,7 +86,7 @@ export const GoogleAdSenseUnit: React.FC<GoogleAdSenseUnitProps> = ({
         <div
           style={{
             fontSize: "0.68rem",
-            color: "#64748b",
+            color: "var(--text-subtle)",
             textAlign: "center",
             marginTop: 4,
           }}
