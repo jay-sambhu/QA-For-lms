@@ -2,13 +2,11 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { m as motion } from 'framer-motion';
 import {
   RiShieldCheckFill,
   RiBug2Line,
   RiLockPasswordLine,
-  RiCheckDoubleLine,
-  RiSpeedUpLine,
+  RiCheckboxCircleFill,
   RiChromeFill,
 } from 'react-icons/ri';
 import {
@@ -18,7 +16,6 @@ import {
   TbReportAnalytics,
   TbArrowRight,
   TbSparkles,
-  TbShieldLock,
 } from 'react-icons/tb';
 import {
   SiFastapi,
@@ -29,235 +26,199 @@ import {
 } from 'react-icons/si';
 import { HiSparkles } from 'react-icons/hi2';
 import { useAuth } from '../context/AuthContext';
+import { Hero3DMap } from '../components/three/Hero3DMap';
+import { Tilt3D } from '../components/three/Tilt3D';
+import { Reveal } from '../components/three/Reveal';
 import styles from '../app/page.module.css';
+
+const METHODS = [
+  {
+    icon: <TbDevices size={24} color="#4f46e5" />,
+    tint: 'rgba(99, 102, 241, 0.1)',
+    title: 'Multi-Viewport Crawling',
+    desc: 'Inspects Desktop (1920×1080), iPhone 13 and iPad layouts to catch breakage and overflow on every screen.',
+    tags: ['Desktop', 'Mobile', 'Tablet'],
+  },
+  {
+    icon: <TbBolt size={24} color="#0284c7" />,
+    tint: 'rgba(14, 165, 233, 0.1)',
+    title: 'Synthetic Interaction Testing',
+    desc: 'Finds and exercises buttons, links, inputs and dialogs to verify the site actually responds.',
+    tags: ['Forms', 'Clicks', 'Navigation'],
+  },
+  {
+    icon: <RiBug2Line size={24} color="#dc2626" />,
+    tint: 'rgba(239, 68, 68, 0.1)',
+    title: 'Deterministic Defect Triage',
+    desc: 'Traps HTTP 4xx/5xx responses, unhandled JavaScript exceptions and console errors as they happen.',
+    tags: ['HTTP 500', 'Console', 'CORS'],
+  },
+  {
+    icon: <RiLockPasswordLine size={24} color="#059669" />,
+    tint: 'rgba(16, 185, 129, 0.1)',
+    title: 'Authenticated Sessions',
+    desc: 'Logs in with transient, in-memory credentials to test protected routes without leaking secrets.',
+    tags: ['Login', 'Protected Routes'],
+  },
+  {
+    icon: <TbBrain size={24} color="#9333ea" />,
+    tint: 'rgba(168, 85, 247, 0.1)',
+    title: 'AI Quality Synthesis',
+    desc: 'Root-cause analysis, P0–P4 severity, reproduction steps and a canonical letter grade.',
+    tags: ['Root Cause', 'Grade', 'Repro'],
+  },
+  {
+    icon: <TbReportAnalytics size={24} color="#d97706" />,
+    tint: 'rgba(245, 158, 11, 0.12)',
+    title: 'Regression & Exports',
+    desc: 'Diffs against previous scans to flag new vs resolved defects, with PDF, Excel, JSON and Markdown export.',
+    tags: ['PDF', 'Excel', 'Diffing'],
+  },
+];
+
+const STEPS = [
+  { title: 'Point it at your site', desc: 'Paste a URL, optionally add a login. No setup or SDK required.' },
+  { title: 'We map every page in 3D', desc: 'Headless browsers crawl each viewport, click through flows and record evidence.' },
+  { title: 'Get a graded report', desc: 'AI triage turns raw findings into prioritised defects you can export and share.' },
+];
 
 export const LandingPage: React.FC = () => {
   const { session, openAuthModal } = useAuth();
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '56px', padding: '24px 0 80px' }}>
-      {/* Hero Banner */}
-      <motion.section
-        className={styles.hero}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45 }}
-      >
-        <div className={styles.badge}>
-          <HiSparkles size={15} /> Continuous Web Quality & Autonomous Regression Suite
-        </div>
-        <h1 className={styles.title}>
-          Enterprise Automated{' '}
-          <span className={styles.gradientText}>Web Quality Assurance</span>
-        </h1>
-        <p className={styles.subtitle}>
-          Full-stack website verification powered by Nexus: multi-viewport crawling, synthetic interaction testing,
-          deterministic defect triage, and audit-ready compliance reports.
-        </p>
-
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '32px', flexWrap: 'wrap' }}>
-          {session ? (
-            <Link
-              href="/dashboard"
-              className={styles.launchBtn}
-              style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '10px' }}
-            >
-              <span>Go to QA Dashboard</span>
-              <TbArrowRight size={18} />
-            </Link>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => openAuthModal('signup')}
-                className={styles.launchBtn}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '10px' }}
-              >
-                <TbSparkles size={18} />
-                <span>Get Started Free</span>
-                <TbArrowRight size={18} />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => openAuthModal('signin')}
-                className="btn btn-secondary"
-                style={{ padding: '12px 26px', fontSize: '0.95rem', borderRadius: '12px' }}
-              >
-                Sign In to Workspace
-              </button>
-            </>
-          )}
-
-          <Link
-            href="/pricing"
-            className="btn btn-secondary"
-            style={{ padding: '12px 26px', fontSize: '0.95rem', borderRadius: '12px', textDecoration: 'none' }}
-          >
-            View Pricing & Plans
-          </Link>
-        </div>
-
-        {/* Feature Highlights Ticker */}
-        <div className={styles.heroHighlightsRow}>
-          <div className={styles.heroHighlightItem}>
-            <RiCheckDoubleLine size={17} color="#10b981" />
-            <span>Zero-Setup Browser Cluster</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '88px', padding: '8px 0 96px' }}>
+      {/* Hero: copy + 3D site map */}
+      <section className={styles.heroSplit}>
+        <Reveal className={styles.heroCopy}>
+          <div className={styles.badge}>
+            <HiSparkles size={14} /> Autonomous web QA
           </div>
-          <div className={styles.heroHighlightItem}>
-            <RiSpeedUpLine size={17} color="#38bdf8" />
-            <span>Parallel Viewport Auditing</span>
-          </div>
-          <div className={styles.heroHighlightItem}>
-            <TbShieldLock size={17} color="#a855f7" />
-            <span>Encrypted In-Memory Auth</span>
-          </div>
-        </div>
-      </motion.section>
-
-      {/* 6-Card Testing Methods Showcase */}
-      <section className={styles.methodsSection}>
-        <div className={styles.methodsHeader}>
-          <h2>Comprehensive QA Testing Methods</h2>
-          <p>
-            JASUSS executes automated verification pipelines across viewports, interactive elements,
-            and performance heuristics to guarantee production stability.
+          <h1 className={styles.title}>
+            See your website <span className={styles.gradientText}>mapped, tested and graded</span> in minutes
+          </h1>
+          <p className={styles.subtitle}>
+            JASUSS crawls every page across desktop, tablet and mobile, exercises real interactions and turns
+            what it finds into a prioritised, audit-ready report.
           </p>
-        </div>
 
-        <div className={styles.methodsGrid}>
-          <div className={styles.methodCard}>
-            <div className={styles.methodIconWrapper}>
-              <TbDevices size={24} color="#818cf8" />
-            </div>
-            <div className={styles.methodTitle}>Multi-Viewport Crawling</div>
-            <p className={styles.methodDesc}>
-              Parallel inspection across Desktop (1920x1080), iPhone 13 (390x844), and iPad (820x1180) to detect layout breakages and overflow.
-            </p>
-            <div className={styles.methodTagsList}>
-              <span className={styles.methodTag}>Desktop</span>
-              <span className={styles.methodTag}>Mobile Touch</span>
-              <span className={styles.methodTag}>Tablet</span>
-            </div>
+          <div className={styles.heroActions}>
+            {session ? (
+              <Link href="/dashboard" className={styles.launchBtn} style={{ textDecoration: 'none' }}>
+                <span>Go to dashboard</span>
+                <TbArrowRight size={18} />
+              </Link>
+            ) : (
+              <>
+                <button type="button" onClick={() => openAuthModal('signup')} className={styles.launchBtn}>
+                  <TbSparkles size={18} />
+                  <span>Start free scan</span>
+                  <TbArrowRight size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openAuthModal('signin')}
+                  className="btn btn-secondary"
+                  style={{ height: '52px', padding: '0 24px', borderRadius: '12px' }}
+                >
+                  Sign in
+                </button>
+              </>
+            )}
           </div>
 
-          <div className={styles.methodCard}>
-            <div className={styles.methodIconWrapper}>
-              <TbBolt size={24} color="#38bdf8" />
-            </div>
-            <div className={styles.methodTitle}>Synthetic Interactive Testing</div>
-            <p className={styles.methodDesc}>
-              Automated discovery and execution of interactive buttons, links, inputs, and dialog dismissals to verify client-side responsiveness.
-            </p>
-            <div className={styles.methodTagsList}>
-              <span className={styles.methodTag}>Forms</span>
-              <span className={styles.methodTag}>Clicks</span>
-              <span className={styles.methodTag}>Navigation</span>
-            </div>
+          <div className={styles.heroChecks}>
+            <span><RiCheckboxCircleFill size={16} color="#059669" /> No setup</span>
+            <span><RiCheckboxCircleFill size={16} color="#059669" /> 3 viewports</span>
+            <span><RiCheckboxCircleFill size={16} color="#059669" /> PDF &amp; Excel reports</span>
           </div>
+        </Reveal>
 
-          <div className={styles.methodCard}>
-            <div className={styles.methodIconWrapper}>
-              <RiBug2Line size={24} color="#ef4444" />
-            </div>
-            <div className={styles.methodTitle}>Deterministic Defect Triage</div>
-            <p className={styles.methodDesc}>
-              Real-time trapping of HTTP 4xx/5xx responses, unhandled JavaScript runtime exceptions, and console error log telemetry.
-            </p>
-            <div className={styles.methodTagsList}>
-              <span className={styles.methodTag}>HTTP 500</span>
-              <span className={styles.methodTag}>Console Trace</span>
-              <span className={styles.methodTag}>CORS</span>
-            </div>
-          </div>
+        <Reveal delay={150}>
+          <Hero3DMap />
+        </Reveal>
+      </section>
 
-          <div className={styles.methodCard}>
-            <div className={styles.methodIconWrapper}>
-              <RiLockPasswordLine size={24} color="#10b981" />
-            </div>
-            <div className={styles.methodTitle}>Authenticated Session Testing</div>
-            <p className={styles.methodDesc}>
-              Form-based authentication flow with transient in-memory credentials and strict zero-leakage security invariants.
-            </p>
-            <div className={styles.methodTagsList}>
-              <span className={styles.methodTag}>Login Portals</span>
-              <span className={styles.methodTag}>SecretStr</span>
-              <span className={styles.methodTag}>Protected Routes</span>
-            </div>
-          </div>
-
-          <div className={styles.methodCard}>
-            <div className={styles.methodIconWrapper}>
-              <TbBrain size={24} color="#a855f7" />
-            </div>
-            <div className={styles.methodTitle}>AI-Assisted Quality Synthesis</div>
-            <p className={styles.methodDesc}>
-              Root-cause categorization, severity impact scoring (P0-P4), step-by-step reproduction instructions, and canonical grading.
-            </p>
-            <div className={styles.methodTagsList}>
-              <span className={styles.methodTag}>Root Cause</span>
-              <span className={styles.methodTag}>Letter Grade</span>
-              <span className={styles.methodTag}>Reproduction</span>
-            </div>
-          </div>
-
-          <div className={styles.methodCard}>
-            <div className={styles.methodIconWrapper}>
-              <TbReportAnalytics size={24} color="#f59e0b" />
-            </div>
-            <div className={styles.methodTitle}>Regression & Executive Exports</div>
-            <p className={styles.methodDesc}>
-              Historical baseline diffing to identify new vs resolved defects, with one-click export to PDF, Excel, JSON, and Markdown.
-            </p>
-            <div className={styles.methodTagsList}>
-              <span className={styles.methodTag}>PDF Audit</span>
-              <span className={styles.methodTag}>Excel Sheets</span>
-              <span className={styles.methodTag}>Diffing</span>
-            </div>
-          </div>
+      {/* How it works */}
+      <section>
+        <Reveal className={styles.methodsHeader}>
+          <span className={styles.sectionEyebrow}>How it works</span>
+          <h2>From URL to graded report in three steps</h2>
+        </Reveal>
+        <div className={styles.stepsGrid}>
+          {STEPS.map((step, i) => (
+            <Reveal key={step.title} delay={i * 120}>
+              <Tilt3D className={styles.stepCard}>
+                <div className={styles.stepNumber} data-depth="2">{i + 1}</div>
+                <div className={styles.stepTitle} data-depth="1">{step.title}</div>
+                <p className={styles.stepDesc}>{step.desc}</p>
+              </Tilt3D>
+            </Reveal>
+          ))}
         </div>
       </section>
 
-      {/* Tech Stack Ecosystem Row */}
-      <section className={styles.techStackSection}>
-        <div className={styles.techStackTitle}>Powered by Modern Open Standards & Enterprise Runtimes</div>
+      {/* Testing methods */}
+      <section className={styles.methodsSection}>
+        <Reveal className={styles.methodsHeader}>
+          <span className={styles.sectionEyebrow}>What gets tested</span>
+          <h2>Comprehensive QA, automatically</h2>
+          <p>Every scan runs the full suite across viewports, interactions and runtime health.</p>
+        </Reveal>
+
+        <div className={styles.methodsGrid}>
+          {METHODS.map((m, i) => (
+            <Reveal key={m.title} delay={(i % 3) * 100}>
+              <Tilt3D className={styles.methodCard}>
+                <div className={styles.methodIconWrapper} style={{ background: m.tint }} data-depth="2">
+                  {m.icon}
+                </div>
+                <div className={styles.methodTitle} data-depth="1">{m.title}</div>
+                <p className={styles.methodDesc}>{m.desc}</p>
+                <div className={styles.methodTagsList}>
+                  {m.tags.map((t) => (
+                    <span key={t} className={styles.methodTag}>{t}</span>
+                  ))}
+                </div>
+              </Tilt3D>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
+      {/* Tech stack */}
+      <Reveal as="section" className={styles.techStackSection}>
+        <div className={styles.techStackTitle}>Built on open, proven runtimes</div>
         <div className={styles.techStackGrid}>
           <div className={styles.techStackItem}><SiFastapi size={20} color="#009688" /> FastAPI</div>
           <div className={styles.techStackItem}><RiChromeFill size={20} color="#2e7d32" /> Playwright</div>
-          <div className={styles.techStackItem}><SiNextdotjs size={20} color="#ffffff" /> Next.js 16</div>
+          <div className={styles.techStackItem}><SiNextdotjs size={20} color="var(--text-heading)" /> Next.js</div>
           <div className={styles.techStackItem}><SiRedis size={20} color="#dc2626" /> Redis</div>
-          <div className={styles.techStackItem}><SiPython size={20} color="#3776ab" /> Python 3.12</div>
+          <div className={styles.techStackItem}><SiPython size={20} color="#3776ab" /> Python</div>
           <div className={styles.techStackItem}><SiTypescript size={20} color="#3178c6" /> TypeScript</div>
         </div>
-      </section>
+      </Reveal>
 
-      {/* Enterprise CTA Banner */}
-      <section className={styles.ctaBanner}>
-        <div className={styles.ctaBadge}>
-          <RiShieldCheckFill size={15} /> Production Ready Platform
-        </div>
-        <h2 className={styles.ctaTitle}>Ready to Elevate Your Web QA Pipeline?</h2>
-        <p className={styles.ctaDesc}>
-          Launch automated multi-device crawls, synthetic user journeys, and defect triage on your web application in seconds.
-        </p>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', flexWrap: 'wrap' }}>
-          <Link
-            href="/dashboard"
-            className={styles.launchBtn}
-            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '10px' }}
-          >
-            <span>Start Instant Scan</span>
-            <TbArrowRight size={18} />
-          </Link>
-          <Link
-            href="/pricing"
-            className="btn btn-secondary"
-            style={{ padding: '12px 24px', borderRadius: '12px' }}
-          >
-            Explore Plan Tiers
-          </Link>
-        </div>
-      </section>
+      {/* CTA */}
+      <Reveal>
+        <Tilt3D className={styles.ctaBanner} max={3}>
+          <div className={styles.ctaBadge}>
+            <RiShieldCheckFill size={15} /> Production ready
+          </div>
+          <h2 className={styles.ctaTitle} data-depth="1">Ready to see your site in a new dimension?</h2>
+          <p className={styles.ctaDesc}>
+            Launch a multi-device crawl, synthetic user journeys and defect triage on your web app in seconds.
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }} data-depth="1">
+            <Link href="/dashboard" className={styles.launchBtn} style={{ textDecoration: 'none' }}>
+              <span>Start a scan</span>
+              <TbArrowRight size={18} />
+            </Link>
+            <Link href="/pricing" className="btn btn-secondary" style={{ height: '52px', padding: '0 24px', borderRadius: '12px' }}>
+              See pricing
+            </Link>
+          </div>
+        </Tilt3D>
+      </Reveal>
     </div>
   );
 };
