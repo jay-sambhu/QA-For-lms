@@ -2,10 +2,11 @@
 Billing & Subscription API Endpoints for JASUSS Suite (Powered by Nexus)
 """
 
-from fastapi import APIRouter, HTTPException, Request, Header
+from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from pydantic import BaseModel, Field
 from typing import Optional, Any
 from datetime import datetime, timezone
+import os
 import uuid
 import logging
 
@@ -16,6 +17,20 @@ from models import User, Subscription, PaymentTransaction
 logger = logging.getLogger("jasuss.billing")
 
 billing_router = APIRouter(prefix="/api/v1/billing", tags=["Billing & Subscriptions"])
+
+
+def _require_billing_user(authorization: str = Header(None)):
+    """Resolve the caller via api.main.require_user (imported lazily: circular)."""
+    try:
+        from api.main import require_user
+    except ImportError:
+        from main import require_user
+    return require_user(authorization)
+
+
+def _webhook_secret(gateway: str) -> str:
+    """Per-gateway webhook signing secret, e.g. STRIPE_WEBHOOK_SECRET."""
+    return (os.environ.get(f"{gateway.upper()}_WEBHOOK_SECRET") or "").strip()
 
 
 class CheckoutRequest(BaseModel):
@@ -40,7 +55,7 @@ async def list_plans():
 
 
 @billing_router.post("/checkout")
-async def create_checkout(request: CheckoutRequest, current_user: Any = None):
+def create_checkout(request: CheckoutRequest, current_user: Any = Depends(_require_billing_user)):
     """
     Create a checkout session with the selected payment gateway.
     """
@@ -48,8 +63,10 @@ async def create_checkout(request: CheckoutRequest, current_user: Any = None):
     if not plan:
         raise HTTPException(status_code=400, detail=f"Invalid plan '{request.plan_id}'.")
 
-    user_id = str(getattr(current_user, "id", "00000000-0000-0000-0000-000000000001"))
-    user_email = str(getattr(current_user, "email", "user@example.com"))
+    # Previously current_user was never injected, so every caller (even an
+    # anonymous one) acted on the same hard-coded user id.
+    user_id = str(getattr(current_user, "id", current_user))
+    user_email = str(getattr(current_user, "email", "") or "")
 
     # Free plan upgrades immediately
     if request.plan_id == "free":
@@ -86,9 +103,9 @@ async def create_checkout(request: CheckoutRequest, current_user: Any = None):
 
 
 @billing_router.get("/subscription")
-async def get_user_subscription(current_user: Any = None):
+def get_user_subscription(current_user: Any = Depends(_require_billing_user)):
     """Retrieve current subscription status and feature quotas for user."""
-    user_id = str(getattr(current_user, "id", "00000000-0000-0000-0000-000000000001"))
+    user_id = str(getattr(current_user, "id", current_user))
 
     with SessionLocal() as db:
         user = db.query(User).filter(User.id == user_id).first()
@@ -134,7 +151,14 @@ async def handle_gateway_webhook(
 
     body_bytes = await request.body()
     signature = stripe_signature or x_signature or ""
-    secret = "mock_webhook_secret"
+    # The secret used to be the literal "mock_webhook_secret" and adapters
+    # accepted unsigned requests, so anyone could POST a webhook and grant any
+    # user a paid plan. Secrets now come from the environment and a missing
+    # secret disables the webhook instead of disabling verification.
+    secret = _webhook_secret(gateway.lower().strip())
+    if not secret:
+        logger.error("Webhook for gateway %s rejected: %s_WEBHOOK_SECRET is not configured", gateway, gateway.upper())
+        raise HTTPException(status_code=503, detail="Webhook verification is not configured for this gateway")
 
     if not adapter.verify_webhook(body_bytes, signature, secret):
         raise HTTPException(status_code=401, detail="Invalid webhook cryptographic signature")
