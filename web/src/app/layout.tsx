@@ -10,6 +10,7 @@ import { UserProfileModal } from "../components/auth/UserProfileModal";
 import { AdBlockerDetector } from "../components/ads/AdBlockerDetector";
 import { SideAdRails } from "../components/ads/SideAdRails";
 import { MotionProvider } from "../components/MotionProvider";
+import { Backdrop3D } from "../components/three/Backdrop3D";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -93,7 +94,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
-  themeColor: "#060911",
+  themeColor: "#f4f6fb",
 };
 
 export default function RootLayout({
@@ -104,6 +105,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body>
+        <Backdrop3D />
         <Script
           src="https://accounts.google.com/gsi/client"
           strategy="afterInteractive"
