@@ -463,17 +463,23 @@ class QAFindingClassifier:
 
     def _is_tracking_error(self, text):
         """Check if an error is from tracking/analytics."""
+        # Distinctive tracker names/domains only. Bare words like "analytics" or
+        # "segment" also matched first-party bugs such as
+        # "initAnalytics is not defined" or "reading 'segments'", hiding them.
         tracking_keywords = [
-            'analytics',
             'google-analytics',
             'googletagmanager',
+            'gtag(',
             'facebook pixel',
+            'connect.facebook.net',
+            'fbq(',
             'intercom',
             'hotjar',
-            'segment',
+            'cdn.segment.com',
+            'api.segment.io',
             'mixpanel',
         ]
-        text_lower = text.lower()
+        text_lower = (text or '').lower()
         return any(keyword in text_lower for keyword in tracking_keywords)
 
     def _is_expected_auth_error(self, text):
