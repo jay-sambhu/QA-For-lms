@@ -50,9 +50,31 @@ REQUIRED_FIELDS = set(REQUIRED_FIELD_ORDER)
 
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models"
 
+# Google retires Gemini model names regularly (the API answers HTTP 404
+# "no longer available"), and a model can be temporarily overloaded (HTTP 503).
+# Rather than failing the analysis, walk this chain until one answers.
+DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
+GEMINI_FALLBACK_MODELS = (
+    "gemini-3.8-flash",       # Google's current recommendation
+    "gemini-3.5-flash",       # stable, rarely overloaded
+    "gemini-3-flash-preview",
+    "gemini-flash-latest",    # alias: may point at an overloaded release
+)
+# Names Google has already retired for new API keys; they are swapped for the
+# default before the first request so the usual case costs no extra round trip.
+RETIRED_GEMINI_MODELS = {
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro",
+    "gemini-3-pro-preview",
+}
+
 # Seconds to wait before the single retry of a failed model call.
-RETRY_DELAY_SECONDS = 2.0
-REQUEST_TIMEOUT_SECONDS = 120
+RETRY_DELAY_SECONDS = 4.0
+# A flash model answers a triage prompt in well under a minute; a longer wait
+# only delays the fallback to the next model when one is overloaded.
+REQUEST_TIMEOUT_SECONDS = 60
 
 
 class GeminiQAAnalyzer:
@@ -62,18 +84,22 @@ class GeminiQAAnalyzer:
         self,
         api_key=None,
         model_client=None,
-        model_name="gemini-3-flash-preview",
+        model_name=DEFAULT_GEMINI_MODEL,
         provider_id="gemini",
         endpoint=None,
         key_pool=None,
     ):
         self.model_client = model_client
         self.provider_id = (provider_id or "gemini").lower()
-        self.model_name = model_name or "gemini-3-flash-preview"
+        self.model_name = model_name or DEFAULT_GEMINI_MODEL
         self.api_key = api_key
         self.endpoint = endpoint
         self.key_pool = list(key_pool or [])
         self.current_key_idx = 0
+        # Gemini models already tried for the active key (model-fallback bookkeeping)
+        self._tried_models = set()
+        # Models whose daily quota is spent for this key: skipped for the rest of the run
+        self._exhausted_models = set()
 
         # If a multi-key pool is provided, initialize active credentials from the first pool item
         if self.key_pool and len(self.key_pool) > 0:
@@ -89,6 +115,25 @@ class GeminiQAAnalyzer:
 
             if self.api_key is None:
                 self._load_active_key()
+
+        self._normalize_model()
+
+    def _normalize_model(self):
+        """Swap a retired Gemini model name for the current default."""
+        if self.provider_id == "gemini" and (self.model_name or "").strip().lower() in RETIRED_GEMINI_MODELS:
+            print(f"[AI_MODEL] '{self.model_name}' has been retired by Google; using {DEFAULT_GEMINI_MODEL} instead.")
+            self.model_name = DEFAULT_GEMINI_MODEL
+        self._tried_models = set()
+
+    def _next_fallback_model(self):
+        """Return the next untried Gemini model in the fallback chain, or None."""
+        if self.provider_id != "gemini":
+            return None
+        self._tried_models.add(self.model_name)
+        for candidate in GEMINI_FALLBACK_MODELS:
+            if candidate not in self._tried_models and candidate not in self._exhausted_models:
+                return candidate
+        return None
 
     def _load_active_key(self):
         try:
@@ -136,9 +181,10 @@ class GeminiQAAnalyzer:
             self.api_key = next_cfg.get("api_key")
             self.provider_id = (next_cfg.get("provider_id") or "gemini").lower()
             self.model_name = next_cfg.get("model") or (
-                "gemini-2.5-flash" if self.provider_id == "gemini" else "gpt-4o"
+                DEFAULT_GEMINI_MODEL if self.provider_id == "gemini" else "gpt-4o"
             )
             self.endpoint = next_cfg.get("endpoint")
+            self._normalize_model()
 
             print(
                 f"\n[AI_FAILOVER] Rate limit or quota error on {old_p.upper()} ({old_m}). "
@@ -405,7 +451,9 @@ class GeminiQAAnalyzer:
             except urllib.error.HTTPError as error:
                 detail = ""
                 try:
-                    detail = error.read().decode("utf-8", "replace")[:500]
+                    # Keep enough of the body to see Google's quota id
+                    # (e.g. "...PerDayPerProjectPerModel") and retryDelay.
+                    detail = error.read().decode("utf-8", "replace")[:2000]
                 except Exception:
                     pass
 
@@ -419,6 +467,11 @@ class GeminiQAAnalyzer:
                 raise RuntimeError(
                     f"{self.provider_id.upper()} API returned HTTP {error.code}: {detail}"
                 ) from None
+            except (urllib.error.URLError, TimeoutError, OSError) as error:
+                # No HTTP answer at all (read timeout, reset connection): the
+                # model is effectively unavailable, so the caller can move on
+                # to the next one instead of waiting out another timeout.
+                raise RuntimeError(f"MODEL_UNAVAILABLE: {error}") from None
 
         try:
             response_data = await asyncio.to_thread(fetch)
@@ -428,7 +481,29 @@ class GeminiQAAnalyzer:
                 max_retries = max(len(self.key_pool or []) + 2, 3)
                 if rotated and retries < max_retries:
                     return await self._call_model(prompt, retries=retries + 1)
-                raise RuntimeError(f"{self.provider_id.upper()} quota or rate limit reached across all available keys.") from None
+                # Gemini quotas are per model: the same key usually still has
+                # headroom on the next model in the chain.
+                if "PerDay" in str(e):
+                    self._exhausted_models.add(self.model_name)
+                next_model = self._next_fallback_model()
+                if next_model and retries < max_retries + len(GEMINI_FALLBACK_MODELS):
+                    print(f"[AI_MODEL_FALLBACK] {self.model_name} quota exhausted for this key; retrying with {next_model}...")
+                    self.model_name = next_model
+                    return await self._call_model(prompt, retries=retries + 1)
+                raise RuntimeError(
+                    f"{self.provider_id.upper()} quota or rate limit reached across all available keys and models: {str(e)[:400]}"
+                ) from None
+            # A retired model (404) or an overloaded one (503): try the next
+            # model in the chain with the same key instead of giving up.
+            message = str(e)
+            unavailable = "HTTP 404" in message or "HTTP 503" in message or "MODEL_UNAVAILABLE" in message
+            if p == "gemini" and unavailable:
+                next_model = self._next_fallback_model()
+                if next_model and retries < len(GEMINI_FALLBACK_MODELS) + 2:
+                    why = "retired" if "HTTP 404" in message else ("not responding" if "MODEL_UNAVAILABLE" in message else "overloaded")
+                    print(f"[AI_MODEL_FALLBACK] {self.model_name} is {why}; retrying with {next_model}...")
+                    self.model_name = next_model
+                    return await self._call_model(prompt, retries=retries + 1)
             raise
         except Exception as error:
             # Redact before re-raising: the message ends up in the report.
@@ -527,25 +602,31 @@ class GeminiQAAnalyzer:
         prompt = self.build_prompt(candidate, target)
         if self.model_client is None and not self.api_key:
             return self.fallback("Gemini API key unavailable; manual review required.", candidate=candidate)
-        try:
-            raw = await self._call_model(prompt)
-            return self.validate_response(raw)
-        except Exception as error:
-            message = str(error)
-            # Quota errors will not succeed on an immediate retry.
-            if "429" in message or "quota" in message.lower():
-                return self.fallback("Gemini quota limit reached; manual review required.", candidate=candidate)
-
-            # Back off briefly before the single retry so a transient rate
-            # limit or network blip has time to clear.
-            await asyncio.sleep(RETRY_DELAY_SECONDS)
+        last_error = None
+        # Each candidate gets the full model chain; an "overloaded" answer from
+        # every model is transient, so back off and walk the chain again.
+        for attempt in range(3):
+            self._tried_models = set()
             try:
                 raw = await self._call_model(prompt)
                 return self.validate_response(raw)
-            except Exception as retry_error:
-                return self.fallback(
-                    "Gemini analysis failed; manual review required.", str(retry_error), candidate=candidate
-                )
+            except Exception as error:
+                last_error = error
+                message = str(error)
+                if "429" in message or "quota" in message.lower():
+                    # Every model is rate limited. A per-minute limit clears
+                    # quickly (Google says how long in retryDelay); a daily
+                    # quota will not, so don't make the scan wait for it.
+                    delay = re.search(r"retryDelay\W+(\d+)s", message)
+                    wait_s = int(delay.group(1)) if delay else 0
+                    if attempt < 2 and 0 < wait_s <= 60:
+                        await asyncio.sleep(wait_s + 1)
+                        continue
+                    return self.fallback("Gemini quota limit reached; manual review required.", candidate=candidate)
+                await asyncio.sleep(RETRY_DELAY_SECONDS * (attempt + 1))
+        return self.fallback(
+            "Gemini analysis failed; manual review required.", str(last_error), candidate=candidate
+        )
 
     async def analyze(self, findings_data):
         candidates = findings_data.get("root_cause_candidates") or []
