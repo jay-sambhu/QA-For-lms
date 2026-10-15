@@ -7,7 +7,9 @@ from core.multi_session_manager import MultiSessionManager
 from core.export_validator import ExportReportValidator
 
 
-def test_phase24_1_authenticated_fullstack_verification():
+def test_phase24_1_authenticated_fullstack_verification(seed_ai_key):
+    # Scan creation requires a BYOK AI key on the user.
+    seed_ai_key("00000000-0000-0000-0000-000000000001", "dev@example.com")
     """
     Verify authenticated scan creation returns 200/201/202 status code, yielding a valid scan ID and persisting to SQLite database.
     """
@@ -29,7 +31,7 @@ def test_phase24_1_authenticated_fullstack_verification():
     mock_user.user.user_metadata = {"role": "user"}
     supabase.auth.get_user = MagicMock(return_value=mock_user)
 
-    with patch("worker.tasks.process_query_task.delay"):
+    with patch("worker.tasks.process_query_task.apply_async"):
         res = client.post(
             "/api/v1/scans",
             json={"url": "https://example.com"},

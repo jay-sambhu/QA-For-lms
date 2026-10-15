@@ -59,8 +59,10 @@ def test_auth_payload_ssrf_and_secret_redaction():
         )
 
 
-def test_create_scan_authenticated_persists_is_authenticated_flag_no_password_stored():
+def test_create_scan_authenticated_persists_is_authenticated_flag_no_password_stored(seed_ai_key):
     from fastapi.testclient import TestClient
+    # Scan creation requires a BYOK AI key on the user.
+    seed_ai_key("00000000-0000-0000-0000-000000000001", "tester@example.com")
     from api.main import supabase
     client = TestClient(app)
 
