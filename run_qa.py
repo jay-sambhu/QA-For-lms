@@ -33,6 +33,30 @@ from core import ci_quality_gate
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
+# Plain-English explanations for the browser errors users hit most often.
+_LOAD_ERROR_HINTS = {
+    "ERR_NAME_NOT_RESOLVED": "the domain name could not be found. Check the URL for typos.",
+    "ERR_CONNECTION_REFUSED": "the server refused the connection. Is the site online?",
+    "ERR_CONNECTION_TIMED_OUT": "the server did not respond in time.",
+    "ERR_CONNECTION_RESET": "the connection was reset by the server.",
+    "ERR_CERT": "the site's SSL certificate is invalid or expired.",
+    "ERR_SSL": "a secure (HTTPS) connection could not be established.",
+    "ERR_TOO_MANY_REDIRECTS": "the site redirects in a loop.",
+    "ERR_BLOCKED_BY_CLIENT": "the request was blocked (private or internal addresses cannot be scanned).",
+    "Timeout": "the page took too long to load.",
+}
+
+
+def _friendly_load_error(raw: str) -> str:
+    """Turn a raw Playwright navigation error into a short user-facing reason."""
+    first_line = (raw or "").strip().splitlines()[0] if raw else ""
+    for marker, hint in _LOAD_ERROR_HINTS.items():
+        if marker in first_line:
+            return f"We couldn't load the site: {hint}"
+    if first_line:
+        return f"We couldn't load the site ({first_line[:160]})."
+    return "We couldn't load any pages from the site."
+
 async def ensure_playwright_ready():
     """Ensure Chromium executable exists before starting the pipeline."""
     try:
@@ -87,7 +111,7 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
     if not crawl_file or discovery_result.get("pages_crawled", 0) == 0:
         pages_attempted = discovery_result.get("pages", []) if discovery_result else []
         failure_reasons = [p.get("error") for p in pages_attempted if p.get("error")]
-        detailed_msg = f"Discovery failed to load target pages: {failure_reasons[0]}" if failure_reasons else "Discovery failed to load target pages."
+        detailed_msg = _friendly_load_error(failure_reasons[0] if failure_reasons else "")
         sm.transition_to(PipelineStage.FAILED, detailed_msg)
         print(f"ERROR: Autonomous Discovery produced no pages. {detailed_msg}")
         return None
