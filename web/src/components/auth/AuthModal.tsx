@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { m as motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   RiCloseLine,
   RiLoginCircleLine,
@@ -16,7 +16,10 @@ import {
 } from 'react-icons/ri';
 import { TbLoader2 } from 'react-icons/tb';
 import { useAuth, supabase } from '../../context/AuthContext';
+import { SegmentedTabs3D } from '../three';
 import styles from '../../app/page.module.css';
+
+type AuthMode = 'signin' | 'signup';
 
 export const AuthModal: React.FC = () => {
   const router = useRouter();
@@ -27,8 +30,23 @@ export const AuthModal: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const reduceMotion = useReducedMotion();
 
   if (!authModalOpen) return null;
+
+  const cardMotion = reduceMotion
+    ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } }
+    : {
+        initial: { opacity: 0, y: 28, scale: 0.96, rotateX: 10 },
+        animate: { opacity: 1, y: 0, scale: 1, rotateX: 0 },
+        exit: { opacity: 0, y: 16, scale: 0.97, rotateX: 6 },
+      };
+
+  const switchMode = (mode: AuthMode) => {
+    openAuthModal(mode);
+    setError('');
+    setSuccess('');
+  };
 
   const handleGoogleSignIn = async () => {
     if (!supabase) {
@@ -241,22 +259,18 @@ export const AuthModal: React.FC = () => {
         onClick={closeAuthModal}
       >
         <motion.div
-          className={styles.modalCard}
-          initial={{ scale: 0.95, y: 15, opacity: 0 }}
-          animate={{ scale: 1, y: 0, opacity: 1 }}
-          exit={{ scale: 0.95, y: 15, opacity: 0 }}
-          transition={{ duration: 0.2 }}
+          className={`${styles.modalCard} glass-3d`}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="auth-modal-title"
+          style={{ transformPerspective: 1400, transformOrigin: '50% 0%' }}
+          {...cardMotion}
+          transition={{ duration: reduceMotion ? 0.15 : 0.45, ease: [0.16, 1, 0.3, 1] }}
           onClick={(e) => e.stopPropagation()}
         >
           <div className={styles.modalHeader}>
-            <div className={styles.modalLogo} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <img
-                src="/logo-icon.png"
-                alt="JASUSS.TECH"
-                width={26}
-                height={26}
-                style={{ objectFit: 'contain', filter: 'drop-shadow(0 0 6px rgba(56, 189, 248, 0.45))' }}
-              />
+            <div className={styles.modalLogo} id="auth-modal-title">
+              <img src="/logo-icon.png" alt="" width={28} height={28} className={styles.modalLogoMark} />
               <span>JASUSS Workspace</span>
             </div>
             <button
@@ -264,51 +278,42 @@ export const AuthModal: React.FC = () => {
               onClick={closeAuthModal}
               className={styles.modalCloseBtn}
               title="Close"
+              aria-label="Close"
             >
               <RiCloseLine size={20} />
             </button>
           </div>
 
           <div className={styles.modalTabs}>
-            <button
-              type="button"
-              onClick={() => {
-                openAuthModal('signin');
-                setError('');
-                setSuccess('');
-              }}
-              className={`${styles.modalTab} ${authMode === 'signin' ? styles.modalTabActive : ''}`}
-            >
-              <RiLoginCircleLine size={16} style={{ display: 'inline', marginRight: '5px' }} />
-              Sign In
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                openAuthModal('signup');
-                setError('');
-                setSuccess('');
-              }}
-              className={`${styles.modalTab} ${authMode === 'signup' ? styles.modalTabActive : ''}`}
-            >
-              <RiUserAddLine size={16} style={{ display: 'inline', marginRight: '5px' }} />
-              Get Started
-            </button>
+            <SegmentedTabs3D<AuthMode>
+              fullWidth
+              ariaLabel="Authentication mode"
+              idPrefix="auth"
+              tabs={[
+                { id: 'signin', label: 'Sign In', icon: <RiLoginCircleLine size={16} /> },
+                { id: 'signup', label: 'Get Started', icon: <RiUserAddLine size={16} /> },
+              ]}
+              active={authMode}
+              onChange={switchMode}
+            />
           </div>
 
           <form
             onSubmit={authMode === 'signin' ? handleSignIn : handleSignUp}
             className={styles.modalBody}
+            role="tabpanel"
+            id={`auth-panel-${authMode}`}
+            aria-labelledby={`auth-tab-${authMode}`}
           >
             {error && (
-              <div className={`${styles.authBanner} ${styles.authBannerError}`}>
+              <div className={`${styles.authBanner} ${styles.authBannerError}`} role="alert">
                 <RiErrorWarningFill size={18} />
                 <span>{error}</span>
               </div>
             )}
 
             {success && (
-              <div className={`${styles.authBanner} ${styles.authBannerSuccess}`}>
+              <div className={`${styles.authBanner} ${styles.authBannerSuccess}`} role="status">
                 <RiCheckboxCircleFill size={18} />
                 <span>{success}</span>
               </div>
@@ -332,7 +337,7 @@ export const AuthModal: React.FC = () => {
                 disabled={loading}
                 className={`${styles.socialAuthBtn} ${styles.socialAuthBtnGithub}`}
               >
-                <RiGithubFill size={18} color="var(--text-heading)" />
+                <RiGithubFill size={18} />
                 <span>GitHub</span>
               </button>
             </div>
@@ -342,10 +347,11 @@ export const AuthModal: React.FC = () => {
             </div>
 
             <div className={styles.modalFormGroup}>
-              <label className={styles.modalFormLabel}>
-                <RiMailLine size={14} style={{ display: 'inline', marginRight: '4px' }} /> Email Address
+              <label className={styles.modalFormLabel} htmlFor="auth-email">
+                <RiMailLine size={14} /> Email Address
               </label>
               <input
+                id="auth-email"
                 type="email"
                 required
                 placeholder="name@company.com"
@@ -357,10 +363,11 @@ export const AuthModal: React.FC = () => {
             </div>
 
             <div className={styles.modalFormGroup}>
-              <label className={styles.modalFormLabel}>
-                <RiLockPasswordLine size={14} style={{ display: 'inline', marginRight: '4px' }} /> Password
+              <label className={styles.modalFormLabel} htmlFor="auth-password">
+                <RiLockPasswordLine size={14} /> Password
               </label>
               <input
+                id="auth-password"
                 type="password"
                 required
                 placeholder="••••••••••••"
@@ -373,10 +380,11 @@ export const AuthModal: React.FC = () => {
 
             {authMode === 'signup' && (
               <div className={styles.modalFormGroup}>
-                <label className={styles.modalFormLabel}>
-                  <RiLockPasswordLine size={14} style={{ display: 'inline', marginRight: '4px' }} /> Confirm Password
+                <label className={styles.modalFormLabel} htmlFor="auth-confirm-password">
+                  <RiLockPasswordLine size={14} /> Confirm Password
                 </label>
                 <input
+                  id="auth-confirm-password"
                   type="password"
                   required
                   placeholder="••••••••••••"
@@ -391,7 +399,7 @@ export const AuthModal: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className={styles.modalSubmitBtn}
+              className={`btn btn-primary ${styles.modalSubmitBtn}`}
             >
               {loading ? (
                 <>

@@ -1,155 +1,55 @@
 import React from "react";
 import Link from "next/link";
+import styles from "../../app/page.module.css";
 
 export const Footer: React.FC = () => {
   return (
-    <footer style={styles.footer}>
-      <div style={styles.container}>
+    <footer className={styles.footer}>
+      <div className={styles.footerStage} aria-hidden="true">
+        <div className={styles.footerGlow} />
+        <div className={styles.footerFloor} />
+      </div>
+
+      <div className={styles.footerInner}>
         {/* Brand Column */}
-        <div style={styles.brandCol}>
-          <Link href="/" style={styles.logoLink}>
-            <img
-              src="/logo-icon.png"
-              alt="JASUSS.TECH Logo"
-              width={36}
-              height={36}
-              style={{ width: "36px", height: "36px", objectFit: "contain", filter: "drop-shadow(0 0 10px rgba(56, 189, 248, 0.45))" }}
-            />
-            <span style={styles.logoText}>
-              JASUSS<span style={{ color: "#0284c7" }}>.TECH</span>
+        <div className={styles.footerBrand}>
+          <Link href="/" className={styles.footerLogo} aria-label="JASUSS.TECH home">
+            <img src="/logo-icon.png" alt="" width={36} height={36} className={styles.footerLogoMark} />
+            <span>
+              JASUSS<span className={styles.logoSub}>.TECH</span>
             </span>
           </Link>
-          <p style={styles.brandTagline}>
+          <p className={styles.footerTagline}>
             Next-Generation Autonomous Web Quality Assurance &amp; Regression Suite powered by Nexus. Multi-viewport crawling, synthetic interaction testing, and compliance audits.
           </p>
         </div>
 
         {/* Quick Links Column */}
-        <div style={styles.linksCol}>
-          <span style={styles.colTitle}>Platform</span>
-          <Link href="/" style={styles.footerLink}>Home</Link>
-          <Link href="/dashboard" style={styles.footerLink}>Dashboard</Link>
-          <Link href="/pricing" style={styles.footerLink}>Pricing &amp; Plans</Link>
-          <Link href="/blog" style={styles.footerLink}>Engineering Blog</Link>
-        </div>
+        <nav className={styles.footerCol} aria-label="Platform">
+          <span className={`section-eyebrow ${styles.footerColTitle}`}>Platform</span>
+          <Link href="/" className={styles.footerLink}>Home</Link>
+          <Link href="/dashboard" className={styles.footerLink}>Dashboard</Link>
+          <Link href="/pricing" className={styles.footerLink}>Pricing &amp; Plans</Link>
+          <Link href="/blog" className={styles.footerLink}>Engineering Blog</Link>
+        </nav>
 
         {/* Capabilities Column */}
-        <div style={styles.linksCol}>
-          <span style={styles.colTitle}>Testing Capabilities</span>
-          <span style={styles.staticLink}>Multi-Viewport Crawling</span>
-          <span style={styles.staticLink}>Synthetic Interaction Tests</span>
-          <span style={styles.staticLink}>Executive Compliance Audits</span>
-          <span style={styles.staticLink}>Root-Cause Defect Triage</span>
+        <div className={styles.footerCol}>
+          <span className={`section-eyebrow ${styles.footerColTitle}`}>Testing Capabilities</span>
+          <span className={styles.footerStatic}>Multi-Viewport Crawling</span>
+          <span className={styles.footerStatic}>Synthetic Interaction Tests</span>
+          <span className={styles.footerStatic}>Executive Compliance Audits</span>
+          <span className={styles.footerStatic}>Root-Cause Defect Triage</span>
         </div>
       </div>
 
       {/* Bottom Bar */}
-      <div style={styles.bottomBar}>
-        <p style={{ margin: 0 }}>
+      <div className={styles.footerBottom}>
+        <p>
           © {new Date().getFullYear()} JASUSS.TECH. All rights reserved. Powered by Nexus Engine.
         </p>
-        <div style={styles.statusIndicator}>
-          <div style={styles.statusDot} />
-          <span>All QA Engine Nodes Operational</span>
-        </div>
+        <span className="chip chip--success chip--dot">All QA Engine Nodes Operational</span>
       </div>
     </footer>
   );
-};
-
-const styles: Record<string, React.CSSProperties> = {
-  footer: {
-    marginTop: "80px",
-    padding: "48px 0 28px",
-    borderTop: "1px solid rgba(var(--ink-rgb), 0.08)",
-    color: "var(--text-subtle)",
-    fontSize: "0.85rem",
-    width: "100%",
-  },
-  container: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    flexWrap: "wrap",
-    gap: "36px",
-    marginBottom: "36px",
-    textAlign: "left",
-  },
-  brandCol: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "12px",
-    maxWidth: "380px",
-  },
-  logoLink: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "10px",
-    textDecoration: "none",
-    color: "var(--text-heading)",
-    fontWeight: 700,
-    fontSize: "1.18rem",
-  },
-  logoImg: {
-    borderRadius: "10px",
-    objectFit: "cover",
-    boxShadow: "0 0 16px rgba(56, 189, 248, 0.3)",
-  },
-  logoText: {
-    letterSpacing: "-0.01em",
-  },
-  brandTagline: {
-    margin: 0,
-    color: "var(--text-muted)",
-    fontSize: "0.85rem",
-    lineHeight: 1.6,
-  },
-  linksCol: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "10px",
-    minWidth: "150px",
-  },
-  colTitle: {
-    color: "var(--text-main)",
-    fontWeight: 700,
-    fontSize: "0.88rem",
-    marginBottom: "4px",
-    letterSpacing: "0.02em",
-  },
-  footerLink: {
-    color: "var(--text-muted)",
-    textDecoration: "none",
-    fontSize: "0.84rem",
-    transition: "color 0.2s ease",
-  },
-  staticLink: {
-    color: "var(--text-subtle)",
-    fontSize: "0.82rem",
-  },
-  bottomBar: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingTop: "24px",
-    borderTop: "1px solid rgba(var(--ink-rgb), 0.05)",
-    flexWrap: "wrap",
-    gap: "14px",
-    fontSize: "0.8rem",
-    color: "var(--text-subtle)",
-  },
-  statusIndicator: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "6px",
-    fontSize: "0.78rem",
-    color: "#10b981",
-  },
-  statusDot: {
-    width: "7px",
-    height: "7px",
-    borderRadius: "50%",
-    backgroundColor: "#10b981",
-    boxShadow: "0 0 6px #10b981",
-  },
 };

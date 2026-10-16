@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { m as motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   RiUser3Fill,
   RiCloseLine,
@@ -37,12 +37,54 @@ import {
   TbLock,
   TbCloudDownload,
   TbDatabase,
+  TbGift,
 } from 'react-icons/tb';
 import { useAuth } from '../../context/AuthContext';
 import styles from '../../app/page.module.css';
 
+type TrialStatus = {
+  enabled: boolean;
+  total: number;
+  used: number;
+  remaining: number;
+  has_own_key: boolean;
+  daily_available: boolean;
+};
+
+const normalizeTrial = (raw: unknown): TrialStatus | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const t = raw as Record<string, unknown>;
+  const total = Number(t.total ?? 0) || 0;
+  const used = Number(t.used ?? 0) || 0;
+  const remaining = t.remaining === undefined ? Math.max(0, total - used) : Number(t.remaining) || 0;
+  return {
+    enabled: Boolean(t.enabled),
+    total,
+    used,
+    remaining,
+    has_own_key: Boolean(t.has_own_key),
+    daily_available: t.daily_available !== false,
+  };
+};
+
+const tierChipClass = (isAdmin: boolean, plan: string) => {
+  if (isAdmin) return 'chip--violet';
+  if (plan === 'pro') return 'chip--primary';
+  if (plan === 'enterprise') return 'chip--warning';
+  return 'chip--neutral';
+};
+
+const PROVIDER_LABELS: Record<string, string> = {
+  gemini: 'Gemini',
+  openai: 'OpenAI',
+  anthropic: 'Claude',
+  deepseek: 'DeepSeek',
+  local_llm: 'Ollama / Local',
+};
+
 export const UserProfileModal: React.FC = () => {
   const { session, userPlan, userRole, isAdmin: authIsAdmin, profileModalOpen, closeProfileModal, signOut } = useAuth();
+  const reduceMotion = useReducedMotion();
   const userIsAdmin = authIsAdmin || userRole === 'admin';
   const email = session?.user?.email || 'user@example.com';
   const userId = session?.user?.id || 'anonymous';
@@ -68,6 +110,7 @@ export const UserProfileModal: React.FC = () => {
     can_add_more: boolean;
     supported_providers: any[];
   } | null>(null);
+  const [trialStatus, setTrialStatus] = useState<TrialStatus | null>(null);
 
   const [loadingKeys, setLoadingKeys] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -81,6 +124,21 @@ export const UserProfileModal: React.FC = () => {
   const [isSubmittingKey, setIsSubmittingKey] = useState(false);
   const [keyFeedback, setKeyFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+
+  // Free-trial status for users without their own key (older backends have no such endpoint)
+  const fetchTrialStatus = useCallback(async () => {
+    if (!session?.access_token) return;
+    try {
+      const res = await fetch('/api/v1/user/trial', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (res.ok) {
+        setTrialStatus(normalizeTrial(await res.json()));
+      }
+    } catch {
+      // Trial endpoint unavailable; the hub simply hides the trial card
+    }
+  }, [session?.access_token]);
 
   // Fetch all user API keys & quotas whenever modal opens
   const fetchUserApiKeys = useCallback(async () => {
@@ -101,6 +159,11 @@ export const UserProfileModal: React.FC = () => {
           can_add_more: data.can_add_more,
           supported_providers: data.supported_providers || [],
         });
+        if (data.trial && typeof data.trial === 'object') {
+          setTrialStatus(normalizeTrial(data.trial));
+        } else {
+          fetchTrialStatus();
+        }
         if (!data.keys || data.keys.length === 0) {
           setShowAddForm(true);
         }
@@ -110,7 +173,7 @@ export const UserProfileModal: React.FC = () => {
     } finally {
       setLoadingKeys(false);
     }
-  }, [session?.access_token]);
+  }, [session?.access_token, fetchTrialStatus]);
 
   // Supabase Storage Quota (20 MB per user)
   const [storageData, setStorageData] = useState<{
@@ -291,874 +354,587 @@ export const UserProfileModal: React.FC = () => {
     }
   };
 
+  const atFreeLimit = !quotaData?.is_paid && apiKeys.length >= 3;
+  const quotaChipTone = quotaData?.is_paid ? 'chip--violet' : atFreeLimit ? 'chip--warning' : 'chip--info';
+  const quotaLabel = quotaData?.is_paid
+    ? `Unlimited (${(quotaData.plan_tier || 'PRO').toUpperCase()})`
+    : `${apiKeys.length} / 3 keys · Free tier`;
+
+  const trialVisible = Boolean(trialStatus?.enabled);
+  const trialRemaining = trialStatus?.remaining ?? 0;
+  const trialTotal = trialStatus?.total ?? 0;
+  const trialTone = trialStatus?.has_own_key ? 'tone-info' : trialRemaining > 0 ? 'tone-success' : 'tone-warning';
+  const trialText = trialStatus?.has_own_key
+    ? 'Your own key is active, so your scans never use trial credits.'
+    : trialRemaining > 0
+    ? `Your first ${trialTotal} scans run on our Gemini key with no setup. Add your own free Gemini key for unlimited scans.`
+    : `You've used all ${trialTotal} free trial scans. Add your own free Gemini key to keep scanning.`;
+
+  const storagePercent = Math.min(storageData?.used_percent ?? 0, 100);
+  const storageTone = storageData?.is_quota_exceeded ? 'tone-danger' : storagePercent > 75 ? 'tone-warning' : 'tone-info';
+
+  const cardMotion = reduceMotion
+    ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } }
+    : {
+        initial: { opacity: 0, y: 28, scale: 0.96, rotateX: 10 },
+        animate: { opacity: 1, y: 0, scale: 1, rotateX: 0 },
+        exit: { opacity: 0, y: 16, scale: 0.97, rotateX: 6 },
+      };
+
   return (
     <AnimatePresence>
       {profileModalOpen && session && (
         <motion.div
           key="user-profile-modal-overlay"
           className={styles.modalOverlay}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={closeProfileModal}
-      >
-        <motion.div
-          className={styles.modalCard}
-          style={{ maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto' }}
-          initial={{ scale: 0.95, y: 15, opacity: 0 }}
-          animate={{ scale: 1, y: 0, opacity: 1 }}
-          exit={{ scale: 0.95, y: 15, opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          onClick={(e) => e.stopPropagation()}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={closeProfileModal}
         >
-          {/* Header */}
-          <div className={styles.modalHeader}>
-            <div className={styles.modalLogo}>
-              <RiUser3Fill size={20} color="#6366f1" />
-              <span>Account &amp; Workspace Hub</span>
-            </div>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                closeProfileModal();
-              }}
-              className={styles.modalCloseBtn}
-              title="Close"
-              aria-label="Close"
-              style={{ cursor: 'pointer', zIndex: 10 }}
-            >
-              <RiCloseLine size={20} />
-            </button>
-          </div>
-
-          <div className={styles.modalBody} style={{ gap: '18px' }}>
-            {/* User Identity Card */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px', background: 'rgba(var(--ink-rgb), 0.03)', border: '1px solid rgba(var(--ink-rgb), 0.08)', borderRadius: '14px' }}>
-              <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: userIsAdmin ? 'linear-gradient(135deg, #a855f7, #6366f1)' : 'linear-gradient(135deg, #6366f1, #0284c7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#fff', boxShadow: '0 0 20px rgba(99, 102, 241, 0.4)' }}>
-                {avatarChar}
+          <motion.div
+            className={`${styles.modalCard} ${styles.profileCard} glass-3d`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="profile-modal-title"
+            style={{ transformPerspective: 1400, transformOrigin: '50% 0%' }}
+            {...cardMotion}
+            transition={{ duration: reduceMotion ? 0.15 : 0.45, ease: [0.16, 1, 0.3, 1] }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className={styles.modalHeader}>
+              <div className={styles.modalLogo} id="profile-modal-title">
+                <span className="icon-well icon-well--sm">
+                  <RiUser3Fill size={16} />
+                </span>
+                <span>Account &amp; Workspace Hub</span>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)' }}>{email}</span>
-                  <span
-                    className={`${styles.tierPill} ${
-                      userIsAdmin
-                        ? styles.tierEnterprise
-                        : userPlan === 'pro'
-                        ? styles.tierPro
-                        : userPlan === 'enterprise'
-                        ? styles.tierEnterprise
-                        : styles.tierFree
-                    }`}
-                    style={
-                      userIsAdmin
-                        ? {
-                            background: 'rgba(168, 85, 247, 0.2)',
-                            color: '#9333ea',
-                            border: '1px solid rgba(168, 85, 247, 0.4)',
-                            fontWeight: 800,
-                          }
-                        : undefined
-                    }
-                  >
-                    {userIsAdmin ? 'ADMIN' : userPlan.toUpperCase()}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-subtle)' }}>
-                  <span>ID: {userId.substring(0, 12)}...</span>
-                  <button onClick={handleCopyId} style={{ color: copiedId ? '#10b981' : 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '3px' }} title="Copy User ID">
-                    {copiedId ? <TbCheck size={12} /> : <TbCopy size={12} />}
-                  </button>
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeProfileModal();
+                }}
+                className={styles.modalCloseBtn}
+                title="Close"
+                aria-label="Close"
+              >
+                <RiCloseLine size={20} />
+              </button>
             </div>
 
-            {/* Direct Dashboard Launchpad */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-subtle)' }}>
-                Quick Dashboard Navigation
+            <div className={styles.profileBody}>
+              {/* User Identity Card */}
+              <div className={`surface-inset ${styles.profileIdentity}`}>
+                <div className={`${styles.profileAvatar} ${userIsAdmin ? styles.profileAvatarAdmin : ''}`} aria-hidden="true">
+                  {avatarChar}
+                </div>
+                <div className={styles.profileIdentityText}>
+                  <div className={styles.profileEmailRow}>
+                    <span className={styles.profileEmail}>{email}</span>
+                    <span className={`chip chip--sm ${tierChipClass(userIsAdmin, userPlan)}`}>
+                      {userIsAdmin ? 'ADMIN' : userPlan.toUpperCase()}
+                    </span>
+                  </div>
+                  <div className={styles.profileMeta}>
+                    <span>ID: {userId.substring(0, 12)}...</span>
+                    <button
+                      type="button"
+                      onClick={handleCopyId}
+                      className={`${styles.profileCopyBtn} ${copiedId ? styles.profileCopyBtnDone : ''}`}
+                      title="Copy User ID"
+                      aria-label={copiedId ? 'User ID copied' : 'Copy User ID'}
+                    >
+                      {copiedId ? <TbCheck size={12} /> : <TbCopy size={12} />}
+                    </button>
+                  </div>
+                </div>
               </div>
 
-              {userIsAdmin ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <Link
-                    href="/admin"
-                    onClick={closeProfileModal}
-                    style={{
-                      padding: '12px 14px',
-                      borderRadius: '12px',
-                      background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.22), rgba(99, 102, 241, 0.22))',
-                      border: '1px solid rgba(168, 85, 247, 0.45)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '4px',
-                      textDecoration: 'none',
-                      boxShadow: '0 4px 15px rgba(168, 85, 247, 0.15)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#7e22ce', fontWeight: 700, fontSize: '0.88rem' }}>
-                      <RiShieldUserFill size={16} color="#9333ea" /> Admin Console
-                    </div>
-                    <span style={{ fontSize: '0.72rem', color: '#c4b5fd' }}>Role governance, telemetry &amp; CMS</span>
-                  </Link>
+              {/* Direct Dashboard Launchpad */}
+              <div className={styles.profileSection}>
+                <span className="section-eyebrow">Quick Dashboard Navigation</span>
 
+                {userIsAdmin ? (
+                  <div className={styles.profileNavGrid}>
+                    <Link
+                      href="/admin"
+                      onClick={closeProfileModal}
+                      className={`surface-3d surface-3d--interactive surface-3d--accent tone-violet ${styles.profileNavCard}`}
+                    >
+                      <span className={styles.profileNavCardTitle}>
+                        <RiShieldUserFill size={16} /> Admin Console
+                      </span>
+                      <span className={styles.profileNavCardDesc}>Role governance, telemetry &amp; CMS</span>
+                    </Link>
+
+                    <Link
+                      href="/dashboard"
+                      onClick={closeProfileModal}
+                      className={`surface-3d surface-3d--interactive surface-3d--accent tone-primary ${styles.profileNavCard}`}
+                    >
+                      <span className={styles.profileNavCardTitle}>
+                        <TbDashboard size={16} /> QA Dashboard
+                      </span>
+                      <span className={styles.profileNavCardDesc}>Multi-device autonomous scans</span>
+                    </Link>
+                  </div>
+                ) : (
                   <Link
                     href="/dashboard"
                     onClick={closeProfileModal}
-                    style={{
-                      padding: '12px 14px',
-                      borderRadius: '12px',
-                      background: 'rgba(99, 102, 241, 0.12)',
-                      border: '1px solid rgba(99, 102, 241, 0.3)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '4px',
-                      textDecoration: 'none',
-                    }}
+                    className={`surface-3d surface-3d--interactive surface-3d--accent tone-primary ${styles.profileNavWide}`}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#4f46e5', fontWeight: 700, fontSize: '0.88rem' }}>
-                      <TbDashboard size={16} /> QA Dashboard
-                    </div>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Multi-device autonomous scans</span>
+                    <span className={styles.profileNavWideBody}>
+                      <span className="icon-well icon-well--sm">
+                        <TbDashboard size={18} />
+                      </span>
+                      <span>
+                        <span className={styles.profileNavWideTitle}>Open QA Automation Dashboard</span>
+                        <br />
+                        <span className={styles.profileNavWideDesc}>Launch multi-device crawl runs &amp; inspect reports</span>
+                      </span>
+                    </span>
+                    <TbArrowRight size={18} className={styles.profileNavArrow} />
                   </Link>
-                </div>
-              ) : (
-                <Link
-                  href="/dashboard"
-                  onClick={closeProfileModal}
-                  style={{
-                    padding: '14px 16px',
-                    borderRadius: '12px',
-                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(79, 70, 229, 0.2))',
-                    border: '1px solid rgba(99, 102, 241, 0.4)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    textDecoration: 'none',
-                    boxShadow: '0 4px 18px rgba(99, 102, 241, 0.2)',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(99, 102, 241, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4f46e5' }}>
-                      <TbDashboard size={20} />
-                    </div>
-                    <div>
-                      <div style={{ color: 'var(--text-main)', fontWeight: 700, fontSize: '0.92rem' }}>Open QA Automation Dashboard</div>
-                      <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Launch multi-device crawl runs &amp; inspect reports</div>
-                    </div>
-                  </div>
-                  <TbArrowRight size={18} color="#4f46e5" />
-                </Link>
-              )}
-            </div>
-
-            {/* Multi-AI Provider & Model Integration Hub */}
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '14px',
-                padding: '18px',
-                background: 'rgba(99, 102, 241, 0.05)',
-                border: '1px solid rgba(99, 102, 241, 0.25)',
-                borderRadius: '16px',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <RiCpuLine size={20} color="#4f46e5" />
-                  <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                    Multi-Model &amp; AI Provider Integrations
-                  </span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span
-                    style={{
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      padding: '3px 10px',
-                      borderRadius: '8px',
-                      background: quotaData?.is_paid
-                        ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(99, 102, 241, 0.25))'
-                        : apiKeys.length >= 3
-                        ? 'rgba(234, 179, 8, 0.18)'
-                        : 'rgba(56, 189, 248, 0.15)',
-                      color: quotaData?.is_paid
-                        ? '#7e22ce'
-                        : apiKeys.length >= 3
-                        ? '#b45309'
-                        : '#0284c7',
-                      border: `1px solid ${
-                        quotaData?.is_paid
-                          ? 'rgba(168, 85, 247, 0.4)'
-                          : apiKeys.length >= 3
-                          ? 'rgba(234, 179, 8, 0.4)'
-                          : 'rgba(56, 189, 248, 0.3)'
-                      }`,
-                    }}
-                  >
-                    {quotaData?.is_paid
-                      ? `UNLIMITED (${(quotaData.plan_tier || 'PRO').toUpperCase()})`
-                      : `${apiKeys.length} / 3 KEYS (FREE TIER)`}
-                  </span>
-                </div>
+                )}
               </div>
 
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.45 }}>
-                Connect your personal API keys for Google Gemini, OpenAI GPT-4o, Anthropic Claude, DeepSeek, or local clusters. Free accounts include up to 3 API keys; upgrade to a subscription plan to add unlimited keys.
-              </p>
-
-              {/* Upgrade Paywall Banner when user hits limit */}
-              {showUpgradePrompt && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.96 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  style={{
-                    background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.15), rgba(168, 85, 247, 0.15))',
-                    border: '1px solid rgba(234, 179, 8, 0.45)',
-                    borderRadius: '12px',
-                    padding: '14px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '10px',
-                    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.075)',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309', fontWeight: 800, fontSize: '0.9rem' }}>
-                    <RiVipCrownFill size={18} />
-                    <span>API Integration Limit Reached (3 / 3 Keys)</span>
-                  </div>
-                  <p style={{ color: 'var(--text-main)', fontSize: '0.82rem', margin: 0, lineHeight: 1.5 }}>
-                    Free workspaces can connect up to 3 API keys. Remove a key to add another one — Pro and Enterprise plans with more slots are coming soon.
-                  </p>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <Link
-                      href="/pricing"
-                      onClick={closeProfileModal}
-                      className="btn btn-primary"
-                      style={{
-                        background: 'linear-gradient(135deg, #f59e0b, #d946ef)',
-                        border: 'none',
-                        color: '#fff',
-                        fontWeight: 700,
-                        fontSize: '0.82rem',
-                        padding: '8px 14px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        textDecoration: 'none',
-                        borderRadius: '8px',
-                      }}
-                    >
-                      <TbSparkles size={15} /> View plans →
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => setShowUpgradePrompt(false)}
-                      className="btn btn-secondary"
-                      style={{ padding: '8px 12px', fontSize: '0.8rem', borderRadius: '8px' }}
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Feedback Alert */}
-              {keyFeedback && (
-                <div
-                  style={{
-                    fontSize: '0.82rem',
-                    color: keyFeedback.type === 'error' ? '#ef4444' : '#10b981',
-                    background: keyFeedback.type === 'error' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-                    border: `1px solid ${keyFeedback.type === 'error' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(16, 185, 129, 0.25)'}`,
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}
-                >
-                  {keyFeedback.type === 'error' ? <TbAlertCircle size={16} /> : <TbCheck size={16} />}
-                  <span>{keyFeedback.msg}</span>
+              {/* Multi-AI Provider & Model Integration Hub */}
+              <section className={`surface-inset ${styles.profilePanel}`} aria-labelledby="profile-ai-title">
+                <div className={styles.profilePanelHead}>
+                  <h3 className={styles.profilePanelTitle} id="profile-ai-title">
+                    <span className="icon-well icon-well--sm">
+                      <RiCpuLine size={18} />
+                    </span>
+                    <span>Multi-Model &amp; AI Provider Integrations</span>
+                  </h3>
+                  <span className={`chip chip--sm ${quotaChipTone}`}>{quotaLabel}</span>
                 </div>
-              )}
 
-              {/* Configured Keys List */}
-              {loadingKeys ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '16px', color: 'var(--text-muted)' }}>
-                  <TbLoader2 size={18} className="pulse" color="#4f46e5" />
-                  <span style={{ fontSize: '0.82rem' }}>Loading configured AI integrations...</span>
-                </div>
-              ) : apiKeys.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {apiKeys.map((k) => (
-                    <div
-                      key={k.id}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                        gap: '10px',
-                        background: k.is_default ? 'rgba(99, 102, 241, 0.12)' : 'rgba(var(--ink-rgb), 0.045)',
-                        padding: '10px 14px',
-                        borderRadius: '10px',
-                        border: `1px solid ${k.is_default ? 'rgba(99, 102, 241, 0.4)' : 'rgba(var(--ink-rgb), 0.08)'}`,
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(var(--ink-rgb), 0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {getProviderIcon(k.provider_id, 18)}
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                              {k.key_name}
-                            </span>
-                            {k.model && (
-                              <span style={{ fontSize: '0.68rem', padding: '1px 6px', background: 'rgba(var(--ink-rgb), 0.08)', borderRadius: '4px', color: 'var(--text-body)' }}>
-                                {k.model}
-                              </span>
-                            )}
-                          </div>
-                          <span style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                            {k.masked_key}
-                          </span>
-                        </div>
+                <p className={styles.profileHint}>
+                  Connect your personal API keys for Google Gemini, OpenAI GPT-4o, Anthropic Claude, DeepSeek, or local clusters. Free accounts include up to 3 API keys; upgrade to a subscription plan to add unlimited keys.
+                </p>
+
+                {/* Free trial status (server-side Gemini key for first scans) */}
+                {trialVisible && trialStatus && (
+                  <div className={`${styles.profileRaised} ${styles.profileTrial} ${trialTone}`}>
+                    <span className="icon-well icon-well--sm">
+                      <TbGift size={16} />
+                    </span>
+                    <div className={styles.profileTrialBody}>
+                      <div className={styles.profileTrialTitle}>
+                        <span>Free trial</span>
+                        <span className={`chip chip--sm chip--dot ${trialRemaining > 0 ? 'chip--success' : 'chip--warning'}`}>
+                          {trialRemaining} of {trialTotal} scans left
+                        </span>
+                        {trialRemaining > 0 && !trialStatus.has_own_key && !trialStatus.daily_available && (
+                          <span className="chip chip--sm chip--warning">Busy today</span>
+                        )}
                       </div>
+                      <span className={styles.profileTrialText}>
+                        {trialText}{' '}
+                        <a
+                          href="https://aistudio.google.com/app/apikey"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={styles.profileLink}
+                        >
+                          Get a free Gemini key
+                        </a>
+                      </span>
+                    </div>
+                  </div>
+                )}
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {k.is_default ? (
-                          <span
-                            style={{
-                              fontSize: '0.7rem',
-                              fontWeight: 700,
-                              padding: '2px 8px',
-                              borderRadius: '6px',
-                              background: 'rgba(16, 185, 129, 0.2)',
-                              color: '#059669',
-                              border: '1px solid rgba(16, 185, 129, 0.35)',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}
-                          >
-                            <RiStarFill size={11} /> DEFAULT
-                          </span>
-                        ) : (
+                {/* Upgrade Paywall Banner when user hits limit */}
+                {showUpgradePrompt && (
+                  <div className={`${styles.profileUpgrade} enter-3d`}>
+                    <div className={styles.profileUpgradeTitle}>
+                      <RiVipCrownFill size={18} />
+                      <span>API Integration Limit Reached (3 / 3 Keys)</span>
+                    </div>
+                    <p className={styles.profileUpgradeText}>
+                      Free workspaces can connect up to 3 API keys. Remove a key to add another one — Pro and Enterprise plans with more slots are coming soon.
+                    </p>
+                    <div className={styles.profileRow}>
+                      <Link href="/pricing" onClick={closeProfileModal} className="btn btn-primary btn-sm">
+                        <TbSparkles size={15} /> View plans →
+                      </Link>
+                      <button type="button" onClick={() => setShowUpgradePrompt(false)} className="btn btn-secondary btn-sm">
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Feedback Alert */}
+                {keyFeedback && (
+                  <div
+                    className={`${styles.authBanner} ${keyFeedback.type === 'error' ? styles.authBannerError : styles.authBannerSuccess}`}
+                    role={keyFeedback.type === 'error' ? 'alert' : 'status'}
+                  >
+                    {keyFeedback.type === 'error' ? <TbAlertCircle size={16} /> : <TbCheck size={16} />}
+                    <span>{keyFeedback.msg}</span>
+                  </div>
+                )}
+
+                {/* Configured Keys List */}
+                {loadingKeys ? (
+                  <div className={styles.profileLoading}>
+                    <TbLoader2 size={18} className="pulse" />
+                    <span>Loading configured AI integrations...</span>
+                  </div>
+                ) : apiKeys.length > 0 ? (
+                  <div className={styles.profileKeyList}>
+                    {apiKeys.map((k) => (
+                      <div
+                        key={k.id}
+                        className={`${styles.profileRaised} ${styles.profileKeyRow} ${k.is_default ? styles.profileKeyRowDefault : ''}`}
+                      >
+                        <div className={styles.profileKeyInfo}>
+                          <span className="icon-well icon-well--sm tone-neutral">{getProviderIcon(k.provider_id, 18)}</span>
+                          <div className={styles.profileKeyText}>
+                            <div className={styles.profileKeyName}>
+                              <span>{k.key_name}</span>
+                              {k.model && <span className="chip chip--sm chip--neutral">{k.model}</span>}
+                            </div>
+                            <span className={styles.profileKeyMask}>{k.masked_key}</span>
+                          </div>
+                        </div>
+
+                        <div className={styles.profileKeyActions}>
+                          {k.is_default ? (
+                            <span className="chip chip--sm chip--success">
+                              <RiStarFill size={11} /> Default
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleSetDefaultKey(k.id)}
+                              className="btn btn-secondary btn-sm"
+                              title="Set as active model for next scan"
+                            >
+                              <RiStarLine size={13} /> Set Default
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => handleSetDefaultKey(k.id)}
-                            className="btn btn-secondary"
-                            style={{ padding: '4px 10px', fontSize: '0.75rem', borderRadius: '6px' }}
-                            title="Set as active model for next scan"
+                            onClick={() => handleDeleteKey(k.id, k.key_name)}
+                            className="btn btn-danger btn-sm"
+                            title="Remove API Key"
                           >
-                            <RiStarLine size={13} /> Set Default
+                            <TbTrash size={14} />
+                            <span className="sr-only">Remove {k.key_name}</span>
                           </button>
-                        )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {/* Add Key Toggle / Paywall Trigger */}
+                {!showAddForm ? (
+                  <div className={styles.profileRow}>
+                    {atFreeLimit ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowUpgradePrompt(true)}
+                        className={`btn btn-secondary ${styles.profileLimitBtn}`}
+                      >
+                        <TbLock size={15} /> Add Another AI Model Key (Limit Reached · Upgrade to Unlock)
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddForm(true);
+                          setShowUpgradePrompt(false);
+                        }}
+                        className="btn btn-secondary btn-sm"
+                      >
+                        <RiAddLine size={15} /> Connect AI Model / Provider Key
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  /* Add API Key Form */
+                  <form onSubmit={handleCreateApiKey} className={`${styles.profileRaised} ${styles.profileForm}`}>
+                    <div className={styles.profileFormHead}>
+                      <span className={styles.profileFormTitle}>Configure New Model Integration</span>
+                      {apiKeys.length > 0 && (
+                        <button type="button" onClick={() => setShowAddForm(false)} className={styles.profileLinkBtn}>
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Provider Selector */}
+                    <div className={styles.profileField}>
+                      <span className={styles.profileLabel} id="profile-provider-label">
+                        AI Provider Platform
+                      </span>
+                      <div className={styles.profileProviderGrid} role="group" aria-labelledby="profile-provider-label">
+                        {['gemini', 'openai', 'anthropic', 'deepseek', 'local_llm'].map((pid) => {
+                          const isSel = selectedProvider === pid;
+                          return (
+                            <button
+                              key={pid}
+                              type="button"
+                              onClick={() => handleProviderSelect(pid)}
+                              className={styles.profileProviderBtn}
+                              aria-pressed={isSel}
+                            >
+                              {getProviderIcon(pid, 14)}
+                              <span>{PROVIDER_LABELS[pid]}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Model Selector & Key Label */}
+                    <div className={styles.profileGrid2}>
+                      <div className={styles.profileField}>
+                        <label className={styles.profileLabel} htmlFor="profile-model">
+                          Model Selection
+                        </label>
+                        <select
+                          id="profile-model"
+                          value={selectedModel}
+                          onChange={(e) => setSelectedModel(e.target.value)}
+                          className={styles.profileInput}
+                        >
+                          {quotaData?.supported_providers
+                            ?.find((p: any) => p.id === selectedProvider)
+                            ?.models?.map((m: string) => (
+                              <option key={m} value={m}>
+                                {m}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+
+                      <div className={styles.profileField}>
+                        <label className={styles.profileLabel} htmlFor="profile-key-name">
+                          Integration Label
+                        </label>
+                        <input
+                          id="profile-key-name"
+                          type="text"
+                          value={keyNameInput}
+                          onChange={(e) => setKeyNameInput(e.target.value)}
+                          placeholder={`e.g. My ${selectedProvider.toUpperCase()} Key`}
+                          className={styles.profileInput}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Secret Key Input */}
+                    <div className={styles.profileField}>
+                      <label className={styles.profileLabel} htmlFor="profile-key-secret">
+                        Secret API Key
+                      </label>
+                      <div className={styles.profileSecretWrap}>
+                        <input
+                          id="profile-key-secret"
+                          type={showKeySecret ? 'text' : 'password'}
+                          value={keyValueInput}
+                          onChange={(e) => setKeyValueInput(e.target.value)}
+                          placeholder={
+                            selectedProvider === 'gemini'
+                              ? 'AIzaSy...'
+                              : selectedProvider === 'openai'
+                              ? 'sk-proj-...'
+                              : selectedProvider === 'anthropic'
+                              ? 'sk-ant-...'
+                              : selectedProvider === 'deepseek'
+                              ? 'sk-...'
+                              : 'Optional token for local cluster'
+                          }
+                          className={`${styles.profileInput} ${styles.profileInputMono}`}
+                        />
                         <button
                           type="button"
-                          onClick={() => handleDeleteKey(k.id, k.key_name)}
-                          className="btn btn-secondary"
-                          style={{ padding: '5px 8px', fontSize: '0.75rem', borderRadius: '6px', color: '#dc2626', borderColor: 'rgba(239, 68, 68, 0.3)' }}
-                          title="Remove API Key"
+                          onClick={() => setShowKeySecret(!showKeySecret)}
+                          className={styles.profileEyeBtn}
+                          aria-label={showKeySecret ? 'Hide API key' : 'Show API key'}
+                          aria-pressed={showKeySecret}
                         >
-                          <TbTrash size={14} />
+                          {showKeySecret ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
                         </button>
                       </div>
                     </div>
-                  ))}
-                </div>
-              ) : null}
 
-              {/* Add Key Toggle / Paywall Trigger */}
-              {!showAddForm ? (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-                  {!quotaData?.is_paid && apiKeys.length >= 3 ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowUpgradePrompt(true)}
-                      className="btn btn-secondary"
-                      style={{
-                        padding: '9px 14px',
-                        fontSize: '0.82rem',
-                        borderRadius: '8px',
-                        borderColor: 'rgba(234, 179, 8, 0.4)',
-                        color: '#b45309',
-                        background: 'rgba(234, 179, 8, 0.08)',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        width: '100%',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <TbLock size={15} /> Add Another AI Model Key (Limit Reached · Upgrade to Unlock)
+                    {/* Optional Custom Endpoint for DeepSeek / Local */}
+                    {(selectedProvider === 'deepseek' || selectedProvider === 'local_llm') && (
+                      <div className={styles.profileField}>
+                        <label className={styles.profileLabel} htmlFor="profile-endpoint">
+                          Custom API Endpoint URL
+                        </label>
+                        <input
+                          id="profile-endpoint"
+                          type="text"
+                          value={endpointInput}
+                          onChange={(e) => setEndpointInput(e.target.value)}
+                          placeholder={selectedProvider === 'deepseek' ? 'https://api.deepseek.com/v1' : 'http://localhost:11434/v1'}
+                          className={`${styles.profileInput} ${styles.profileInputMono}`}
+                        />
+                      </div>
+                    )}
+
+                    {/* Default Checkbox */}
+                    <label className={styles.profileCheck}>
+                      <input
+                        type="checkbox"
+                        checked={isDefaultInput}
+                        onChange={(e) => setIsDefaultInput(e.target.checked)}
+                      />
+                      <span>Set as active default model for QA report generation</span>
+                    </label>
+
+                    <button type="submit" disabled={isSubmittingKey} className="btn btn-primary" style={{ width: '100%' }}>
+                      {isSubmittingKey ? (
+                        <>
+                          <TbLoader2 size={16} className="pulse" />
+                          <span>Saving API Integration...</span>
+                        </>
+                      ) : (
+                        <>
+                          <TbSparkles size={16} />
+                          <span>Integrate {selectedProvider.toUpperCase()} Key</span>
+                        </>
+                      )}
                     </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowAddForm(true);
-                        setShowUpgradePrompt(false);
-                      }}
-                      className="btn btn-secondary"
-                      style={{
-                        padding: '8px 14px',
-                        fontSize: '0.82rem',
-                        borderRadius: '8px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                      }}
-                    >
-                      <RiAddLine size={15} /> Connect AI Model / Provider Key
-                    </button>
-                  )}
+                  </form>
+                )}
+
+                {/* Helpful provider documentation links */}
+                <div className={styles.profileDocLinks}>
+                  <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className={styles.profileDocLink}>
+                    <RiGoogleFill size={12} /> Google AI Studio <TbExternalLink size={11} />
+                  </a>
+                  <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className={styles.profileDocLink}>
+                    <RiOpenaiFill size={12} /> OpenAI Platform <TbExternalLink size={11} />
+                  </a>
+                  <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer" className={styles.profileDocLink}>
+                    <SiAnthropic size={11} /> Anthropic Console <TbExternalLink size={11} />
+                  </a>
                 </div>
-              ) : (
-                /* Add API Key Form */
-                <form
-                  onSubmit={handleCreateApiKey}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '12px',
-                    padding: '14px',
-                    background: 'rgba(var(--panel-rgb), 0.7)',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(var(--ink-rgb), 0.08)',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                      Configure New Model Integration
+              </section>
+
+              {/* Supabase Cloud Storage (20 MB Per-User Limit) */}
+              <section className={`surface-inset ${styles.profilePanel} ${storageTone}`} aria-labelledby="profile-storage-title">
+                <div className={styles.profilePanelHead}>
+                  <h3 className={styles.profilePanelTitle} id="profile-storage-title">
+                    <span className="icon-well icon-well--sm">
+                      <TbDatabase size={18} />
                     </span>
-                    {apiKeys.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setShowAddForm(false)}
-                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem' }}
-                      >
-                        Cancel
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Provider Selector */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                      AI Provider Platform
-                    </label>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: '6px' }}>
-                      {['gemini', 'openai', 'anthropic', 'deepseek', 'local_llm'].map((pid) => {
-                        const isSel = selectedProvider === pid;
-                        const labelMap: Record<string, string> = {
-                          gemini: 'Gemini',
-                          openai: 'OpenAI',
-                          anthropic: 'Claude',
-                          deepseek: 'DeepSeek',
-                          local_llm: 'Ollama / Local',
-                        };
-                        return (
-                          <button
-                            key={pid}
-                            type="button"
-                            onClick={() => handleProviderSelect(pid)}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '6px',
-                              padding: '8px 6px',
-                              borderRadius: '8px',
-                              background: isSel ? 'rgba(99, 102, 241, 0.25)' : 'rgba(var(--ink-rgb), 0.03)',
-                              border: `1px solid ${isSel ? '#6366f1' : 'rgba(var(--ink-rgb), 0.08)'}`,
-                              color: isSel ? '#4338ca' : 'var(--text-muted)',
-                              fontSize: '0.76rem',
-                              fontWeight: isSel ? 700 : 500,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            {getProviderIcon(pid, 14)}
-                            <span>{labelMap[pid]}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Model Selector & Key Label */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                        Model Selection
-                      </label>
-                      <select
-                        value={selectedModel}
-                        onChange={(e) => setSelectedModel(e.target.value)}
-                        style={{
-                          background: 'var(--surface-elevated)',
-                          color: 'var(--text-main)',
-                          border: '1px solid rgba(var(--ink-rgb), 0.12)',
-                          borderRadius: '8px',
-                          padding: '8px 10px',
-                          fontSize: '0.8rem',
-                          outline: 'none',
-                        }}
-                      >
-                        {quotaData?.supported_providers
-                          ?.find((p: any) => p.id === selectedProvider)
-                          ?.models?.map((m: string) => (
-                            <option key={m} value={m}>
-                              {m}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                        Integration Label
-                      </label>
-                      <input
-                        type="text"
-                        value={keyNameInput}
-                        onChange={(e) => setKeyNameInput(e.target.value)}
-                        placeholder={`e.g. My ${selectedProvider.toUpperCase()} Key`}
-                        style={{
-                          background: 'rgba(var(--panel-rgb), 0.9)',
-                          border: '1px solid rgba(var(--ink-rgb), 0.12)',
-                          borderRadius: '8px',
-                          padding: '8px 10px',
-                          color: 'var(--text-main)',
-                          fontSize: '0.8rem',
-                          outline: 'none',
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Secret Key Input */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                      Secret API Key
-                    </label>
-                    <div style={{ position: 'relative' }}>
-                      <input
-                        type={showKeySecret ? 'text' : 'password'}
-                        value={keyValueInput}
-                        onChange={(e) => setKeyValueInput(e.target.value)}
-                        placeholder={
-                          selectedProvider === 'gemini'
-                            ? 'AIzaSy...'
-                            : selectedProvider === 'openai'
-                            ? 'sk-proj-...'
-                            : selectedProvider === 'anthropic'
-                            ? 'sk-ant-...'
-                            : selectedProvider === 'deepseek'
-                            ? 'sk-...'
-                            : 'Optional token for local cluster'
-                        }
-                        style={{
-                          width: '100%',
-                          background: 'rgba(var(--panel-rgb), 0.9)',
-                          border: '1px solid rgba(99, 102, 241, 0.4)',
-                          borderRadius: '8px',
-                          padding: '9px 36px 9px 12px',
-                          color: 'var(--text-main)',
-                          fontSize: '0.85rem',
-                          fontFamily: 'monospace',
-                          outline: 'none',
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowKeySecret(!showKeySecret)}
-                        style={{
-                          position: 'absolute',
-                          right: '10px',
-                          top: '50%',
-                          transform: 'translateY(-50%)',
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--text-muted)',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {showKeySecret ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Optional Custom Endpoint for DeepSeek / Local */}
-                  {(selectedProvider === 'deepseek' || selectedProvider === 'local_llm') && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                        Custom API Endpoint URL
-                      </label>
-                      <input
-                        type="text"
-                        value={endpointInput}
-                        onChange={(e) => setEndpointInput(e.target.value)}
-                        placeholder={selectedProvider === 'deepseek' ? 'https://api.deepseek.com/v1' : 'http://localhost:11434/v1'}
-                        style={{
-                          background: 'rgba(var(--panel-rgb), 0.9)',
-                          border: '1px solid rgba(var(--ink-rgb), 0.12)',
-                          borderRadius: '8px',
-                          padding: '8px 10px',
-                          color: 'var(--text-main)',
-                          fontSize: '0.8rem',
-                          fontFamily: 'monospace',
-                          outline: 'none',
-                        }}
-                      />
-                    </div>
-                  )}
-
-                  {/* Default Checkbox */}
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-body)' }}>
-                    <input
-                      type="checkbox"
-                      checked={isDefaultInput}
-                      onChange={(e) => setIsDefaultInput(e.target.checked)}
-                      style={{ accentColor: '#6366f1' }}
-                    />
-                    <span>Set as active default model for QA report generation</span>
-                  </label>
-
-                  <button
-                    type="submit"
-                    disabled={isSubmittingKey}
-                    className="btn btn-primary"
-                    style={{
-                      padding: '10px 16px',
-                      fontSize: '0.85rem',
-                      borderRadius: '8px',
-                      fontWeight: 700,
-                      marginTop: '4px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                    }}
-                  >
-                    {isSubmittingKey ? (
-                      <>
-                        <TbLoader2 size={16} className="pulse" />
-                        <span>Saving API Integration...</span>
-                      </>
-                    ) : (
-                      <>
-                        <TbSparkles size={16} />
-                        <span>Integrate {selectedProvider.toUpperCase()} Key</span>
-                      </>
-                    )}
-                  </button>
-                </form>
-              )}
-
-              {/* Helpful provider documentation links */}
-              <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', paddingTop: '4px', borderTop: '1px solid rgba(var(--ink-rgb), 0.05)' }}>
-                <a
-                  href="https://aistudio.google.com/app/apikey"
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ fontSize: '0.74rem', color: '#4f46e5', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                >
-                  <RiGoogleFill size={12} /> Google AI Studio <TbExternalLink size={11} />
-                </a>
-                <a
-                  href="https://platform.openai.com/api-keys"
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ fontSize: '0.74rem', color: '#059669', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                >
-                  <RiOpenaiFill size={12} /> OpenAI Platform <TbExternalLink size={11} />
-                </a>
-                <a
-                  href="https://console.anthropic.com/"
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ fontSize: '0.74rem', color: '#d97706', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                >
-                  <SiAnthropic size={11} /> Anthropic Console <TbExternalLink size={11} />
-                </a>
-              </div>
-            </div>
-
-            {/* Supabase Cloud Storage (20 MB Per-User Limit) */}
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px',
-                padding: '16px',
-                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(56, 189, 248, 0.05))',
-                border: '1px solid rgba(56, 189, 248, 0.22)',
-                borderRadius: '14px',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <TbDatabase size={20} color="#0284c7" />
-                  <span style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                    Supabase Cloud Report Storage
-                  </span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span
-                    style={{
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      padding: '3px 8px',
-                      borderRadius: '6px',
-                      background: 'rgba(56, 189, 248, 0.15)',
-                      color: '#0284c7',
-                      border: '1px solid rgba(56, 189, 248, 0.3)',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
+                    <span>Supabase Cloud Report Storage</span>
+                  </h3>
+                  <span className="chip chip--sm chip--accent">
                     <TbCloudDownload size={13} /> Direct Cloud Download
                   </span>
                 </div>
-              </div>
 
-              {/* Progress bar & metrics */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>
-                    Storage Used ({storageData?.file_count ?? 0} files)
-                  </span>
-                  <span style={{ fontWeight: 700, color: storageData?.is_quota_exceeded ? '#ef4444' : 'var(--text-main)' }}>
-                    {storageData ? `${storageData.used_mb.toFixed(2)} MB / ${storageData.limit_mb.toFixed(0)} MB` : '0.00 MB / 20 MB'}
-                    {' '}
-                    <span style={{ color: 'var(--text-subtle)', fontWeight: 500 }}>
-                      ({storageData ? `${storageData.used_percent.toFixed(1)}%` : '0%'})
+                {/* Progress bar & metrics */}
+                <div className={styles.profileSection}>
+                  <div className={styles.profileMeterHead}>
+                    <span>Storage Used ({storageData?.file_count ?? 0} files)</span>
+                    <span className={`${styles.profileMeterValue} ${storageData?.is_quota_exceeded ? styles.profileMeterValueOver : ''}`}>
+                      {storageData ? `${storageData.used_mb.toFixed(2)} MB / ${storageData.limit_mb.toFixed(0)} MB` : '0.00 MB / 20 MB'}{' '}
+                      <span style={{ color: 'var(--text-subtle)', fontWeight: 500 }}>
+                        ({storageData ? `${storageData.used_percent.toFixed(1)}%` : '0%'})
+                      </span>
                     </span>
-                  </span>
+                  </div>
+
+                  <div
+                    className={styles.profileMeter}
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(storagePercent)}
+                    aria-label="Cloud storage used"
+                  >
+                    <div className={styles.profileMeterFill} style={{ transform: `scaleX(${storagePercent / 100})` }} />
+                  </div>
                 </div>
 
-                <div
-                  style={{
-                    width: '100%',
-                    height: '8px',
-                    borderRadius: '4px',
-                    background: 'rgba(var(--ink-rgb), 0.08)',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <div
-                    style={{
-                      height: '100%',
-                      width: `${Math.min(storageData?.used_percent ?? 0, 100)}%`,
-                      background: storageData?.is_quota_exceeded
-                        ? 'linear-gradient(90deg, #ef4444, #dc2626)'
-                        : (storageData?.used_percent ?? 0) > 75
-                        ? 'linear-gradient(90deg, #f59e0b, #d97706)'
-                        : 'linear-gradient(90deg, #0284c7, #6366f1)',
-                      borderRadius: '4px',
-                      transition: 'width 0.4s ease',
-                    }}
+                <div className={styles.profileMeterNote}>
+                  <span>Dedicated 20 MB bucket quota per user</span>
+                  <span>Reports stored in Supabase bucket</span>
+                </div>
+
+                {storageData?.is_quota_exceeded && (
+                  <div className={`${styles.authBanner} ${styles.authBannerError}`} role="alert">
+                    <TbAlertCircle size={15} />
+                    <span>20 MB quota limit reached. Delete older scans to free cloud storage space.</span>
+                  </div>
+                )}
+              </section>
+
+              {/* Subscription & Plan Status */}
+              <div className={`surface-inset ${styles.profilePlanRow}`}>
+                <div>
+                  <div className={styles.profilePlanLabel}>Current Subscription</div>
+                  <div className={styles.profilePlanValue}>{userPlan} Tier</div>
+                </div>
+                <Link href="/pricing" onClick={closeProfileModal} className="btn btn-primary btn-sm">
+                  <TbCreditCard size={14} /> View plans
+                </Link>
+              </div>
+
+              {/* Account Preferences */}
+              <div className={styles.profileSection}>
+                <span className="section-eyebrow">Preferences</span>
+
+                <div className={`${styles.profileRaised} ${styles.profilePrefRow}`}>
+                  <label className={styles.profilePrefLabel} htmlFor="profile-notifications">
+                    <TbBell size={16} /> Email Scan Reports
+                  </label>
+                  <input
+                    id="profile-notifications"
+                    type="checkbox"
+                    checked={notificationsEnabled}
+                    onChange={(e) => setNotificationsEnabled(e.target.checked)}
+                    style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
                   />
                 </div>
-              </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-subtle)' }}>
-                <span>Dedicated 20 MB bucket quota per user</span>
-                <span style={{ color: 'var(--text-muted)' }}>Reports stored in Supabase bucket</span>
-              </div>
-
-              {storageData?.is_quota_exceeded && (
-                <div
-                  style={{
-                    padding: '8px 10px',
-                    borderRadius: '8px',
-                    background: 'rgba(239, 68, 68, 0.1)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                    color: '#b91c1c',
-                    fontSize: '0.75rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                >
-                  <TbAlertCircle size={15} color="#ef4444" />
-                  <span>20 MB quota limit reached. Delete older scans to free cloud storage space.</span>
+                <div className={`${styles.profileRaised} ${styles.profilePrefRow} tone-info`}>
+                  <label className={styles.profilePrefLabel} htmlFor="profile-viewport">
+                    <TbDeviceDesktop size={16} /> Default Testing Viewport
+                  </label>
+                  <select
+                    id="profile-viewport"
+                    value={defaultViewport}
+                    onChange={(e) => setDefaultViewport(e.target.value)}
+                    className={styles.profileInput}
+                  >
+                    <option value="all">Desktop + Mobile + Tablet</option>
+                    <option value="desktop">Desktop Only</option>
+                    <option value="mobile">Mobile Only</option>
+                  </select>
                 </div>
-              )}
-            </div>
-
-            {/* Subscription & Plan Status */}
-            <div style={{ padding: '14px', background: 'rgba(99, 102, 241, 0.06)', border: '1px solid rgba(99, 102, 241, 0.2)', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#4338ca' }}>Current Subscription</div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-heading)', textTransform: 'capitalize' }}>{userPlan} Tier</div>
               </div>
-              <Link
-                href="/pricing"
-                onClick={closeProfileModal}
-                className="btn btn-primary"
-                style={{ padding: '7px 14px', fontSize: '0.82rem', borderRadius: '8px' }}
+
+              {/* Log Out Button */}
+              <button
+                type="button"
+                onClick={async () => {
+                  closeProfileModal();
+                  await signOut();
+                }}
+                className={`btn btn-secondary ${styles.profileLogoutBtn}`}
               >
-                <TbCreditCard size={14} /> View plans
-              </Link>
+                <RiLogoutBoxRLine size={16} />
+                <span>Log Out</span>
+              </button>
             </div>
-
-            {/* Account Preferences */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ fontSize: '0.82rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-subtle)' }}>
-                Preferences
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'rgba(var(--ink-rgb), 0.02)', borderRadius: '10px', border: '1px solid rgba(var(--ink-rgb), 0.05)' }}>
-                <span style={{ fontSize: '0.88rem', color: 'var(--text-body)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <TbBell size={16} color="#4f46e5" /> Email Scan Reports
-                </span>
-                <input
-                  type="checkbox"
-                  checked={notificationsEnabled}
-                  onChange={(e) => setNotificationsEnabled(e.target.checked)}
-                  style={{ width: '16px', height: '16px', accentColor: '#6366f1' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'rgba(var(--ink-rgb), 0.02)', borderRadius: '10px', border: '1px solid rgba(var(--ink-rgb), 0.05)' }}>
-                <span style={{ fontSize: '0.88rem', color: 'var(--text-body)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <TbDeviceDesktop size={16} color="#0284c7" /> Default Testing Viewport
-                </span>
-                <select
-                  value={defaultViewport}
-                  onChange={(e) => setDefaultViewport(e.target.value)}
-                  style={{ background: 'var(--surface-elevated)', color: 'var(--text-main)', border: '1px solid rgba(var(--ink-rgb), 0.1)', borderRadius: '6px', padding: '4px 8px', fontSize: '0.8rem' }}
-                >
-                  <option value="all">Desktop + Mobile + Tablet</option>
-                  <option value="desktop">Desktop Only</option>
-                  <option value="mobile">Mobile Only</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Log Out Button */}
-            <button
-              type="button"
-              onClick={async () => {
-                closeProfileModal();
-                await signOut();
-              }}
-              className="btn btn-secondary"
-              style={{ padding: '10px 16px', color: '#dc2626', borderColor: 'rgba(239, 68, 68, 0.3)', background: 'rgba(239, 68, 68, 0.06)', width: '100%', marginTop: '4px' }}
-            >
-              <RiLogoutBoxRLine size={16} />
-              <span>Log Out</span>
-            </button>
-          </div>
+          </motion.div>
         </motion.div>
-      </motion.div>
       )}
     </AnimatePresence>
   );

@@ -18,6 +18,13 @@ import { HiSparkles } from 'react-icons/hi2';
 import { useAuth } from '../../context/AuthContext';
 import styles from '../../app/page.module.css';
 
+const tierChipClass = (isAdmin: boolean, plan: string) => {
+  if (isAdmin) return 'chip--violet';
+  if (plan === 'pro') return 'chip--primary';
+  if (plan === 'enterprise') return 'chip--warning';
+  return 'chip--neutral';
+};
+
 export const NavBar: React.FC = () => {
   const pathname = usePathname();
   const { session, userPlan, userRole, isAdmin: authIsAdmin, openAuthModal, openProfileModal, signOut } = useAuth();
@@ -36,225 +43,120 @@ export const NavBar: React.FC = () => {
     setMobileMenuOpen(false);
   }, [pathname]);
 
+  const navItems = [
+    { href: '/', label: 'Home', mobileLabel: 'Home', Icon: RiHome5Line, active: isHome, admin: false },
+    { href: '/dashboard', label: 'Dashboard', mobileLabel: 'Dashboard', Icon: TbDashboard, active: isDashboard, admin: false },
+    { href: '/pricing', label: 'Pricing', mobileLabel: 'Pricing & Plans', Icon: TbCreditCard, active: isPricing, admin: false },
+    { href: '/blog', label: 'Blog', mobileLabel: 'Engineering Blog', Icon: RiArticleLine, active: isBlog, admin: false },
+    ...(userIsAdmin
+      ? [{ href: '/admin', label: 'Admin', mobileLabel: 'Admin Console', Icon: RiShieldUserFill, active: isAdmin, admin: true }]
+      : []),
+  ];
+
+  const avatarChar = session?.user?.email ? session.user.email[0].toUpperCase() : null;
+  const tierLabel = userIsAdmin ? 'ADMIN' : userPlan.toUpperCase();
+  const tierChip = tierChipClass(userIsAdmin, userPlan);
+
   return (
-    <header className={styles.header} style={{ position: 'relative', zIndex: 100 }}>
+    <header className={`${styles.header} glass-3d`}>
       {/* Brand Logo */}
-      <Link href="/" className={styles.logo} onClick={() => setMobileMenuOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
-        <img
-          src="/logo-icon.png"
-          alt="JASUSS.TECH Emblem"
-          width={36}
-          height={36}
-          style={{ width: '36px', height: '36px', objectFit: 'contain', filter: 'drop-shadow(0 0 10px rgba(56, 189, 248, 0.5))' }}
-        />
-        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'baseline', fontWeight: 800, letterSpacing: '-0.02em', fontSize: '1.25rem', color: 'var(--text-main)' }}>
+      <Link href="/" className={styles.logo} onClick={() => setMobileMenuOpen(false)} aria-label="JASUSS.TECH home">
+        <img src="/logo-icon.png" alt="" width={36} height={36} className={styles.logoMark} />
+        <span className={styles.logoText}>
           <span>JASUSS</span>
-          <span className={styles.logoSub} style={{ color: '#0284c7', marginLeft: '2px', fontWeight: 900 }}>.TECH</span>
-        </div>
+          <span className={styles.logoSub}>.TECH</span>
+        </span>
       </Link>
 
       {/* Desktop Navigation Links */}
       <nav className={styles.headerRight} aria-label="Main Navigation">
-        <Link
-          href="/"
-          className={`${styles.navLink} ${isHome ? styles.navLinkActive : ''}`}
-        >
-          <RiHome5Line size={17} />
-          <span>Home</span>
-        </Link>
-
-        <Link
-          href="/dashboard"
-          className={`${styles.navLink} ${isDashboard ? styles.navLinkActive : ''}`}
-        >
-          <TbDashboard size={17} />
-          <span>Dashboard</span>
-        </Link>
-
-        <Link
-          href="/pricing"
-          className={`${styles.navLink} ${isPricing ? styles.navLinkActive : ''}`}
-        >
-          <TbCreditCard size={17} />
-          <span>Pricing</span>
-        </Link>
-
-        <Link
-          href="/blog"
-          className={`${styles.navLink} ${isBlog ? styles.navLinkActive : ''}`}
-        >
-          <RiArticleLine size={17} />
-          <span>Blog</span>
-        </Link>
-
-        {/* Admin Link ONLY visible if user has admin role */}
-        {userIsAdmin && (
+        {navItems.map(({ href, label, Icon, active, admin }) => (
           <Link
-            href="/admin"
-            className={`${styles.navLink} ${isAdmin ? styles.navLinkActive : ''}`}
-            style={{ color: '#9333ea' }}
+            key={href}
+            href={href}
+            className={`${styles.navLink} ${active ? styles.navLinkActive : ''} ${admin ? 'tone-violet' : ''}`}
+            aria-current={active ? 'page' : undefined}
           >
-            <RiShieldUserFill size={17} />
-            <span>Admin</span>
+            <Icon size={17} />
+            <span>{label}</span>
           </Link>
-        )}
+        ))}
 
-        <div className={styles.engineStatusPill}>
-          <div className={styles.engineStatusDot} />
-          <span>Engine Online</span>
+        <div className={styles.headerActions}>
+          <span className={`chip chip--success chip--live ${styles.headerEngine}`}>Engine online</span>
+
+          {session ? (
+            <>
+              {/* Quick direct dashboard navigation pill */}
+              {userIsAdmin ? (
+                <Link href="/admin" className={`${styles.navQuickLink} tone-violet`}>
+                  <RiShieldUserFill size={15} />
+                  <span>Admin Console</span>
+                </Link>
+              ) : (
+                <Link href="/dashboard" className={styles.navQuickLink}>
+                  <TbDashboard size={15} />
+                  <span>My Dashboard</span>
+                </Link>
+              )}
+
+              <button
+                type="button"
+                onClick={openProfileModal}
+                className={styles.userBadge}
+                title="Click to view Account & Settings"
+                aria-label="Open account and settings"
+              >
+                <span className={`${styles.userAvatar} ${userIsAdmin ? styles.userAvatarAdmin : ''}`} aria-hidden="true">
+                  {avatarChar ?? <RiUser3Line size={14} />}
+                </span>
+                <span className={`chip chip--sm ${tierChip}`}>{tierLabel}</span>
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" onClick={() => openAuthModal('signin')} className="btn btn-secondary btn-sm">
+                <RiLoginCircleLine size={16} />
+                <span>Sign In</span>
+              </button>
+              <button type="button" onClick={() => openAuthModal('signup')} className="btn btn-primary btn-sm">
+                <HiSparkles size={16} />
+                <span>Get Started</span>
+              </button>
+            </>
+          )}
         </div>
-
-        {session ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {/* Quick direct dashboard navigation pill */}
-            {userIsAdmin ? (
-              <Link
-                href="/admin"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '6px 14px',
-                  borderRadius: '10px',
-                  background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(99, 102, 241, 0.25))',
-                  border: '1px solid rgba(168, 85, 247, 0.45)',
-                  color: '#7e22ce',
-                  fontSize: '0.82rem',
-                  fontWeight: 700,
-                  boxShadow: '0 0 16px rgba(168, 85, 247, 0.25)',
-                  transition: 'all 0.2s ease',
-                  textDecoration: 'none',
-                }}
-              >
-                <RiShieldUserFill size={15} color="#9333ea" />
-                <span>Admin Console</span>
-              </Link>
-            ) : (
-              <Link
-                href="/dashboard"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '6px 14px',
-                  borderRadius: '10px',
-                  background: 'rgba(99, 102, 241, 0.15)',
-                  border: '1px solid rgba(99, 102, 241, 0.35)',
-                  color: '#4f46e5',
-                  fontSize: '0.82rem',
-                  fontWeight: 700,
-                  transition: 'all 0.2s ease',
-                  textDecoration: 'none',
-                }}
-              >
-                <TbDashboard size={15} color="#4f46e5" />
-                <span>My Dashboard</span>
-              </Link>
-            )}
-
-            <button
-              onClick={openProfileModal}
-              className={styles.userBadge}
-              style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
-              title="Click to view Account & Settings"
-            >
-              <div className={styles.userAvatar}>
-                {session.user?.email ? session.user.email[0].toUpperCase() : <RiUser3Line size={14} />}
-              </div>
-              <span
-                className={`${styles.tierPill} ${
-                  userIsAdmin
-                    ? styles.tierEnterprise
-                    : userPlan === 'pro'
-                    ? styles.tierPro
-                    : userPlan === 'enterprise'
-                    ? styles.tierEnterprise
-                    : styles.tierFree
-                }`}
-                style={
-                  userIsAdmin
-                    ? {
-                        background: 'rgba(168, 85, 247, 0.2)',
-                        color: '#9333ea',
-                        border: '1px solid rgba(168, 85, 247, 0.4)',
-                        fontWeight: 800,
-                      }
-                    : undefined
-                }
-              >
-                {userIsAdmin ? 'ADMIN' : userPlan.toUpperCase()}
-              </span>
-            </button>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <button
-              onClick={() => openAuthModal('signin')}
-              className={styles.headerSignInBtn}
-            >
-              <RiLoginCircleLine size={16} />
-              <span>Sign In</span>
-            </button>
-            <button
-              onClick={() => openAuthModal('signup')}
-              className={styles.headerGetStartedBtn}
-            >
-              <HiSparkles size={16} />
-              <span>Get Started</span>
-            </button>
-          </div>
-        )}
       </nav>
 
       {/* Mobile & Tablet Controls (Right aligned on <= 900px) */}
       <div className={styles.mobileHeaderControls}>
         {session ? (
           <button
+            type="button"
             onClick={openProfileModal}
             className={styles.userBadge}
-            style={{ cursor: 'pointer', padding: '4px 8px' }}
             title="Profile"
+            aria-label="Open account and settings"
           >
-            <div className={styles.userAvatar} style={{ width: 26, height: 26, fontSize: '0.75rem' }}>
-              {session.user?.email ? session.user.email[0].toUpperCase() : <RiUser3Line size={13} />}
-            </div>
-            <span
-              className={`${styles.tierPill} ${
-                userIsAdmin
-                  ? styles.tierEnterprise
-                  : userPlan === 'pro'
-                  ? styles.tierPro
-                  : userPlan === 'enterprise'
-                  ? styles.tierEnterprise
-                  : styles.tierFree
-              }`}
-              style={{
-                fontSize: '0.65rem',
-                padding: '1px 6px',
-                background: userIsAdmin ? 'rgba(168, 85, 247, 0.2)' : undefined,
-                color: userIsAdmin ? '#9333ea' : undefined,
-                border: userIsAdmin ? '1px solid rgba(168, 85, 247, 0.4)' : undefined,
-                fontWeight: 800,
-              }}
-            >
-              {userIsAdmin ? 'ADMIN' : userPlan.toUpperCase()}
+            <span className={`${styles.userAvatar} ${styles.userAvatarSm} ${userIsAdmin ? styles.userAvatarAdmin : ''}`} aria-hidden="true">
+              {avatarChar ?? <RiUser3Line size={13} />}
             </span>
+            <span className={`chip chip--sm ${tierChip}`}>{tierLabel}</span>
           </button>
         ) : (
-          <button
-            onClick={() => openAuthModal('signin')}
-            className={styles.mobileSignInBtn}
-          >
+          <button type="button" onClick={() => openAuthModal('signin')} className="btn btn-secondary btn-sm">
             Sign In
           </button>
         )}
 
         {/* Hamburger Toggle Button */}
         <button
+          type="button"
           onClick={() => setMobileMenuOpen((prev) => !prev)}
           className={styles.mobileMenuToggle}
           aria-label={mobileMenuOpen ? 'Close Navigation Menu' : 'Open Navigation Menu'}
           aria-expanded={mobileMenuOpen}
+          aria-controls="mobile-nav-drawer"
         >
           {mobileMenuOpen ? <RiCloseLine size={24} /> : <RiMenu3Line size={24} />}
         </button>
@@ -262,115 +164,73 @@ export const NavBar: React.FC = () => {
 
       {/* Mobile & Tablet Dropdown Drawer */}
       {mobileMenuOpen && (
-        <div className={styles.mobileNavDrawer}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <Link
-              href="/"
-              onClick={() => setMobileMenuOpen(false)}
-              className={`${styles.mobileNavLink} ${isHome ? styles.mobileNavLinkActive : ''}`}
-            >
-              <RiHome5Line size={18} />
-              <span>Home</span>
-            </Link>
-
-            <Link
-              href="/dashboard"
-              onClick={() => setMobileMenuOpen(false)}
-              className={`${styles.mobileNavLink} ${isDashboard ? styles.mobileNavLinkActive : ''}`}
-            >
-              <TbDashboard size={18} />
-              <span>Dashboard</span>
-            </Link>
-
-            <Link
-              href="/pricing"
-              onClick={() => setMobileMenuOpen(false)}
-              className={`${styles.mobileNavLink} ${isPricing ? styles.mobileNavLinkActive : ''}`}
-            >
-              <TbCreditCard size={18} />
-              <span>Pricing &amp; Plans</span>
-            </Link>
-
-            <Link
-              href="/blog"
-              onClick={() => setMobileMenuOpen(false)}
-              className={`${styles.mobileNavLink} ${isBlog ? styles.mobileNavLinkActive : ''}`}
-            >
-              <RiArticleLine size={18} />
-              <span>Engineering Blog</span>
-            </Link>
-
-            {userIsAdmin && (
+        <div id="mobile-nav-drawer" className={styles.mobileNavDrawer}>
+          <nav className={styles.mobileNavList} aria-label="Mobile Navigation">
+            {navItems.map(({ href, mobileLabel, Icon, active, admin }) => (
               <Link
-                href="/admin"
+                key={href}
+                href={href}
                 onClick={() => setMobileMenuOpen(false)}
-                className={`${styles.mobileNavLink} ${isAdmin ? styles.mobileNavLinkActive : ''}`}
-                style={{ color: '#9333ea' }}
+                className={`${styles.mobileNavLink} ${active ? styles.mobileNavLinkActive : ''} ${admin ? 'tone-violet' : ''}`}
+                aria-current={active ? 'page' : undefined}
               >
-                <RiShieldUserFill size={18} />
-                <span>Admin Console</span>
+                <Icon size={18} />
+                <span>{mobileLabel}</span>
               </Link>
-            )}
-          </div>
+            ))}
+          </nav>
 
-          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(var(--ink-rgb), 0.08)' }}>
-            <div className={styles.engineStatusPill} style={{ width: '100%', justifyContent: 'center', marginBottom: '12px' }}>
-              <div className={styles.engineStatusDot} />
-              <span>Nexus Engine Online · 99.9%</span>
+          <div className={styles.mobileNavFooter}>
+            <div className={styles.mobileNavStatus}>
+              <span className="chip chip--success chip--live">Nexus Engine Online · 99.9%</span>
             </div>
 
             {session ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <>
                 <button
+                  type="button"
                   onClick={() => {
                     setMobileMenuOpen(false);
                     openProfileModal();
                   }}
                   className="btn btn-secondary"
-                  style={{ width: '100%', justifyContent: 'center', fontSize: '0.85rem' }}
+                  style={{ width: '100%' }}
                 >
                   <RiUser3Line size={16} />
                   <span>Account &amp; API Key</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     setMobileMenuOpen(false);
                     signOut();
                   }}
-                  className="btn btn-secondary"
-                  style={{
-                    width: '100%',
-                    justifyContent: 'center',
-                    fontSize: '0.85rem',
-                    color: '#dc2626',
-                    borderColor: 'rgba(239, 68, 68, 0.3)',
-                    background: 'rgba(239, 68, 68, 0.06)',
-                  }}
+                  className={`btn btn-secondary ${styles.profileLogoutBtn}`}
                 >
                   <RiLogoutBoxRLine size={16} />
                   <span>Log Out</span>
                 </button>
-              </div>
+              </>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className={styles.mobileNavAuthGrid}>
                 <button
+                  type="button"
                   onClick={() => {
                     setMobileMenuOpen(false);
                     openAuthModal('signin');
                   }}
-                  className={styles.headerSignInBtn}
-                  style={{ width: '100%', justifyContent: 'center' }}
+                  className="btn btn-secondary"
                 >
                   <RiLoginCircleLine size={16} />
                   <span>Sign In</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     setMobileMenuOpen(false);
                     openAuthModal('signup');
                   }}
-                  className={styles.headerGetStartedBtn}
-                  style={{ width: '100%', justifyContent: 'center' }}
+                  className="btn btn-primary"
                 >
                   <HiSparkles size={16} />
                   <span>Get Started</span>
