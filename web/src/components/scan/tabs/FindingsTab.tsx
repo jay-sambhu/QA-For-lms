@@ -1,13 +1,38 @@
 "use client";
 
 import React, { useState, useMemo } from 'react';
-import { RiSearchLine } from 'react-icons/ri';
+import { RiSearchLine, RiBug2Line } from 'react-icons/ri';
 import { QAFinding } from '../../../types/qa';
-import styles from '../../../app/page.module.css';
+import { EmptyState3D, Surface3D, cx, type Tone } from '../../three';
+import s from '../scan3d.module.css';
 
 interface FindingsTabProps {
   findings: QAFinding[];
 }
+
+const ENTER_LIMIT = 8;
+const enterDelay = (step: number) =>
+  step < ENTER_LIMIT ? ({ ['--enter-delay' as string]: `${Math.min(step, 5) * 60}ms` } as React.CSSProperties) : undefined;
+
+const severityTone = (severity?: string): Tone => {
+  switch (severity?.toLowerCase()) {
+    case 'critical':
+    case 'high':
+      return 'danger';
+    case 'medium':
+      return 'warning';
+    case 'low':
+      return 'info';
+    default:
+      return 'neutral';
+  }
+};
+
+const severityChip = (severity?: string) => {
+  const tone = severityTone(severity);
+  const solid = severity?.toLowerCase() === 'critical';
+  return cx('chip chip--sm', `chip--${tone}`, solid ? 'chip--solid' : 'chip--dot');
+};
 
 export const FindingsTab: React.FC<FindingsTabProps> = ({ findings }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,108 +60,109 @@ export const FindingsTab: React.FC<FindingsTabProps> = ({ findings }) => {
   }, [findings, searchQuery, filterClass, filterSeverity, filterPriority]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div className={styles.filterBar}>
-        <div className={styles.searchInputWrapper}>
-          <RiSearchLine
-            size={17}
-            style={{
-              position: 'absolute',
-              left: '14px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: 'var(--text-subtle)',
-            }}
-          />
-          <input
-            type="text"
-            placeholder="Search findings by ID, title, or keyword..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className={styles.searchInput}
-          />
+    <div className={s.stackTight}>
+      <Surface3D pad="sm" aria-label="Finding filters">
+        <div className={s.filterBar}>
+          <div className={s.search}>
+            <RiSearchLine size={17} className={s.searchIcon} aria-hidden="true" />
+            <input
+              type="text"
+              placeholder="Search findings by ID, title, or keyword..."
+              aria-label="Search findings"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className={s.field}
+            />
+          </div>
+
+          <div className={s.selects}>
+            <select
+              className={cx(s.field, s.select)}
+              value={filterSeverity}
+              onChange={(e) => setFilterSeverity(e.target.value)}
+              title="Filter by Severity"
+              aria-label="Filter by severity"
+            >
+              <option value="ALL">All Severities</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+              <option value="info">Info</option>
+            </select>
+
+            <select
+              className={cx(s.field, s.select)}
+              value={filterPriority}
+              onChange={(e) => setFilterPriority(e.target.value)}
+              title="Filter by Priority"
+              aria-label="Filter by priority"
+            >
+              <option value="ALL">All Priorities</option>
+              <option value="P0">P0 (Blocker)</option>
+              <option value="P1">P1 (Critical)</option>
+              <option value="P2">P2 (Major)</option>
+              <option value="P3">P3 (Minor)</option>
+            </select>
+
+            <select
+              className={cx(s.field, s.select)}
+              value={filterClass}
+              onChange={(e) => setFilterClass(e.target.value)}
+              title="Filter by Classification"
+              aria-label="Filter by classification"
+            >
+              <option value="ALL">All Classifications</option>
+              <option value="confirmed_bug">Confirmed Bug</option>
+              <option value="high_confidence_candidate">Candidate</option>
+              <option value="needs_manual_review">Needs Review</option>
+              <option value="informational">Info</option>
+            </select>
+          </div>
         </div>
+      </Surface3D>
 
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <select
-            className={styles.filterSelect}
-            value={filterSeverity}
-            onChange={(e) => setFilterSeverity(e.target.value)}
-            title="Filter by Severity"
-          >
-            <option value="ALL">All Severities</option>
-            <option value="critical">Critical</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-            <option value="info">Info</option>
-          </select>
-
-          <select
-            className={styles.filterSelect}
-            value={filterPriority}
-            onChange={(e) => setFilterPriority(e.target.value)}
-            title="Filter by Priority"
-          >
-            <option value="ALL">All Priorities</option>
-            <option value="P0">P0 (Blocker)</option>
-            <option value="P1">P1 (Critical)</option>
-            <option value="P2">P2 (Major)</option>
-            <option value="P3">P3 (Minor)</option>
-          </select>
-
-          <select
-            className={styles.filterSelect}
-            value={filterClass}
-            onChange={(e) => setFilterClass(e.target.value)}
-            title="Filter by Classification"
-          >
-            <option value="ALL">All Classifications</option>
-            <option value="confirmed_bug">Confirmed Bug</option>
-            <option value="high_confidence_candidate">Candidate</option>
-            <option value="needs_manual_review">Needs Review</option>
-            <option value="informational">Info</option>
-          </select>
-        </div>
-      </div>
-
-      <div className={styles.findingsList}>
+      <div className={s.cardList}>
         {filteredFindings.map((finding, idx) => (
-          <div key={finding.id || idx} className={styles.findingItem}>
-            <div className={styles.findingHeader}>
-              <span className={styles.findingId}>{finding.id}</span>
-              <span
-                className={`${styles.severityBadge} ${
-                  styles[finding.severity?.toLowerCase()] ?? ''
-                }`}
-              >
-                {finding.severity?.toUpperCase()}
-              </span>
+          <Surface3D
+            key={finding.id || idx}
+            as="article"
+            accent={severityTone(finding.severity)}
+            className={cx(s.card, idx < ENTER_LIMIT && 'enter-3d')}
+            style={enterDelay(idx)}
+          >
+            <div className={s.cardHead}>
+              <span className={cx(s.cardId, s.mono)}>{finding.id}</span>
+              <div className={s.cardChips}>
+                {finding.priority && <span className="chip chip--sm chip--neutral">{finding.priority}</span>}
+                <span className={severityChip(finding.severity)}>{finding.severity?.toUpperCase()}</span>
+              </div>
             </div>
 
-            <h3 style={{ fontSize: '1.18rem', color: 'var(--text-main)', margin: '4px 0 8px' }}>
-              {finding.title}
-            </h3>
-            <p className={styles.findingDesc}>
+            <h3 className={s.cardTitle}>{finding.title}</h3>
+            <p className={s.cardDesc}>
               {finding.description || finding.manual_verification || 'No description provided.'}
             </p>
 
-            <div className={styles.tagsRow}>
-              {finding.priority && <span className={styles.chip}>Priority: {finding.priority}</span>}
+            <div className={s.tagRow}>
               {finding.user_impact && (
-                <span className={styles.chip}>Impact: {finding.user_impact.toUpperCase()}</span>
+                <span className="chip chip--sm chip--neutral">Impact: {finding.user_impact.toUpperCase()}</span>
               )}
               {finding.root_cause?.category && (
-                <span className={styles.chip}>
+                <span className="chip chip--sm chip--neutral">
                   Cause: {finding.root_cause.category.replace('_', ' ')}
                 </span>
               )}
-              {finding.page && <span className={styles.chip}>{finding.page}</span>}
+              {finding.page && (
+                <span className={cx('chip chip--sm chip--neutral', s.chipTruncate)} title={finding.page}>
+                  {finding.page}
+                </span>
+              )}
             </div>
 
-            <details className={styles.evidenceAccordion}>
-              <summary className={styles.evidenceSummary}>View Evidence & Remediation Steps</summary>
-              <div className={styles.evidenceBody}>
+            <details className={cx('surface-inset', s.evidence)}>
+              <summary className={s.evidenceSummary}>View Evidence & Remediation Steps</summary>
+              <div className={s.evidenceBody}>
                 {finding.root_cause?.summary && (
                   <p style={{ marginBottom: '8px' }}>
                     <strong>Root Cause Summary:</strong> {finding.root_cause.summary}
@@ -150,24 +176,28 @@ export const FindingsTab: React.FC<FindingsTabProps> = ({ findings }) => {
                 {finding.reproduction?.steps && finding.reproduction.steps.length > 0 && (
                   <div style={{ marginTop: '10px' }}>
                     <strong>Reproduction Steps:</strong>
-                    <ol style={{ paddingLeft: '20px', marginTop: '4px' }}>
+                    <ol>
                       {finding.reproduction.steps.map((step: string, sIdx: number) => (
-                        <li key={sIdx} style={{ marginBottom: '4px' }}>
-                          {step}
-                        </li>
+                        <li key={sIdx}>{step}</li>
                       ))}
                     </ol>
                   </div>
                 )}
               </div>
             </details>
-          </div>
+          </Surface3D>
         ))}
 
         {filteredFindings.length === 0 && (
-          <div className={styles.noFindings}>
-            ✨ No bugs or anomalies match the selected filters.
-          </div>
+          <Surface3D>
+            <EmptyState3D
+              compact
+              accent="success"
+              icon={<RiBug2Line size={16} />}
+              title="No findings match the selected filters"
+              description="No bugs or anomalies match the current search and filter combination."
+            />
+          </Surface3D>
         )}
       </div>
     </div>

@@ -1,89 +1,83 @@
 "use client";
 
 import React from 'react';
+import { TbChecklist } from 'react-icons/tb';
 import { TestCase } from '../../../types/qa';
-import styles from '../../../app/page.module.css';
+import { EmptyState3D, Surface3D, cx, type Tone } from '../../three';
+import s from '../scan3d.module.css';
 
 interface TestCasesTabProps {
   testCases: TestCase[];
 }
 
+const ENTER_LIMIT = 8;
+const enterDelay = (step: number) =>
+  step < ENTER_LIMIT ? ({ ['--enter-delay' as string]: `${Math.min(step, 5) * 60}ms` } as React.CSSProperties) : undefined;
+
+const statusTone = (status: string): Tone => {
+  if (status === 'passed') return 'success';
+  if (status === 'failed' || status === 'errored') return 'danger';
+  return 'warning';
+};
+
 export const TestCasesTab: React.FC<TestCasesTabProps> = ({ testCases }) => {
   if (!testCases || testCases.length === 0) {
     return (
-      <div className={styles.noFindings}>
-        No automated test cases were recorded for this scan.
-      </div>
+      <Surface3D>
+        <EmptyState3D
+          icon={<TbChecklist size={16} />}
+          title="No automated test cases"
+          description="No automated test cases were recorded for this scan."
+        />
+      </Surface3D>
     );
   }
 
   return (
-    <div className={styles.findingsList}>
+    <div className={s.cardList}>
       {testCases.map((tc, idx) => {
         const status = tc.status || 'passed';
-        const isPassed = status === 'passed';
-        const isFailed = status === 'failed';
-        const isErrored = status === 'errored';
-
-        const borderColor = isPassed
-          ? '#10b981'
-          : isFailed
-          ? '#ef4444'
-          : isErrored
-          ? '#f43f5e'
-          : '#f59e0b';
-        const badgeBg = isPassed
-          ? 'rgba(16, 185, 129, 0.2)'
-          : isFailed
-          ? 'rgba(239, 68, 68, 0.2)'
-          : 'rgba(245, 158, 11, 0.2)';
-        const badgeColor = isPassed ? '#059669' : isFailed ? '#dc2626' : '#d97706';
+        const tone = statusTone(status);
 
         return (
-          <div
+          <Surface3D
             key={tc.id || idx}
-            className={styles.findingItem}
-            style={{
-              borderLeftColor: borderColor,
-            }}
+            as="article"
+            accent={tone}
+            className={cx(s.card, idx < ENTER_LIMIT && 'enter-3d')}
+            style={enterDelay(idx)}
           >
-            <div className={styles.findingHeader}>
-              <span className={styles.findingId}>{tc.id}</span>
-              <span
-                className={styles.severityBadge}
-                style={{
-                  background: badgeBg,
-                  color: badgeColor,
-                }}
-              >
-                {status.toUpperCase()}
-              </span>
+            <div className={s.cardHead}>
+              <span className={cx(s.cardId, s.mono)}>{tc.id}</span>
+              <span className={cx('chip chip--sm chip--dot', `chip--${tone}`)}>{status.toUpperCase()}</span>
             </div>
 
-            <h3 style={{ fontSize: '1.12rem', color: 'var(--text-main)', margin: '4px 0 8px' }}>
-              {tc.title}
-            </h3>
+            <h3 className={s.cardTitle}>{tc.title}</h3>
 
-            <div className={styles.tagsRow}>
-              <span className={styles.chip}>{tc.category || 'General Assertion'}</span>
-              {tc.priority && <span className={styles.chip}>Priority: {tc.priority}</span>}
+            <div className={s.tagRow}>
+              <span className="chip chip--sm chip--neutral">{tc.category || 'General Assertion'}</span>
+              {tc.priority && <span className="chip chip--sm chip--neutral">Priority: {tc.priority}</span>}
               {tc.duration_ms !== undefined && (
-                <span className={styles.chip}>{tc.duration_ms}ms</span>
+                <span className={cx('chip chip--sm chip--neutral', s.mono)}>{tc.duration_ms}ms</span>
               )}
-              {tc.source_page && <span className={styles.chip}>{tc.source_page}</span>}
+              {tc.source_page && (
+                <span className={cx('chip chip--sm chip--neutral', s.chipTruncate)} title={tc.source_page}>
+                  {tc.source_page}
+                </span>
+              )}
             </div>
 
-            <div style={{ fontSize: '0.9rem', color: 'var(--text-body)', marginTop: '8px' }}>
+            <div className={cx('surface-inset', s.resultPair)}>
               <div>
-                <strong style={{ color: 'var(--text-muted)' }}>Expected:</strong>{' '}
+                <strong>Expected</strong>
                 {tc.expected_result || 'N/A'}
               </div>
-              <div style={{ marginTop: '4px' }}>
-                <strong style={{ color: 'var(--text-muted)' }}>Actual:</strong>{' '}
+              <div>
+                <strong>Actual</strong>
                 {tc.actual_result || 'Assertion passed successfully.'}
               </div>
             </div>
-          </div>
+          </Surface3D>
         );
       })}
     </div>

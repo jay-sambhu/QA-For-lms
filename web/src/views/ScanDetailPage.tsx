@@ -3,20 +3,42 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { m as motion } from 'framer-motion';
 import {
   LuLoaderCircle as Loader2,
   LuTriangleAlert as AlertTriangle,
   LuArrowLeft as ArrowLeft,
   LuRefreshCw as RefreshCw,
 } from 'react-icons/lu';
+import { TbCloudDownload, TbFileTypePdf, TbFileSpreadsheet, TbJson, TbMarkdown } from 'react-icons/tb';
 import { useAuth, supabase } from '../context/AuthContext';
 import { downloadScanReport, type ServerReportFormat } from '../utils/download';
 import { ScanMonitor } from '../components/scan/ScanMonitor';
 import { ScanResults } from '../components/scan/ScanResults';
 import { AdBanner } from '../components/ads/AdBanner';
 import { QAReport, ProgressPayload, ScanStatus } from '../types/qa';
-import styles from '../app/page.module.css';
+import { PageHeader3D, Surface3D, cx } from '../components/three';
+import s from '../components/scan/scan3d.module.css';
+
+const FORMAT_ICONS: Record<ServerReportFormat, React.ReactNode> = {
+  pdf: <TbFileTypePdf size={16} color="var(--tone-danger)" />,
+  xlsx: <TbFileSpreadsheet size={16} color="var(--tone-success)" />,
+  json: <TbJson size={16} color="var(--tone-info)" />,
+  md: <TbMarkdown size={16} color="var(--tone-violet)" />,
+};
+
+const FORMAT_LABELS: Record<ServerReportFormat, string> = {
+  pdf: 'PDF',
+  xlsx: 'Excel',
+  json: 'JSON',
+  md: 'Markdown',
+};
+
+const statusChip = (status: ScanStatus) => {
+  if (status === 'completed') return <span className="chip chip--success chip--dot">Completed</span>;
+  if (status === 'failed' || status === 'error') return <span className="chip chip--danger chip--dot">Failed</span>;
+  if (status === 'cancelled') return <span className="chip chip--neutral chip--dot">Cancelled</span>;
+  return <span className="chip chip--info chip--live">{status === 'pending' ? 'Queued' : 'Running'}</span>;
+};
 
 export const ScanDetailPage: React.FC = () => {
   const params = useParams();
@@ -328,194 +350,179 @@ export const ScanDetailPage: React.FC = () => {
     }
   }, [sessionLoaded, session, router]);
 
+
   if (!sessionLoaded) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
-        <Loader2 size={36} className="pulse" color="#6366f1" />
-        <p style={{ color: 'var(--text-muted)' }}>Loading verification context...</p>
+      <div className={s.centered}>
+        <Loader2 size={36} className="pulse" color="var(--primary)" />
+        <p>Loading verification context...</p>
       </div>
     );
   }
 
   if (!session) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
-        <Loader2 size={36} className="pulse" color="#6366f1" />
-        <p style={{ color: 'var(--text-muted)' }}>Session unauthenticated. Redirecting to home...</p>
+      <div className={s.centered}>
+        <Loader2 size={36} className="pulse" color="var(--primary)" />
+        <p>Session unauthenticated. Redirecting to home...</p>
       </div>
     );
   }
 
+  const isLive = status === 'pending' || status === 'running';
+  const isTerminalIssue = status === 'failed' || status === 'cancelled' || status === 'error';
+  const headerTitle = isLive
+    ? 'Automated Test Execution'
+    : status === 'completed'
+    ? 'Autonomous QA Scan Report'
+    : status === 'cancelled'
+    ? 'Scan Stopped'
+    : isTerminalIssue
+    ? 'Scan Encountered An Issue'
+    : 'Scan Report';
+  const headerSubtitle = isLive
+    ? 'Executing multi-viewport crawler, synthetic user journeys, and defect analysis in parallel.'
+    : status === 'completed'
+    ? 'AI-verified findings, automated test cases and responsive QA results for this run.'
+    : 'Review the outcome below or launch a new scan from the dashboard.';
+  const headerAccent = isLive ? 'info' : status === 'completed' ? 'success' : isTerminalIssue ? (status === 'cancelled' ? 'neutral' : 'danger') : undefined;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', padding: '20px 0 60px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <Link
-          href="/dashboard"
-          className="btn btn-secondary"
-          style={{ padding: '8px 14px', fontSize: '0.85rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+    <div className="page-shell">
+      <div className="enter-3d">
+        <PageHeader3D
+          eyebrow="Scan report"
+          title={headerTitle}
+          badge={statusChip(status)}
+          subtitle={headerSubtitle}
+          accent={headerAccent}
+          actions={
+            <Link href="/dashboard" className="btn btn-secondary btn-sm">
+              <ArrowLeft size={14} /> Back to Dashboard
+            </Link>
+          }
         >
-          <ArrowLeft size={14} /> Back to Dashboard
-        </Link>
-        <span style={{ color: 'var(--text-subtle)', fontSize: '0.85rem', fontFamily: 'monospace' }}>
-          Scan ID: {scanId}
-        </span>
+          <span className={cx(s.mono, s.truncate)} style={{ fontSize: '0.8rem', color: 'var(--text-subtle)' }}>
+            Scan ID: {scanId}
+          </span>
+        </PageHeader3D>
       </div>
 
       {/* Running or Pending state */}
-      {(status === 'pending' || status === 'running') && (
-        <motion.div
-          className={styles.actionPanel}
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
-        >
-          <ScanMonitor
-            url={targetUrl || 'Target Web Application'}
-            progress={progress}
-            elapsedSeconds={elapsedSeconds}
-            logFeed={logFeed}
-            onStop={handleStopScan}
-          />
+      {isLive && (
+        <>
+          <Surface3D ring pad="lg" className="enter-3d" style={{ ['--enter-delay' as string]: '60ms' } as React.CSSProperties}>
+            <ScanMonitor
+              url={targetUrl || 'Target Web Application'}
+              progress={progress}
+              elapsedSeconds={elapsedSeconds}
+              logFeed={logFeed}
+              onStop={handleStopScan}
+            />
+          </Surface3D>
           {/* Ad banner — only for logged-in users during scan wait */}
-          <AdBanner
-            isAuthenticated={!!session?.access_token}
-          />
-        </motion.div>
+          <div className="enter-3d" style={{ ['--enter-delay' as string]: '120ms' } as React.CSSProperties}>
+            <AdBanner isAuthenticated={!!session?.access_token} />
+          </div>
+        </>
       )}
 
       {/* Completed state with Report */}
       {status === 'completed' && results && (
-        <motion.div
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35 }}
-        >
-          <ScanResults
-            results={results}
-            scanId={scanId}
-            sessionToken={session?.access_token}
-            onNewScan={() => router.push('/dashboard')}
-          />
-        </motion.div>
+        <ScanResults
+          results={results}
+          scanId={scanId}
+          sessionToken={session?.access_token}
+          onNewScan={() => router.push('/dashboard')}
+        />
       )}
 
       {/* Completed state while report is finalizing — transient, max ~10 s */}
       {status === 'completed' && !results && !reportUnavailable && (
-        <motion.div
-          className={styles.actionPanel}
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
-          style={{ textAlign: 'center', padding: '40px 24px 24px' }}
-        >
-          <Loader2 size={40} className="pulse" color="#4f46e5" style={{ margin: '0 auto 16px' }} />
-          <h3 style={{ fontSize: '1.4rem', color: 'var(--text-main)' }}>
-            Finalizing Quality Synthesis & Report...
-          </h3>
-          <p style={{ color: 'var(--text-muted)', maxWidth: '500px', margin: '8px auto 16px' }}>
-            Multi-viewport execution is complete. Generating compliance grading and executive findings.
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginBottom: '16px' }}>
-            <button
-              type="button"
-              onClick={handleManualRetry}
-              className="btn btn-secondary"
-              style={{ padding: '8px 16px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-            >
-              <RefreshCw size={14} /> Refresh Report Status
-            </button>
+        <>
+          <Surface3D accent="success" pad="lg" className="enter-3d" role="status">
+            <div className={s.state}>
+              <Loader2 size={40} className="pulse" color="var(--tone-success)" />
+              <h2 className={s.stateTitle}>Finalizing Quality Synthesis & Report...</h2>
+              <p className={s.stateDesc}>
+                Multi-viewport execution is complete. Generating compliance grading and executive findings.
+              </p>
+              <div className={s.stateActions}>
+                <button type="button" onClick={handleManualRetry} className="btn btn-secondary btn-sm">
+                  <RefreshCw size={14} /> Refresh Report Status
+                </button>
+              </div>
+            </div>
+          </Surface3D>
+          <div className="enter-3d" style={{ ['--enter-delay' as string]: '60ms' } as React.CSSProperties}>
+            <AdBanner isAuthenticated={!!session?.access_token} />
           </div>
-          <AdBanner isAuthenticated={!!session?.access_token} />
-        </motion.div>
+        </>
       )}
 
       {/* Completed but report not available inline — offer direct cloud downloads */}
       {status === 'completed' && !results && reportUnavailable && (
-        <motion.div
-          className={styles.actionPanel}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          style={{ textAlign: 'center', padding: '48px 24px' }}
-        >
-          <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>📋</div>
-          <h3 style={{ fontSize: '1.35rem', color: 'var(--text-main)', marginBottom: '8px' }}>
-            Report Ready — Download Directly
-          </h3>
-          <p style={{ color: 'var(--text-muted)', maxWidth: '520px', margin: '0 auto 28px', lineHeight: 1.6 }}>
-            Your QA report has been generated and saved to your cloud storage. Use the buttons below to
-            download it directly — no re-scanning required.
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
-            {(['pdf', 'xlsx', 'json', 'md'] as const).map((fmt) => (
-              <button
-                type="button"
-                key={fmt}
-                onClick={() => handleReportDownload(fmt)}
-                disabled={downloadingFormat === fmt}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '10px 20px',
-                  borderRadius: '10px',
-                  border: '1px solid rgba(var(--ink-rgb), 0.12)',
-                  background:
-                    fmt === 'pdf'
-                      ? 'rgba(239,68,68,0.1)'
-                      : fmt === 'xlsx'
-                      ? 'rgba(52,211,153,0.1)'
-                      : 'rgba(99,102,241,0.1)',
-                  color:
-                    fmt === 'pdf' ? '#dc2626' : fmt === 'xlsx' ? '#059669' : '#4f46e5',
-                  textDecoration: 'none',
-                  fontSize: '0.88rem',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                }}
-              >
-                {downloadingFormat === fmt ? '…' : fmt.toUpperCase()}
+        <Surface3D accent="success" pad="lg" className="enter-3d">
+          <div className={s.state}>
+            <span className="icon-well icon-well--solid icon-well--lg tone-success" aria-hidden="true">
+              <TbCloudDownload size={24} />
+            </span>
+            <h2 className={s.stateTitle}>Report Ready — Download Directly</h2>
+            <p className={s.stateDesc}>
+              Your QA report has been generated and saved to your cloud storage. Use the buttons below to
+              download it directly — no re-scanning required.
+            </p>
+            <div className={s.stateActions}>
+              {(['pdf', 'xlsx', 'json', 'md'] as const).map((fmt) => (
+                <button
+                  type="button"
+                  key={fmt}
+                  onClick={() => handleReportDownload(fmt)}
+                  disabled={downloadingFormat === fmt}
+                  className="btn btn-secondary"
+                >
+                  {downloadingFormat === fmt ? <Loader2 size={16} className="pulse" /> : FORMAT_ICONS[fmt]}
+                  {FORMAT_LABELS[fmt]}
+                </button>
+              ))}
+            </div>
+            <div className={s.stateActions}>
+              <button type="button" onClick={handleManualRetry} className="btn btn-primary btn-sm">
+                <RefreshCw size={14} /> Try Load Report Again
               </button>
-            ))}
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={handleManualRetry}
-            className="btn btn-secondary"
-            style={{ padding: '8px 16px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-          >
-            <RefreshCw size={14} /> Try Load Report Again
-          </button>
-        </motion.div>
+        </Surface3D>
       )}
 
       {/* Failed, Cancelled or Error State */}
-      {(status === 'failed' || status === 'cancelled' || status === 'error') && (
-        <div className={styles.adminTableCard} style={{ textAlign: 'center', padding: '48px 24px' }}>
-          <AlertTriangle size={36} color="#ef4444" style={{ margin: '0 auto 12px' }} />
-          <h3 style={{ fontSize: '1.4rem', color: 'var(--text-main)' }}>
-            {status === 'cancelled' ? 'Scan Stopped' : 'Scan Encountered An Issue'}
-          </h3>
-          <p style={{ color: 'var(--text-muted)', maxWidth: '500px', margin: '8px auto 24px' }}>
-            {error || 'The automated QA scan could not complete successfully.'}
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            {status === 'error' && (
-              <button
-                type="button"
-                onClick={handleManualRetry}
-                className="btn btn-secondary"
-                style={{ padding: '10px 20px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-              >
-                <RefreshCw size={15} /> Retry Connection
-              </button>
-            )}
-            <Link
-              href="/dashboard"
-              className="btn btn-primary"
-              style={{ textDecoration: 'none', padding: '10px 20px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+      {isTerminalIssue && (
+        <Surface3D accent={status === 'cancelled' ? 'neutral' : 'danger'} pad="lg" className="enter-3d" role="alert">
+          <div className={s.state}>
+            <span
+              className={cx('icon-well icon-well--solid icon-well--lg', status === 'cancelled' ? 'tone-neutral' : 'tone-danger')}
+              aria-hidden="true"
             >
-              <RefreshCw size={15} /> Launch New Scan
-            </Link>
+              <AlertTriangle size={24} />
+            </span>
+            <h2 className={s.stateTitle}>
+              {status === 'cancelled' ? 'Scan Stopped' : 'Scan Encountered An Issue'}
+            </h2>
+            <p className={s.stateDesc}>
+              {error || 'The automated QA scan could not complete successfully.'}
+            </p>
+            <div className={s.stateActions}>
+              {status === 'error' && (
+                <button type="button" onClick={handleManualRetry} className="btn btn-secondary">
+                  <RefreshCw size={15} /> Retry Connection
+                </button>
+              )}
+              <Link href="/dashboard" className="btn btn-primary">
+                <RefreshCw size={15} /> Launch New Scan
+              </Link>
+            </div>
           </div>
-        </div>
+        </Surface3D>
       )}
     </div>
   );

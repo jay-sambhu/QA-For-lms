@@ -4,13 +4,17 @@ import React, { useMemo } from 'react';
 import { RiBug2Line } from 'react-icons/ri';
 import { TbDeviceDesktop, TbClock, TbTestPipe } from 'react-icons/tb';
 import { QAReport } from '../../types/qa';
-import styles from '../../app/page.module.css';
+import { StatTile3D } from '../three';
 
 interface MetricsGridProps {
   results: QAReport;
+  /** Stagger step of the first tile (each tile adds one 60ms step) */
+  enterStep?: number;
 }
 
-export const MetricsGrid: React.FC<MetricsGridProps> = ({ results }) => {
+const enterDelay = (step: number) => ({ ['--enter-delay' as string]: `${step * 60}ms` }) as React.CSSProperties;
+
+export const MetricsGrid: React.FC<MetricsGridProps> = ({ results, enterStep = 1 }) => {
   const totalTestCases =
     results.qa_metrics?.test_cases?.total ?? results.test_cases?.length ?? 0;
   const passedTestCases = results.qa_metrics?.test_cases?.passed ?? 0;
@@ -43,46 +47,43 @@ export const MetricsGrid: React.FC<MetricsGridProps> = ({ results }) => {
   }, [durationSec, formattedDuration]);
 
   return (
-    <div className={styles.statsGrid}>
-      <div className={styles.statCard}>
-        <div className={styles.statHeader}>
-          <span>Total Test Cases</span>
-          <TbTestPipe size={20} color="#4f46e5" />
-        </div>
-        <div className={styles.statValue}>{totalTestCases}</div>
-        <div className={styles.statSub}>
-          {passedTestCases} Passed · {failedTestCases} Failed
-        </div>
+    <>
+      <div className="span-3 enter-3d" style={enterDelay(enterStep)}>
+        <StatTile3D
+          label="Total Test Cases"
+          value={totalTestCases}
+          accent="primary"
+          icon={<TbTestPipe size={20} />}
+          hint={`${passedTestCases} Passed · ${failedTestCases} Failed`}
+        />
       </div>
-
-      <div className={styles.statCard}>
-        <div className={styles.statHeader}>
-          <span>Total Findings</span>
-          <RiBug2Line size={20} color="#ef4444" />
-        </div>
-        <div className={styles.statValue}>{totalFindings}</div>
-        <div className={styles.statSub}>
-          {confirmedBugs} Confirmed {confirmedBugs === 1 ? 'Bug' : 'Bugs'}
-        </div>
+      <div className="span-3 enter-3d" style={enterDelay(enterStep + 1)}>
+        <StatTile3D
+          label="Total Findings"
+          value={totalFindings}
+          accent={confirmedBugs > 0 ? 'danger' : totalFindings > 0 ? 'warning' : 'success'}
+          icon={<RiBug2Line size={20} />}
+          hint={`${confirmedBugs} Confirmed ${confirmedBugs === 1 ? 'Bug' : 'Bugs'}`}
+        />
       </div>
-
-      <div className={styles.statCard}>
-        <div className={styles.statHeader}>
-          <span>Pages & Devices</span>
-          <TbDeviceDesktop size={20} color="#0284c7" />
-        </div>
-        <div className={styles.statValue}>{pagesCrawled}</div>
-        <div className={styles.statSub}>Desktop · iPhone 13 · iPad</div>
+      <div className="span-3 enter-3d" style={enterDelay(enterStep + 2)}>
+        <StatTile3D
+          label="Pages & Devices"
+          value={pagesCrawled}
+          accent="info"
+          icon={<TbDeviceDesktop size={20} />}
+          hint="Desktop · iPhone 13 · iPad"
+        />
       </div>
-
-      <div className={styles.statCard}>
-        <div className={styles.statHeader}>
-          <span>Execution Duration</span>
-          <TbClock size={20} color="#059669" />
-        </div>
-        <div className={styles.statValue}>{durationText}</div>
-        <div className={styles.statSub}>Parallel worker pipeline</div>
+      <div className="span-3 enter-3d" style={enterDelay(enterStep + 3)}>
+        <StatTile3D
+          label="Execution Duration"
+          value={durationText}
+          accent="neutral"
+          icon={<TbClock size={20} />}
+          hint="Parallel worker pipeline"
+        />
       </div>
-    </div>
+    </>
   );
 };

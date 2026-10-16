@@ -2,7 +2,8 @@
 
 import React from 'react';
 import { TbDeviceDesktop, TbDeviceMobile, TbDeviceTablet, TbActivity } from 'react-icons/tb';
-import styles from '../../app/page.module.css';
+import { cx } from '../three';
+import s from './scan3d.module.css';
 
 interface DeviceDeckProps {
   activeDeviceName: string;
@@ -10,75 +11,90 @@ interface DeviceDeckProps {
   defaultUrl?: string;
 }
 
-export const DeviceDeck: React.FC<DeviceDeckProps> = ({
-  activeDeviceName,
-  activeUrl,
-  defaultUrl,
-}) => {
-  const devices = [
-    {
-      id: 'desktop',
-      name: 'Desktop Chrome',
-      resolution: '1920 × 1080',
-      icon: <TbDeviceDesktop size={20} />,
-    },
-    {
-      id: 'iphone',
-      name: 'iPhone 13',
-      resolution: '390 × 844 (Touch)',
-      icon: <TbDeviceMobile size={20} />,
-    },
-    {
-      id: 'ipad',
-      name: 'iPad (gen 7)',
-      resolution: '820 × 1180 (Tablet)',
-      icon: <TbDeviceTablet size={20} />,
-    },
-  ];
+const DEVICES = [
+  {
+    id: 'desktop',
+    name: 'Desktop Chrome',
+    resolution: '1920 × 1080',
+    icon: <TbDeviceDesktop size={16} />,
+    deviceClass: 'deviceDesktop',
+    frameClass: 'frameDesktop',
+  },
+  {
+    id: 'ipad',
+    name: 'iPad (gen 7)',
+    resolution: '820 × 1180 (Tablet)',
+    icon: <TbDeviceTablet size={16} />,
+    deviceClass: 'deviceIpad',
+    frameClass: 'frameIpad',
+  },
+  {
+    id: 'iphone',
+    name: 'iPhone 13',
+    resolution: '390 × 844 (Touch)',
+    icon: <TbDeviceMobile size={16} />,
+    deviceClass: 'deviceIphone',
+    frameClass: 'frameIphone',
+  },
+] as const;
+
+export const DeviceDeck: React.FC<DeviceDeckProps> = ({ activeDeviceName, activeUrl, defaultUrl }) => {
+  const active = activeDeviceName.toLowerCase();
 
   return (
-    <div className={styles.deviceDeckSection}>
-      <div className={styles.deviceDeckTitleRow}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          <TbActivity size={16} color="#0284c7" /> Live Multi-Device Emulation Viewports
+    <div className={s.deck}>
+      <div className={s.deckHead}>
+        <span className="section-eyebrow">
+          <TbActivity size={14} /> Live multi-device emulation
         </span>
-        <span style={{ color: '#059669', fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.04em' }}>
-          ● 3 ISOLATED CONTEXTS ACTIVE
-        </span>
+        <span className="chip chip--sm chip--success chip--dot">3 isolated contexts active</span>
       </div>
 
-      <div className={styles.deviceDeckGrid}>
-        {devices.map((dev) => {
-          const isCrawlingThis =
-            activeDeviceName.toLowerCase().includes(dev.id) ||
-            activeDeviceName.toLowerCase().includes(dev.name.toLowerCase());
+      <div className={s.deckStage}>
+        {DEVICES.map((dev) => {
+          const isCrawlingThis = active.includes(dev.id) || active.includes(dev.name.toLowerCase());
+          const screenText = isCrawlingThis
+            ? activeUrl || defaultUrl || 'Navigating DOM...'
+            : 'Waiting for viewport pass...';
 
           return (
             <div
               key={dev.id}
-              className={`${styles.deviceCard} ${isCrawlingThis ? styles.deviceCardActive : ''}`}
+              className={cx(s.device, s[dev.deviceClass], isCrawlingThis && s.deviceActive)}
+              role="group"
+              aria-label={`${dev.name}: ${isCrawlingThis ? 'crawling now' : 'ready'}`}
             >
-              <div className={styles.deviceCardHeader}>
-                <div className={styles.deviceIconName}>
-                  <span style={{ color: isCrawlingThis ? '#4f46e5' : 'var(--text-subtle)' }}>{dev.icon}</span>
-                  <span>{dev.name}</span>
+              <div className={cx(s.frame, s[dev.frameClass])}>
+                <div className={s.screen}>
+                  {dev.id === 'desktop' && (
+                    <span className={s.screenChrome} aria-hidden="true">
+                      <i />
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                  )}
+                  <span className={s.screenLines} aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <span className={cx(s.screenUrl, s.truncate)} title={screenText}>
+                    {screenText}
+                  </span>
                 </div>
-                <span
-                  className={`${styles.deviceStatusPill} ${
-                    isCrawlingThis ? styles.devicePillActive : styles.devicePillIdle
-                  }`}
-                >
-                  {isCrawlingThis ? 'Crawling Now' : 'Ready'}
-                </span>
               </div>
 
-              <div className={styles.deviceMockupFrame}>
-                <div style={{ color: isCrawlingThis ? '#0284c7' : 'var(--text-muted)', fontSize: '0.78rem' }}>
-                  {isCrawlingThis
-                    ? activeUrl || defaultUrl || 'Navigating DOM...'
-                    : 'Waiting for viewport pass...'}
-                </div>
-                <span className={styles.deviceResolution}>{dev.resolution}</span>
+              <div className={s.deviceMeta}>
+                <span className={s.deviceName}>
+                  {dev.icon}
+                  {dev.name}
+                </span>
+                <span className={cx('chip chip--sm', isCrawlingThis ? 'chip--info chip--live' : 'chip--neutral')}>
+                  {isCrawlingThis ? 'Crawling now' : 'Ready'}
+                </span>
+                <span className={s.deviceRes}>{dev.resolution}</span>
               </div>
             </div>
           );

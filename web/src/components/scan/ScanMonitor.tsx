@@ -1,24 +1,24 @@
 "use client";
 
 import React, { useMemo } from 'react';
+import { RiGlobalLine, RiStopCircleFill, RiCheckDoubleFill, RiTerminalBoxLine } from 'react-icons/ri';
 import {
-  RiGlobalLine,
-  RiStopCircleFill,
-  RiCheckDoubleFill,
-  RiBug2Line,
-  RiTerminalBoxLine,
-} from 'react-icons/ri';
-import {
-  TbDeviceDesktop,
+  TbWorldSearch,
+  TbSitemap,
+  TbListCheck,
+  TbWand,
   TbBolt,
-  TbSparkles,
+  TbShieldCheck,
+  TbBug,
+  TbGitCompare,
+  TbAward,
   TbClock,
-  TbLoader2,
   TbBroadcast,
 } from 'react-icons/tb';
 import { DeviceDeck } from './DeviceDeck';
 import { ProgressPayload } from '../../types/qa';
-import styles from '../../app/page.module.css';
+import { cx } from '../three';
+import s from './scan3d.module.css';
 
 interface ScanMonitorProps {
   url: string;
@@ -28,6 +28,31 @@ interface ScanMonitorProps {
   maxPages?: number;
   onStop: () => void;
 }
+
+const PIPELINE = [
+  { id: 'DISCOVERING', label: 'Discover', icon: <TbWorldSearch size={16} /> },
+  { id: 'MODELING', label: 'Model', icon: <TbSitemap size={16} /> },
+  { id: 'PLANNING', label: 'Plan', icon: <TbListCheck size={16} /> },
+  { id: 'GENERATING', label: 'Generate', icon: <TbWand size={16} /> },
+  { id: 'EXECUTING', label: 'Execute', icon: <TbBolt size={16} /> },
+  { id: 'VERIFYING', label: 'Verify', icon: <TbShieldCheck size={16} /> },
+  { id: 'TRIAGING', label: 'Triage', icon: <TbBug size={16} /> },
+  { id: 'REGRESSION', label: 'Regression', icon: <TbGitCompare size={16} /> },
+  { id: 'SCORING', label: 'Score', icon: <TbAward size={16} /> },
+] as const;
+
+const PHASES = [
+  'Stage 1: Multi-Device Crawling',
+  'Stage 2: Interactive Testing',
+  'Stage 3: Defect Detection',
+  'Stage 4: Quality Synthesis',
+];
+
+const titleCase = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 
 export const ScanMonitor: React.FC<ScanMonitorProps> = ({
   url,
@@ -64,6 +89,16 @@ export const ScanMonitor: React.FC<ScanMonitorProps> = ({
     return 3;
   }, [progress?.stage, progress?.percent]);
 
+  const pipelineIndex = useMemo(() => {
+    const stage = progress?.stage?.toUpperCase();
+    if (stage === 'CREATED') return 0;
+    if (stage === 'COMPLETED') return PIPELINE.length;
+    const known = PIPELINE.findIndex((p) => p.id === stage);
+    if (known >= 0) return known;
+    const pct = Math.max(0, Math.min(100, progress?.percent || 0));
+    return Math.min(PIPELINE.length - 1, Math.floor((pct / 100) * PIPELINE.length));
+  }, [progress?.stage, progress?.percent]);
+
   const activeDeviceName = useMemo(() => {
     if (progress?.active_device) return progress.active_device;
     const msg = progress?.message || '';
@@ -73,163 +108,122 @@ export const ScanMonitor: React.FC<ScanMonitorProps> = ({
     return 'Desktop Chrome';
   }, [progress?.active_device, progress?.message]);
 
-  const stages = [
-    {
-      step: 1,
-      title: 'Multi-Device Crawl',
-      desc: 'Desktop, iPhone 13, iPad viewports',
-      icon: <TbDeviceDesktop size={18} />,
-    },
-    {
-      step: 2,
-      title: 'Interactive Testing',
-      desc: 'Forms, clicks, state transitions',
-      icon: <TbBolt size={18} />,
-    },
-    {
-      step: 3,
-      title: 'Defect Detection',
-      desc: 'Network errors, console, layout',
-      icon: <RiBug2Line size={18} />,
-    },
-    {
-      step: 4,
-      title: 'Quality Synthesis',
-      desc: 'Compliance grading & executive report',
-      icon: <TbSparkles size={18} />,
-    },
-  ];
+  const percent = Math.max(0, Math.min(100, progress?.percent || 5));
+  const stageLabel = progress?.stage ? titleCase(progress.stage) : PHASES[currentStageIndex];
+  const pageLabel = progress?.page_current
+    ? `Page ${progress.page_current} of ${progress.page_total || maxPages}`
+    : PHASES[currentStageIndex];
+  const allDone = pipelineIndex >= PIPELINE.length;
 
   return (
-    <div className={styles.loadingScreen}>
-      <div className={styles.loadingHeader}>
-        <div className={styles.loadingControlBar}>
-          <div className={styles.targetUrlBadge}>
-            <RiGlobalLine size={16} />
-            <span>Inspecting Target: {url}</span>
+    <div className={s.monitor}>
+      <div className={s.monitorHead}>
+        <div className={s.target}>
+          <span className="icon-well" aria-hidden="true">
+            <RiGlobalLine size={20} />
+          </span>
+          <div className={s.targetCopy}>
+            <span className="section-eyebrow">Inspecting target</span>
+            <span className={cx(s.targetUrl, s.truncate)} title={url}>
+              {url}
+            </span>
           </div>
-
-          <button
-            type="button"
-            onClick={onStop}
-            className={styles.stopScanBtn}
-            title="Stop and cancel the active scan"
-          >
-            <RiStopCircleFill size={16} color="#ef4444" />
-            <span>Stop Scan</span>
-          </button>
         </div>
 
-        <h2 style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '8px' }}>
-          Automated Test Execution Running
-        </h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.94rem' }}>
-          Executing multi-viewport crawler, synthetic user journeys, and defect analysis in parallel.
+        <button
+          type="button"
+          onClick={onStop}
+          className="btn btn-danger btn-sm"
+          title="Stop and cancel the active scan"
+        >
+          <RiStopCircleFill size={16} />
+          <span>Stop Scan</span>
+        </button>
+      </div>
+
+      <div className={s.readout}>
+        <span className={cx('stat-number stat-number--accent', s.readoutPct)}>{percent}%</span>
+        <div className={s.readoutMeta}>
+          <span className="chip chip--info chip--live">{stageLabel}</span>
+          <span className={s.readoutNumbers}>{pageLabel}</span>
+          <span className={cx('chip chip--neutral', s.mono, s.readoutElapsed)}>
+            <TbClock size={13} /> {formattedTime}
+          </span>
+        </div>
+        <div
+          className={s.progressTrack}
+          role="progressbar"
+          aria-label="Scan progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={percent}
+        >
+          <span className={s.progressFill} style={{ ['--p' as string]: percent / 100 } as React.CSSProperties} />
+        </div>
+        <p className={s.currentMessage} aria-live="polite">
+          {progress?.message || 'Inspecting DOM tree and verifying response status...'}
         </p>
       </div>
 
-      {/* Progress Bar Track */}
-      <div className={styles.progressBarWrapper}>
-        <div className={styles.progressInfoRow}>
-          <span className={styles.progressStageBadge}>
-            {progress?.stage
-              ? progress.stage.replace('_', ' ')
-              : currentStageIndex === 0
-              ? 'Stage 1: Multi-Device Crawling'
-              : currentStageIndex === 1
-              ? 'Stage 2: Interactive Testing'
-              : currentStageIndex === 2
-              ? 'Stage 3: Defect Detection'
-              : 'Stage 4: Quality Synthesis'}
+      <div className={s.pipeline}>
+        <div className={s.pipelineHead}>
+          <span className="section-eyebrow">
+            <TbBolt size={14} /> Autonomous pipeline
           </span>
-          <span className={styles.progressNumbers}>
-            {progress?.page_current
-              ? `Page ${progress.page_current} of ${progress.page_total || maxPages} (${progress.percent}%)`
-              : `${progress?.percent || 5}% Complete`}
+          <span className={s.readoutNumbers}>
+            {allDone ? 'All stages complete' : `${Math.min(pipelineIndex + 1, PIPELINE.length)} of ${PIPELINE.length} stages`}
           </span>
         </div>
-        <div className={styles.progressBarTrack}>
-          <div className={styles.progressBarFill} style={{ width: `${progress?.percent || 5}%` }} />
+        <div className={s.pipelineStage}>
+          <ol className={cx(s.pipeTrack, allDone && s.pipeDoneAll)} aria-label="Pipeline stages">
+            {PIPELINE.map((st, i) => {
+              const isDone = i < pipelineIndex;
+              const isActive = i === pipelineIndex;
+              return (
+                <li
+                  key={st.id}
+                  className={cx(s.pipeBlock, isDone && s.pipeDone, isActive && s.pipeActive)}
+                  aria-current={isActive ? 'step' : undefined}
+                >
+                  <span className={s.pipeSide} aria-hidden="true" />
+                  <span className={s.pipeFace}>
+                    <span className={s.pipeIcon} aria-hidden="true">
+                      {isDone ? <RiCheckDoubleFill size={16} /> : st.icon}
+                    </span>
+                    <span className={s.pipeLabel}>{st.label}</span>
+                    <span className={s.pipeStep}>
+                      0{i + 1}
+                      <span className="sr-only">{isDone ? ' complete' : isActive ? ' in progress' : ' pending'}</span>
+                    </span>
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
         </div>
       </div>
 
-      {/* Glowing Radar Pulse */}
-      <div className={styles.radarContainer}>
-        <div className={styles.radarOuterRing} />
-        <div className={styles.radarInnerRing} />
-        <div className={styles.radarSweep} />
-        <div className={styles.radarCenterContent}>
-          <span className={styles.radarPercent}>{progress?.percent || 5}%</span>
-          <span className={styles.radarElapsed}>
-            <TbClock size={12} style={{ display: 'inline', marginRight: '3px' }} />
-            {formattedTime}
+      <DeviceDeck activeDeviceName={activeDeviceName} activeUrl={progress?.active_url} defaultUrl={url} />
+
+      <div className={cx('surface-inset', s.terminal)}>
+        <div className={s.terminalHead}>
+          <span className="section-eyebrow">
+            <RiTerminalBoxLine size={14} /> Live diagnostic telemetry
+          </span>
+          <span className="chip chip--sm chip--success chip--live">
+            <TbBroadcast size={12} /> Streaming
           </span>
         </div>
-      </div>
-
-      {/* Live Device Deck */}
-      <DeviceDeck
-        activeDeviceName={activeDeviceName}
-        activeUrl={progress?.active_url}
-        defaultUrl={url}
-      />
-
-      {/* 4-Stage Stepper Grid */}
-      <div className={styles.stepperGrid}>
-        {stages.map((st, sIdx) => {
-          const isActive = sIdx === currentStageIndex;
-          const isDone = sIdx < currentStageIndex;
-
-          return (
-            <div
-              key={st.step}
-              className={`${styles.stepCard} ${
-                isActive ? styles.stepActive : isDone ? styles.stepCompleted : ''
-              }`}
-            >
-              <div className={styles.stepHeader}>
-                <span className={styles.stepNumber}>Stage 0{st.step}</span>
-                {isDone ? (
-                  <RiCheckDoubleFill size={18} color="#059669" />
-                ) : isActive ? (
-                  <TbLoader2 size={18} className="pulse" color="#4f46e5" />
-                ) : (
-                  <span style={{ color: '#475569' }}>{st.icon}</span>
-                )}
-              </div>
-              <div className={styles.stepTitle}>{st.title}</div>
-              <div className={styles.stepDesc}>{st.desc}</div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Monospace Terminal */}
-      <div className={styles.terminalCard}>
-        <div className={styles.terminalHeader}>
-          <div className={styles.terminalDots}>
-            <div className={styles.terminalDot} style={{ background: '#ef4444' }} />
-            <div className={styles.terminalDot} style={{ background: '#f59e0b' }} />
-            <div className={styles.terminalDot} style={{ background: '#10b981' }} />
-          </div>
-          <div className={styles.terminalTitle}>
-            <RiTerminalBoxLine size={16} /> LIVE DIAGNOSTIC TELEMETRY STREAM
-          </div>
-          <div style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <TbBroadcast size={14} /> STREAMING ●
-          </div>
-        </div>
-
-        <div className={styles.terminalBody}>
+        <div className={cx(s.terminalBody, s.mono)}>
           {logFeed.map((log, lIdx) => (
-            <div key={lIdx} className={styles.terminalLine}>
-              <span className={styles.terminalPrompt}>&gt;</span>
+            <div key={lIdx} className={s.terminalLine}>
+              <span className={s.terminalPrompt}>&gt;</span>
               <span>{log}</span>
             </div>
           ))}
-          <div className={styles.terminalLine}>
-            <span className={styles.terminalPrompt}>&gt;</span>
-            <span className={styles.terminalCurrentMessage}>
+          <div className={s.terminalLine}>
+            <span className={s.terminalPrompt}>&gt;</span>
+            <span className={s.terminalLive}>
               {progress?.message || 'Inspecting DOM tree and verifying response status...'}
             </span>
           </div>

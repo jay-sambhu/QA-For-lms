@@ -10,7 +10,8 @@ import { MetricsGrid } from './MetricsGrid';
 import { FindingsTab } from './tabs/FindingsTab';
 import { TestCasesTab } from './tabs/TestCasesTab';
 import { DevicesTab } from './tabs/DevicesTab';
-import styles from '../../app/page.module.css';
+import { SegmentedTabs3D, Surface3D, cx } from '../three';
+import s from './scan3d.module.css';
 
 interface ScanResultsProps {
   results: QAReport;
@@ -19,13 +20,17 @@ interface ScanResultsProps {
   onNewScan: () => void;
 }
 
+type ResultsTab = 'findings' | 'tests' | 'devices';
+
+const enterDelay = (step: number) => ({ ['--enter-delay' as string]: `${step * 60}ms` }) as React.CSSProperties;
+
 export const ScanResults: React.FC<ScanResultsProps> = ({
   results,
   scanId,
   sessionToken,
   onNewScan,
 }) => {
-  const [activeTab, setActiveTab] = useState<'findings' | 'tests' | 'devices'>('findings');
+  const [activeTab, setActiveTab] = useState<ResultsTab>('findings');
 
   const safeScore = useMemo(() => {
     const raw = results?.qa_metrics?.quality_score;
@@ -58,69 +63,80 @@ export const ScanResults: React.FC<ScanResultsProps> = ({
   const testCasesCount = results.test_cases?.length ?? 0;
   const hasCrossDevice = Boolean(results.report_metadata?.cross_device_metrics);
 
+  const tabs = useMemo(() => {
+    const list: { id: ResultsTab; label: string; icon: React.ReactNode; badge?: number }[] = [
+      { id: 'findings', label: 'Defect Triage', icon: <RiBug2Line size={16} />, badge: findingsCount },
+    ];
+    if (testCasesCount > 0) {
+      list.push({ id: 'tests', label: 'Automated Test Cases', icon: <TbChecklist size={16} />, badge: testCasesCount });
+    }
+    if (hasCrossDevice) {
+      list.push({ id: 'devices', label: 'Responsive QA Matrix', icon: <TbDevices size={16} /> });
+    }
+    return list;
+  }, [findingsCount, testCasesCount, hasCrossDevice]);
+
   return (
-    <div className={styles.resultsPanel}>
+    <div className={s.stack}>
       <ReportHeader
         results={results}
         scanId={scanId}
         sessionToken={sessionToken}
         onNewScan={onNewScan}
+        className="enter-3d"
+        style={enterDelay(0)}
       />
 
       {results.report_metadata?.ai_analysis_degraded && (
-        <div className={styles.degradedBanner}>
-          <RiErrorWarningFill size={22} style={{ flexShrink: 0 }} />
-          <div>
-            <strong>AI Analysis Incomplete:</strong>{' '}
-            {results.report_metadata.ai_analysis_failures} finding(s) kept the deterministic triage
-            because the AI model did not return a valid analysis (overloaded or out of quota).
-            Re-run the scan later to get the AI verdict.
+        <Surface3D as="section" accent="warning" pad="sm" className="enter-3d" style={enterDelay(1)} role="status">
+          <div className={s.degraded}>
+            <span className="icon-well icon-well--sm" aria-hidden="true">
+              <RiErrorWarningFill size={18} />
+            </span>
+            <div>
+              <strong>AI Analysis Incomplete:</strong>{' '}
+              {results.report_metadata.ai_analysis_failures} finding(s) kept the deterministic triage
+              because the AI model did not return a valid analysis (overloaded or out of quota).
+              Re-run the scan later to get the AI verdict.
+            </div>
           </div>
-        </div>
+        </Surface3D>
       )}
 
-      <QualityScoreCard
-        score={safeScore}
-        letterGrade={letterGrade}
-        verdict={verdictText}
-      />
-
-      <MetricsGrid results={results} />
-
-      {/* Tab Navigation */}
-      <div className={styles.tabsBar}>
-        <button
-          className={`${styles.tabBtn} ${activeTab === 'findings' ? styles.tabActive : ''}`}
-          onClick={() => setActiveTab('findings')}
-        >
-          <RiBug2Line size={17} /> Defect Triage ({findingsCount})
-        </button>
-
-        {testCasesCount > 0 && (
-          <button
-            className={`${styles.tabBtn} ${activeTab === 'tests' ? styles.tabActive : ''}`}
-            onClick={() => setActiveTab('tests')}
-          >
-            <TbChecklist size={17} /> Automated Test Cases ({testCasesCount})
-          </button>
-        )}
-
-        {hasCrossDevice && (
-          <button
-            className={`${styles.tabBtn} ${activeTab === 'devices' ? styles.tabActive : ''}`}
-            onClick={() => setActiveTab('devices')}
-          >
-            <TbDevices size={17} /> Responsive QA Matrix
-          </button>
-        )}
+      <div className="bento">
+        <QualityScoreCard
+          score={safeScore}
+          letterGrade={letterGrade}
+          verdict={verdictText}
+          className="span-6 row-2 enter-3d"
+          style={enterDelay(1)}
+        />
+        <MetricsGrid results={results} enterStep={2} />
       </div>
 
-      {/* Active Tab Views */}
-      {activeTab === 'findings' && <FindingsTab findings={results.findings || []} />}
-      {activeTab === 'tests' && <TestCasesTab testCases={results.test_cases || []} />}
-      {activeTab === 'devices' && (
-        <DevicesTab crossDeviceMetrics={results.report_metadata?.cross_device_metrics} />
-      )}
+      <div className="enter-3d" style={enterDelay(3)}>
+        <SegmentedTabs3D
+          ariaLabel="Report sections"
+          idPrefix="report"
+          tabs={tabs}
+          active={activeTab}
+          onChange={setActiveTab}
+        />
+      </div>
+
+      <div
+        key={activeTab}
+        role="tabpanel"
+        id={`report-panel-${activeTab}`}
+        aria-labelledby={`report-tab-${activeTab}`}
+        className={cx('enter-3d', s.stackTight)}
+      >
+        {activeTab === 'findings' && <FindingsTab findings={results.findings || []} />}
+        {activeTab === 'tests' && <TestCasesTab testCases={results.test_cases || []} />}
+        {activeTab === 'devices' && (
+          <DevicesTab crossDeviceMetrics={results.report_metadata?.cross_device_metrics} />
+        )}
+      </div>
     </div>
   );
 };

@@ -3,18 +3,24 @@
 import React from 'react';
 import { TbDeviceDesktop, TbDeviceMobile, TbDeviceTablet, TbActivity } from 'react-icons/tb';
 import { CrossDeviceMetrics } from '../../../types/qa';
-import styles from '../../../app/page.module.css';
+import { EmptyState3D, StatTile3D, Surface3D } from '../../three';
 
 interface DevicesTabProps {
   crossDeviceMetrics?: CrossDeviceMetrics;
 }
 
+const enterDelay = (step: number) => ({ ['--enter-delay' as string]: `${step * 60}ms` }) as React.CSSProperties;
+
 export const DevicesTab: React.FC<DevicesTabProps> = ({ crossDeviceMetrics }) => {
   if (!crossDeviceMetrics) {
     return (
-      <div className={styles.noFindings}>
-        No responsive viewport telemetry recorded for this scan.
-      </div>
+      <Surface3D>
+        <EmptyState3D
+          icon={<TbDeviceDesktop size={16} />}
+          title="No responsive telemetry"
+          description="No responsive viewport telemetry was recorded for this scan."
+        />
+      </Surface3D>
     );
   }
 
@@ -23,47 +29,45 @@ export const DevicesTab: React.FC<DevicesTabProps> = ({ crossDeviceMetrics }) =>
     iphone: 0,
     ipad: 0,
   };
+  const totalResponsive = crossDeviceMetrics.responsive_findings ?? 0;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div className={styles.statsGrid}>
-        <div className={styles.statCard}>
-          <div className={styles.statHeader}>
-            <span>Desktop (1920x1080)</span>
-            <TbDeviceDesktop size={20} color="#4f46e5" />
-          </div>
-          <div className={styles.statValue}>{breakdown.desktop}</div>
-          <div className={styles.statSub}>Responsive Findings</div>
-        </div>
-
-        <div className={styles.statCard}>
-          <div className={styles.statHeader}>
-            <span>iPhone 13 (390x844)</span>
-            <TbDeviceMobile size={20} color="#0284c7" />
-          </div>
-          <div className={styles.statValue}>{breakdown.iphone}</div>
-          <div className={styles.statSub}>Touch & Viewport Findings</div>
-        </div>
-
-        <div className={styles.statCard}>
-          <div className={styles.statHeader}>
-            <span>iPad (820x1180)</span>
-            <TbDeviceTablet size={20} color="#059669" />
-          </div>
-          <div className={styles.statValue}>{breakdown.ipad}</div>
-          <div className={styles.statSub}>Tablet Layout Findings</div>
-        </div>
-
-        <div className={styles.statCard}>
-          <div className={styles.statHeader}>
-            <span>Total Responsive Issues</span>
-            <TbActivity size={20} color="#f59e0b" />
-          </div>
-          <div className={styles.statValue}>
-            {crossDeviceMetrics.responsive_findings ?? 0}
-          </div>
-          <div className={styles.statSub}>Across all emulated viewports</div>
-        </div>
+    <div className="bento" style={{ ['--grid-gap' as string]: '16px' } as React.CSSProperties}>
+      <div className="span-3 enter-3d" style={enterDelay(0)}>
+        <StatTile3D
+          label="Desktop (1920x1080)"
+          value={breakdown.desktop}
+          accent="primary"
+          icon={<TbDeviceDesktop size={20} />}
+          hint="Responsive Findings"
+        />
+      </div>
+      <div className="span-3 enter-3d" style={enterDelay(1)}>
+        <StatTile3D
+          label="iPhone 13 (390x844)"
+          value={breakdown.iphone}
+          accent="info"
+          icon={<TbDeviceMobile size={20} />}
+          hint="Touch & Viewport Findings"
+        />
+      </div>
+      <div className="span-3 enter-3d" style={enterDelay(2)}>
+        <StatTile3D
+          label="iPad (820x1180)"
+          value={breakdown.ipad}
+          accent="success"
+          icon={<TbDeviceTablet size={20} />}
+          hint="Tablet Layout Findings"
+        />
+      </div>
+      <div className="span-3 enter-3d" style={enterDelay(3)}>
+        <StatTile3D
+          label="Total Responsive Issues"
+          value={totalResponsive}
+          accent={totalResponsive > 0 ? 'warning' : 'success'}
+          icon={<TbActivity size={20} />}
+          hint="Across all emulated viewports"
+        />
       </div>
     </div>
   );
