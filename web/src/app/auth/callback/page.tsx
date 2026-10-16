@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { TbAlertTriangle, TbLoader2 } from "react-icons/tb";
 import { supabase, useAuth } from "@/context/AuthContext";
+import { Surface3D } from "@/components/three";
+import styles from "@/app/page.module.css";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
@@ -107,113 +110,37 @@ export default function AuthCallbackPage() {
     };
   }, [router]);
 
+  const pending = isProcessing && !errorMessage;
+
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "#080c14",
-        color: "var(--text-main)",
-        fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-        padding: "20px",
-      }}
-    >
-      <div
-        style={{
-          maxWidth: "460px",
-          width: "100%",
-          padding: "36px 32px",
-          background: "rgba(var(--panel-rgb), 0.8)",
-          borderRadius: "16px",
-          border: errorMessage ? "1px solid rgba(239, 68, 68, 0.4)" : "1px solid rgba(56, 189, 248, 0.2)",
-          boxShadow: errorMessage
-            ? "0 20px 40px -15px rgba(239, 68, 68, 0.15)"
-            : "0 20px 40px -15px rgba(56, 189, 248, 0.15)",
-          textAlign: "center",
-          backdropFilter: "blur(12px)",
-        }}
+    <div className={`page-shell ${styles.callbackPage}`}>
+      <Surface3D
+        as="section"
+        pad="lg"
+        accent={pending ? "info" : "danger"}
+        className={`${styles.callbackCard} enter-3d`}
+        aria-live="polite"
+        aria-busy={pending}
       >
-        {isProcessing && !errorMessage ? (
+        {pending ? (
           <>
-            <div
-              style={{
-                width: "44px",
-                height: "44px",
-                margin: "0 auto 20px",
-                border: "3px solid rgba(56, 189, 248, 0.2)",
-                borderTopColor: "#0284c7",
-                borderRadius: "50%",
-                animation: "spin 1s linear infinite",
-              }}
-            />
-            <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0 0 8px" }}>
-              Verifying Authentication
-            </h2>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", margin: 0 }}>
+            <span className="icon-well icon-well--lg">
+              <TbLoader2 size={24} className="pulse" />
+            </span>
+            <h1 className={styles.callbackTitle}>Verifying Authentication</h1>
+            <p className={styles.callbackText}>
               Completing secure session exchange and loading your QA dashboard...
             </p>
-            <style>{`
-              @keyframes spin {
-                from { transform: rotate(0deg); }
-                to { transform: rotate(360deg); }
-              }
-            `}</style>
           </>
         ) : (
           <>
-            <div
-              style={{
-                width: "48px",
-                height: "48px",
-                margin: "0 auto 16px",
-                borderRadius: "50%",
-                background: "rgba(239, 68, 68, 0.15)",
-                color: "#ef4444",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "24px",
-                fontWeight: "bold",
-              }}
-            >
-              !
-            </div>
-            <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0 0 8px", color: "#dc2626" }}>
-              Sign-In Incomplete
-            </h2>
-            <p
-              style={{
-                color: "var(--text-body)",
-                fontSize: "0.875rem",
-                lineHeight: 1.5,
-                margin: "0 0 24px",
-                background: "rgba(var(--panel-rgb), 0.7)",
-                padding: "12px 14px",
-                borderRadius: "8px",
-                border: "1px solid rgba(239, 68, 68, 0.2)",
-                textAlign: "left",
-                wordBreak: "break-word",
-              }}
-            >
-              {errorMessage}
-            </p>
-            <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
-              <button
-                type="button"
-                onClick={() => router.replace("/")}
-                style={{
-                  padding: "10px 18px",
-                  borderRadius: "8px",
-                  background: "var(--surface-elevated)",
-                  color: "var(--text-muted)",
-                  border: "1px solid rgba(148, 163, 184, 0.2)",
-                  fontSize: "0.875rem",
-                  fontWeight: 500,
-                  cursor: "pointer",
-                }}
-              >
+            <span className="icon-well icon-well--lg icon-well--solid">
+              <TbAlertTriangle size={24} />
+            </span>
+            <h1 className={styles.callbackTitle}>Sign-In Incomplete</h1>
+            <p className={`surface-inset ${styles.callbackError}`}>{errorMessage}</p>
+            <div className={styles.callbackActions}>
+              <button type="button" onClick={() => router.replace("/")} className="btn btn-secondary">
                 Go to Home
               </button>
               <button
@@ -222,23 +149,14 @@ export default function AuthCallbackPage() {
                   router.replace("/");
                   openAuthModal("signin");
                 }}
-                style={{
-                  padding: "10px 18px",
-                  borderRadius: "8px",
-                  background: "linear-gradient(135deg, #0284c7, #2563eb)",
-                  color: "#ffffff",
-                  border: "none",
-                  fontSize: "0.875rem",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
+                className="btn btn-primary"
               >
                 Try Sign In Again
               </button>
             </div>
           </>
         )}
-      </div>
+      </Surface3D>
     </div>
   );
 }

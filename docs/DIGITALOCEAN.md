@@ -91,5 +91,8 @@ Scan artifacts live in the `user_data` volume. Screenshots and intermediate file
 | `QA_RENDERER_PROCESS_LIMIT` | 2 | Chromium renderer processes. |
 | `QA_PIPELINE_TIMEOUT` | 1800 | Max seconds per scan. |
 | `QA_ARTIFACT_RETENTION_DAYS` | 7 | Disk cleanup window; 0 disables. |
+| `TRIAL_FREE_SCANS` | 3 | Free scans a new user may run on the server's `GEMINI_API_KEY` before adding their own; 0 disables the trial. |
+| `TRIAL_DAILY_LIMIT` | 50 | Global cap of trial scans per UTC day across all users (protects your Gemini bill); 0 removes the cap. |
+| `TRIAL_AI_MODEL` | registry default | Gemini model trial scans run on (`gemini-2.5-flash` is retired; leave unset for the current default). |
 
 To save a further ~60 MB, point `DATABASE_URL` at Supabase's Postgres and remove the `db` service.

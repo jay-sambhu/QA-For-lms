@@ -28,6 +28,8 @@ import {
   TbChevronUp,
 } from 'react-icons/tb';
 import { useAuth } from '../../context/AuthContext';
+import { Surface3D, EmptyState3D } from '../three';
+import d from './dashboard3d.module.css';
 
 interface ApiKeyManagerProps {
   onKeysUpdated?: () => void;
@@ -228,93 +230,26 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
 
   const isFreeLimitReached = !!quotaData && !quotaData.is_paid && quotaData.count >= 3;
 
+  const quotaChipTone = quotaData?.is_paid ? 'chip--violet' : isFreeLimitReached ? 'chip--warning' : 'chip--info';
+
   return (
-    <div
-      id="ai-models-manager"
-      style={{
-        background: 'rgba(var(--panel-rgb), 0.7)',
-        backdropFilter: 'blur(20px)',
-        border: '1px solid rgba(var(--ink-rgb), 0.08)',
-        borderRadius: '20px',
-        padding: '24px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '20px',
-        boxShadow: '0 16px 40px rgba(15, 23, 42, 0.105)',
-      }}
-    >
+    <Surface3D as="section" id="ai-models-manager" accent aria-labelledby="ai-models-title" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
       {/* Header bar */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '14px',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div
-            style={{
-              width: '42px',
-              height: '42px',
-              borderRadius: '12px',
-              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2))',
-              border: '1px solid rgba(99, 102, 241, 0.35)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#4f46e5',
-              boxShadow: '0 0 15px rgba(99, 102, 241, 0.25)',
-            }}
-          >
-            <RiCpuLine size={24} />
-          </div>
+      <div className={d.panelHead}>
+        <div className={d.panelTitleBlock}>
+          <span className="icon-well" aria-hidden="true">
+            <RiCpuLine size={22} />
+          </span>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <h2
-                style={{
-                  fontSize: '1.15rem',
-                  fontWeight: 800,
-                  color: 'var(--text-main)',
-                  letterSpacing: '-0.02em',
-                  margin: 0,
-                }}
-              >
-                Multi-Model &amp; Provider AI Integrations
+            <div className={d.panelTitleRow}>
+              <h2 id="ai-models-title" className={d.panelTitle}>
+                AI models &amp; providers
               </h2>
               {/* Quota Badge */}
-              <span
-                style={{
-                  fontSize: '0.72rem',
-                  fontWeight: 800,
-                  padding: '3px 10px',
-                  borderRadius: '20px',
-                  background: quotaData?.is_paid
-                    ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(99, 102, 241, 0.25))'
-                    : isFreeLimitReached
-                    ? 'rgba(234, 179, 8, 0.2)'
-                    : 'rgba(56, 189, 248, 0.15)',
-                  color: quotaData?.is_paid
-                    ? '#7e22ce'
-                    : isFreeLimitReached
-                    ? '#b45309'
-                    : '#0284c7',
-                  border: `1px solid ${
-                    quotaData?.is_paid
-                      ? 'rgba(168, 85, 247, 0.45)'
-                      : isFreeLimitReached
-                      ? 'rgba(234, 179, 8, 0.5)'
-                      : 'rgba(56, 189, 248, 0.35)'
-                  }`,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                }}
-              >
+              <span className={`chip chip--sm ${quotaChipTone}`}>
                 {quotaData?.is_paid ? (
                   <>
-                    <RiVipCrownFill size={12} color="#9333ea" />
+                    <RiVipCrownFill size={12} />
                     <span>UNLIMITED ({(quotaData.plan_tier || 'PRO').toUpperCase()})</span>
                   </>
                 ) : (
@@ -325,14 +260,14 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                 )}
               </span>
             </div>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
-              Scale autonomously across Google Gemini, OpenAI, Claude, DeepSeek, and Local LLM (Ollama). The default key is used to generate QA defect reports.
+            <p className={d.panelSub}>
+              Bring your own key for Google Gemini, OpenAI, Claude, DeepSeek or a local LLM (Ollama). The default key generates your QA defect reports.
             </p>
           </div>
         </div>
 
         {/* Action Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div className={d.panelTools}>
           <button
             type="button"
             onClick={() => {
@@ -342,28 +277,17 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                 setShowAddForm(!showAddForm);
               }
             }}
-            className="btn btn-primary"
-            style={{
-              padding: '8px 16px',
-              fontSize: '0.84rem',
-              borderRadius: '10px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: showAddForm
-                ? 'rgba(var(--ink-rgb), 0.08)'
-                : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-              border: '1px solid rgba(var(--ink-rgb), 0.15)',
-              fontWeight: 700,
-            }}
+            className={`btn ${showAddForm ? 'btn-secondary' : 'btn-primary'} btn-sm`}
+            aria-expanded={showAddForm}
+            aria-controls="ai-key-add-form"
           >
             {showAddForm ? (
               <>
-                <TbChevronUp size={16} /> Hide Add Form
+                <TbChevronUp size={16} /> Hide add form
               </>
             ) : (
               <>
-                <RiAddLine size={16} /> Add AI Key / Model
+                <RiAddLine size={16} /> Add AI key / model
               </>
             )}
           </button>
@@ -372,120 +296,49 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
 
       {/* Subscription Paywall Prompt if limit reached */}
       {(showUpgradeModal || (isFreeLimitReached && showAddForm)) && (
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          style={{
-            background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.12), rgba(168, 85, 247, 0.14))',
-            border: '1px solid rgba(234, 179, 8, 0.45)',
-            borderRadius: '16px',
-            padding: '18px 22px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '16px',
-            flexWrap: 'wrap',
-            boxShadow: '0 8px 30px rgba(15, 23, 42, 0.09)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', maxWidth: '650px' }}>
-            <div
-              style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '12px',
-                background: 'rgba(234, 179, 8, 0.2)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#b45309',
-                flexShrink: 0,
-              }}
-            >
-              <RiVipCrownFill size={22} />
-            </div>
+        <div className={`surface-inset tone-warning enter-3d ${d.upgradeNotice}`} role="status">
+          <div className={d.upgradeBody}>
+            <span className="icon-well" aria-hidden="true">
+              <RiVipCrownFill size={20} />
+            </span>
             <div>
-              <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#b45309' }}>
-                Free Tier Maximum Reached (3 of 3 Allowed Keys)
-              </div>
-              <div style={{ fontSize: '0.82rem', color: 'var(--text-body)', marginTop: '3px', lineHeight: 1.4 }}>
+              <div className={d.upgradeTitle}>Free tier maximum reached (3 of 3 allowed keys)</div>
+              <div className={d.upgradeText}>
                 The Free plan supports up to 3 AI model keys. Remove a key to add another one — Pro and Enterprise plans with more slots are coming soon.
               </div>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <Link
-              href="/pricing"
-              className="btn btn-primary"
-              style={{
-                background: 'linear-gradient(135deg, #f59e0b 0%, #ec4899 50%, #8b5cf6 100%)',
-                border: 'none',
-                color: '#fff',
-                fontWeight: 800,
-                fontSize: '0.86rem',
-                padding: '9px 18px',
-                borderRadius: '10px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                textDecoration: 'none',
-                boxShadow: '0 4px 18px rgba(245, 158, 11, 0.35)',
-              }}
-            >
+          <div className={d.upgradeActions}>
+            <Link href="/pricing" className="btn btn-primary btn-sm">
               <TbSparkles size={16} /> View plans <TbArrowRight size={16} />
             </Link>
-            <button
-              type="button"
-              onClick={() => setShowUpgradeModal(false)}
-              className="btn btn-secondary"
-              style={{ padding: '9px 14px', fontSize: '0.82rem', borderRadius: '10px' }}
-            >
+            <button type="button" onClick={() => setShowUpgradeModal(false)} className="btn btn-secondary btn-sm">
               Dismiss
             </button>
           </div>
-        </motion.div>
+        </div>
       )}
 
       {/* Inline Add API Key Drawer Form */}
       <AnimatePresence>
         {showAddForm && (
           <motion.form
+            id="ai-key-add-form"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             onSubmit={handleAddKey}
-            style={{
-              overflow: 'hidden',
-              background: 'rgba(var(--ink-rgb), 0.02)',
-              border: '1px solid rgba(var(--ink-rgb), 0.08)',
-              borderRadius: '16px',
-              padding: '20px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '16px',
-            }}
+            className={`surface-inset ${d.addForm}`}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                Connect New AI Provider &amp; Model
-              </div>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Stored encrypted · Zero shared telemetry
-              </span>
+            <div className={d.formHead}>
+              <div className={d.formTitle}>Connect a new AI provider &amp; model</div>
+              <span className={d.formMeta}>Stored encrypted · Zero shared telemetry</span>
             </div>
 
             {/* Provider Selector Tabs */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-                Select AI Platform Provider:
-              </label>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-                  gap: '8px',
-                }}
-              >
+            <div className={d.fieldGroup}>
+              <span className={d.fieldLabel}>Select AI platform provider</span>
+              <div className={d.providerGrid} role="group" aria-label="AI provider">
                 {(quotaData?.supported_providers || [
                   { id: 'gemini', name: 'Google Gemini' },
                   { id: 'openai', name: 'OpenAI' },
@@ -499,27 +352,11 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                       key={p.id}
                       type="button"
                       onClick={() => handleProviderSelect(p.id)}
-                      style={{
-                        padding: '10px 12px',
-                        borderRadius: '10px',
-                        background: isSelected
-                          ? 'rgba(99, 102, 241, 0.2)'
-                          : 'rgba(var(--ink-rgb), 0.03)',
-                        border: `1px solid ${
-                          isSelected ? '#6366f1' : 'rgba(var(--ink-rgb), 0.06)'
-                        }`,
-                        color: isSelected ? 'var(--text-main)' : 'var(--text-muted)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        fontSize: '0.82rem',
-                        fontWeight: isSelected ? 700 : 500,
-                        transition: 'all 0.2s ease',
-                      }}
+                      className={d.providerBtn}
+                      aria-pressed={isSelected}
                     >
                       {renderProviderIcon(p.id, 16)}
-                      <span style={{ whiteSpace: 'nowrap' }}>{p.name.split(' ')[0]}</span>
+                      <span>{p.name.split(' ')[0]}</span>
                     </button>
                   );
                 })}
@@ -527,30 +364,17 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
             </div>
 
             {/* Model & Label Selection Grid */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                gap: '12px',
-              }}
-            >
+            <div className={d.fieldGrid}>
               {/* Model Dropdown */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-                  Model Target:
+              <div className={d.fieldGroup}>
+                <label className={d.fieldLabel} htmlFor="ai-key-model">
+                  Model target
                 </label>
                 <select
+                  id="ai-key-model"
                   value={selectedModel}
                   onChange={(e) => setSelectedModel(e.target.value)}
-                  style={{
-                    background: 'rgba(var(--panel-rgb), 0.8)',
-                    border: '1px solid rgba(var(--ink-rgb), 0.12)',
-                    borderRadius: '8px',
-                    padding: '8px 12px',
-                    color: 'var(--text-main)',
-                    fontSize: '0.84rem',
-                    outline: 'none',
-                  }}
+                  className={d.field}
                 >
                   {(currentProviderMeta?.models || [selectedModel]).map((m: string) => (
                     <option key={m} value={m}>
@@ -561,37 +385,31 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
               </div>
 
               {/* Friendly Label Name */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-                  Key Label / Description (Optional):
+              <div className={d.fieldGroup}>
+                <label className={d.fieldLabel} htmlFor="ai-key-name">
+                  Key label (optional)
                 </label>
                 <input
+                  id="ai-key-name"
                   type="text"
                   placeholder={`e.g. My ${selectedProvider.toUpperCase()} Work Key`}
                   value={keyNameInput}
                   onChange={(e) => setKeyNameInput(e.target.value)}
-                  style={{
-                    background: 'rgba(var(--panel-rgb), 0.8)',
-                    border: '1px solid rgba(var(--ink-rgb), 0.12)',
-                    borderRadius: '8px',
-                    padding: '8px 12px',
-                    color: 'var(--text-main)',
-                    fontSize: '0.84rem',
-                    outline: 'none',
-                  }}
+                  className={d.field}
                 />
               </div>
             </div>
 
             {/* Secret API Key Input */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+            <div className={d.fieldGroup}>
+              <label className={d.fieldLabel} htmlFor="ai-key-secret">
                 {selectedProvider === 'local_llm'
-                  ? 'Authorization Token (Optional for Ollama):'
-                  : `API Secret Key for ${currentProviderMeta?.name || selectedProvider}:`}
+                  ? 'Authorization token (optional for Ollama)'
+                  : `API secret key for ${currentProviderMeta?.name || selectedProvider}`}
               </label>
-              <div style={{ position: 'relative' }}>
+              <div className={d.passwordWrap}>
                 <input
+                  id="ai-key-secret"
                   type={showKeySecret ? 'text' : 'password'}
                   placeholder={
                     selectedProvider === 'gemini'
@@ -605,31 +423,14 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                   value={keyValueInput}
                   onChange={(e) => setKeyValueInput(e.target.value)}
                   required={selectedProvider !== 'local_llm'}
-                  style={{
-                    width: '100%',
-                    background: 'rgba(var(--panel-rgb), 0.8)',
-                    border: '1px solid rgba(var(--ink-rgb), 0.12)',
-                    borderRadius: '8px',
-                    padding: '8px 40px 8px 12px',
-                    color: 'var(--text-main)',
-                    fontSize: '0.84rem',
-                    outline: 'none',
-                    fontFamily: 'monospace',
-                  }}
+                  className={`${d.field} ${d.mono}`}
+                  autoComplete="off"
                 />
                 <button
                   type="button"
                   onClick={() => setShowKeySecret(!showKeySecret)}
-                  style={{
-                    position: 'absolute',
-                    right: '10px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--text-subtle)',
-                    cursor: 'pointer',
-                  }}
+                  className={`${d.iconBtn} ${d.passwordToggle}`}
+                  aria-label={showKeySecret ? 'Hide API key' : 'Show API key'}
                 >
                   {showKeySecret ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
                 </button>
@@ -638,108 +439,65 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
 
             {/* Custom Endpoint Input (if Ollama or custom proxy) */}
             {(selectedProvider === 'local_llm' || currentProviderMeta?.requires_endpoint) && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-                  Custom Endpoint URL (Ollama or OpenAI-compatible gateway):
+              <div className={d.fieldGroup}>
+                <label className={d.fieldLabel} htmlFor="ai-key-endpoint">
+                  Custom endpoint URL (Ollama or OpenAI-compatible gateway)
                 </label>
                 <input
+                  id="ai-key-endpoint"
                   type="url"
                   placeholder="http://localhost:11434/v1"
                   value={endpointInput}
                   onChange={(e) => setEndpointInput(e.target.value)}
-                  style={{
-                    background: 'rgba(var(--panel-rgb), 0.8)',
-                    border: '1px solid rgba(var(--ink-rgb), 0.12)',
-                    borderRadius: '8px',
-                    padding: '8px 12px',
-                    color: 'var(--text-main)',
-                    fontSize: '0.84rem',
-                    outline: 'none',
-                    fontFamily: 'monospace',
-                  }}
+                  className={`${d.field} ${d.mono}`}
                 />
               </div>
             )}
 
             {/* Set Default Checkbox */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label className={d.checkRow} htmlFor="dashboard-is-default-key">
               <input
                 type="checkbox"
                 id="dashboard-is-default-key"
                 checked={isDefaultInput}
                 onChange={(e) => setIsDefaultInput(e.target.checked)}
-                style={{ cursor: 'pointer', accentColor: '#6366f1' }}
+                className={d.checkbox}
               />
-              <label
-                htmlFor="dashboard-is-default-key"
-                style={{ fontSize: '0.82rem', color: 'var(--text-main)', cursor: 'pointer' }}
-              >
-                Set this model as the active default engine for automated QA crawls
-              </label>
-            </div>
+              <span className={d.checkText}>Set this model as the active default engine for automated QA crawls</span>
+            </label>
 
             {/* Feedback message */}
             {feedback && (
               <div
-                style={{
-                  fontSize: '0.82rem',
-                  color: feedback.type === 'error' ? '#ef4444' : '#10b981',
-                  background:
-                    feedback.type === 'error'
-                      ? 'rgba(239, 68, 68, 0.1)'
-                      : 'rgba(16, 185, 129, 0.1)',
-                  border: `1px solid ${
-                    feedback.type === 'error'
-                      ? 'rgba(239, 68, 68, 0.25)'
-                      : 'rgba(16, 185, 129, 0.25)'
-                  }`,
-                  borderRadius: '8px',
-                  padding: '8px 12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                }}
+                className={`${d.notice} ${feedback.type === 'error' ? d.noticeDanger : d.noticeSuccess}`}
+                role={feedback.type === 'error' ? 'alert' : 'status'}
               >
-                {feedback.type === 'error' ? <TbAlertCircle size={16} /> : <TbCheck size={16} />}
+                {feedback.type === 'error' ? (
+                  <TbAlertCircle size={16} className={d.noticeIcon} />
+                ) : (
+                  <TbCheck size={16} className={d.noticeIcon} />
+                )}
                 <span>{feedback.msg}</span>
               </div>
             )}
 
             {/* Submit button */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button
-                type="button"
-                onClick={() => setShowAddForm(false)}
-                className="btn btn-secondary"
-                style={{ padding: '8px 16px', fontSize: '0.82rem', borderRadius: '8px' }}
-              >
+            <div className={d.formActions}>
+              <button type="button" onClick={() => setShowAddForm(false)} className="btn btn-secondary btn-sm">
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting || (isFreeLimitReached && !quotaData?.is_paid)}
-                className="btn btn-primary"
-                style={{
-                  padding: '8px 20px',
-                  fontSize: '0.84rem',
-                  borderRadius: '8px',
-                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                  border: 'none',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontWeight: 700,
-                  opacity: isFreeLimitReached && !quotaData?.is_paid ? 0.6 : 1,
-                  cursor: isFreeLimitReached && !quotaData?.is_paid ? 'not-allowed' : 'pointer',
-                }}
+                className="btn btn-primary btn-sm"
               >
                 {isSubmitting ? (
                   <>
-                    <TbLoader2 className="pulse" size={16} /> Storing Key...
+                    <TbLoader2 className="pulse" size={16} /> Storing key...
                   </>
                 ) : (
                   <>
-                    <TbCheck size={16} /> Save &amp; Connect Key
+                    <TbCheck size={16} /> Save &amp; connect key
                   </>
                 )}
               </button>
@@ -748,142 +506,71 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
         )}
       </AnimatePresence>
 
+      {/* Feedback shown after the form closes (e.g. a successful save) */}
+      {feedback && !showAddForm && (
+        <div
+          className={`${d.notice} ${feedback.type === 'error' ? d.noticeDanger : d.noticeSuccess}`}
+          role={feedback.type === 'error' ? 'alert' : 'status'}
+        >
+          {feedback.type === 'error' ? (
+            <TbAlertCircle size={16} className={d.noticeIcon} />
+          ) : (
+            <TbCheck size={16} className={d.noticeIcon} />
+          )}
+          <span>{feedback.msg}</span>
+        </div>
+      )}
+
       {/* List of Connected API Keys */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.82rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>
-            Active AI Keys ({apiKeys.length} {apiKeys.length === 1 ? 'Connected' : 'Connected'})
-          </span>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
-            Click star icon to switch default QA engine
-          </span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+        <div className={d.keysHead}>
+          <span className="section-eyebrow">Active AI keys ({apiKeys.length} connected)</span>
+          <span className={d.keysHint}>Click the star to switch the default QA engine</span>
         </div>
 
         {loading ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)', padding: '16px', fontSize: '0.84rem' }}>
+          <div className={d.loadingRow}>
             <TbLoader2 size={16} className="pulse" /> Loading connected API keys...
           </div>
         ) : apiKeys.length === 0 ? (
-          <div
-            style={{
-              padding: '24px',
-              borderRadius: '12px',
-              background: 'rgba(var(--ink-rgb), 0.02)',
-              border: '1px dashed rgba(var(--ink-rgb), 0.1)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '10px',
-              textAlign: 'center',
-            }}
-          >
-            <TbKey size={32} color="var(--text-subtle)" />
-            <div style={{ color: 'var(--text-main)', fontWeight: 600, fontSize: '0.9rem' }}>
-              No AI Model Keys Connected Yet
-            </div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', maxWidth: '380px' }}>
-              Connect your Google Gemini, OpenAI, Claude, or DeepSeek API key to enable autonomous QA defect analysis and report generation.
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowAddForm(true)}
-              className="btn btn-primary"
-              style={{
-                marginTop: '6px',
-                padding: '6px 14px',
-                fontSize: '0.8rem',
-                borderRadius: '8px',
-              }}
-            >
-              + Connect First API Key
-            </button>
-          </div>
+          <EmptyState3D
+            compact
+            icon={<TbKey size={16} />}
+            title="No AI model keys connected yet"
+            description="Connect your Google Gemini, OpenAI, Claude or DeepSeek API key to enable autonomous QA defect analysis and report generation."
+            action={
+              <button type="button" onClick={() => setShowAddForm(true)} className="btn btn-primary btn-sm">
+                <RiAddLine size={16} /> Connect first API key
+              </button>
+            }
+          />
         ) : (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-              gap: '12px',
-            }}
-          >
+          <div className="auto-grid" style={{ ['--grid-min' as string]: '280px', ['--grid-gap' as string]: '12px' } as React.CSSProperties}>
             {apiKeys.map((key) => {
               const isDefault = !!key.is_default;
               const isRevealed = !!revealedKeyIds[key.id];
 
               return (
-                <div
-                  key={key.id}
-                  style={{
-                    padding: '14px 16px',
-                    borderRadius: '14px',
-                    background: isDefault
-                      ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(16, 185, 129, 0.08))'
-                      : 'rgba(var(--ink-rgb), 0.025)',
-                    border: `1px solid ${
-                      isDefault ? 'rgba(99, 102, 241, 0.4)' : 'rgba(var(--ink-rgb), 0.07)'
-                    }`,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '10px',
-                    position: 'relative',
-                    transition: 'all 0.2s ease',
-                    boxShadow: isDefault ? '0 4px 20px rgba(99, 102, 241, 0.15)' : 'none',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div
-                        style={{
-                          width: '32px',
-                          height: '32px',
-                          borderRadius: '8px',
-                          background: 'rgba(var(--ink-rgb), 0.05)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
+                <div key={key.id} className={`${d.keyCard} ${isDefault ? d.keyCardDefault : ''}`}>
+                  <div className={d.keyTop}>
+                    <div className={d.keyIdent}>
+                      <span className={d.keyIcon} aria-hidden="true">
                         {renderProviderIcon(key.provider_id, 18)}
-                      </div>
+                      </span>
                       <div>
-                        <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                        <div className={d.keyName}>
                           {key.key_name || `${(key.provider_id || '').toUpperCase()} Engine`}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-                          <span
-                            style={{
-                              fontSize: '0.72rem',
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                              background: 'rgba(var(--ink-rgb), 0.06)',
-                              color: 'var(--text-muted)',
-                              fontFamily: 'monospace',
-                            }}
-                          >
-                            {key.model || 'default-model'}
-                          </span>
+                        <div className={d.keyModel}>
+                          <span className={`chip chip--sm chip--neutral ${d.mono}`}>{key.model || 'default-model'}</span>
                         </div>
                       </div>
                     </div>
 
                     {/* Default Status Badge / Action */}
                     {isDefault ? (
-                      <span
-                        style={{
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          background: 'rgba(16, 185, 129, 0.18)',
-                          color: '#059669',
-                          border: '1px solid rgba(16, 185, 129, 0.35)',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                        }}
-                      >
-                        <RiStarFill size={11} color="#059669" /> Default Engine
+                      <span className="chip chip--sm chip--success">
+                        <RiStarFill size={11} /> Default engine
                       </span>
                     ) : (
                       <button
@@ -891,52 +578,29 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                         onClick={() => handleSetDefaultKey(key.id)}
                         disabled={settingDefaultId === key.id}
                         title="Set as Default QA Model"
-                        style={{
-                          background: 'rgba(var(--ink-rgb), 0.04)',
-                          border: '1px solid rgba(var(--ink-rgb), 0.08)',
-                          borderRadius: '6px',
-                          padding: '3px 8px',
-                          fontSize: '0.72rem',
-                          color: 'var(--text-muted)',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          transition: 'all 0.15s ease',
-                        }}
+                        className="btn btn-secondary btn-sm"
                       >
-                        <RiStarLine size={12} /> Set Default
+                        {settingDefaultId === key.id ? <TbLoader2 size={12} className="pulse" /> : <RiStarLine size={12} />} Set default
                       </button>
                     )}
                   </div>
 
                   {/* Masked Key Display & Actions */}
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '6px 10px',
-                      borderRadius: '8px',
-                      background: 'rgba(var(--ink-rgb), 0.037)',
-                      fontSize: '0.78rem',
-                      fontFamily: 'monospace',
-                      color: 'var(--text-body)',
-                    }}
-                  >
+                  <div className={`${d.keyMask} ${d.mono}`}>
                     <span>
                       {isRevealed
                         ? key.masked_key || '••••••••••••'
                         : (key.masked_key || '••••••••••••').replace(/^(AIzaSy|sk-proj-|sk-ant-).*(.{4})$/, '$1...$2')}
                     </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div className={d.keyMaskActions}>
                       <button
                         type="button"
                         onClick={() =>
                           setRevealedKeyIds((prev) => ({ ...prev, [key.id]: !prev[key.id] }))
                         }
                         title={isRevealed ? 'Mask key' : 'Show masked snippet'}
-                        style={{ background: 'none', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer' }}
+                        aria-label={isRevealed ? 'Mask key' : 'Show masked snippet'}
+                        className={d.iconBtn}
                       >
                         {isRevealed ? <RiEyeOffLine size={14} /> : <RiEyeLine size={14} />}
                       </button>
@@ -945,9 +609,10 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                         onClick={() => handleDeleteKey(key.id)}
                         disabled={deletingId === key.id}
                         title="Disconnect API Key"
-                        style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer' }}
+                        aria-label="Disconnect API key"
+                        className={`${d.iconBtn} ${d.iconBtnDanger}`}
                       >
-                        <TbTrash size={14} />
+                        {deletingId === key.id ? <TbLoader2 size={14} className="pulse" /> : <TbTrash size={14} />}
                       </button>
                     </div>
                   </div>
@@ -957,6 +622,6 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
           </div>
         )}
       </div>
-    </div>
+    </Surface3D>
   );
 };

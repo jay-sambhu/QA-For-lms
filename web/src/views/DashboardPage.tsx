@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { m as motion } from 'framer-motion';
 import {
   RiRefreshLine,
   RiShieldUserLine,
@@ -20,13 +19,59 @@ import {
   TbActivity,
   TbDevices,
   TbExternalLink,
+  TbLock,
+  TbScan,
+  TbGift,
 } from 'react-icons/tb';
 import { useAuth } from '../context/AuthContext';
 import { downloadScanReport, type ServerReportFormat } from '../utils/download';
-import { ScanForm } from '../components/scan/ScanForm';
+import { ScanForm, type TrialStatus } from '../components/scan/ScanForm';
 import { ApiKeyManager } from '../components/dashboard/ApiKeyManager';
-import styles from '../app/page.module.css';
-import { Tilt3D } from '../components/three/Tilt3D';
+import {
+  Surface3D,
+  StatTile3D,
+  PageHeader3D,
+  SegmentedTabs3D,
+  EmptyState3D,
+} from '../components/three';
+import d from '../components/dashboard/dashboard3d.module.css';
+
+type StatusFilter = 'all' | 'completed' | 'running' | 'failed';
+
+const normalizeTrial = (data: any): TrialStatus | null => {
+  if (!data || typeof data !== 'object' || typeof data.remaining !== 'number') return null;
+  return {
+    enabled: !!data.enabled,
+    total: Number(data.total) || 0,
+    used: Number(data.used) || 0,
+    remaining: Math.max(0, Number(data.remaining) || 0),
+    has_own_key: !!data.has_own_key,
+    daily_available: data.daily_available !== false,
+  };
+};
+
+const statusChip = (status: string) => {
+  switch (status) {
+    case 'completed':
+      return 'chip chip--success chip--dot';
+    case 'running':
+    case 'pending':
+    case 'queued':
+      return 'chip chip--info chip--live';
+    case 'failed':
+    case 'error':
+      return 'chip chip--danger chip--dot';
+    case 'cancelled':
+      return 'chip chip--neutral';
+    case 'timeout':
+    case 'stalled':
+      return 'chip chip--warning chip--dot';
+    default:
+      return 'chip chip--neutral';
+  }
+};
+
+const enterDelay = (step: number) => ({ ['--enter-delay' as string]: `${step * 60}ms` }) as React.CSSProperties;
 
 export const DashboardPage: React.FC = () => {
   const router = useRouter();
@@ -37,8 +82,9 @@ export const DashboardPage: React.FC = () => {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [apiKeysCount, setApiKeysCount] = useState<number>(0);
+  const [trial, setTrial] = useState<TrialStatus | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'running' | 'failed'>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [downloadingScanId, setDownloadingScanId] = useState<string | null>(null);
 
   const handleDirectDownload = async (scanId: string, format: ServerReportFormat) => {
@@ -55,6 +101,22 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
+  const fetchTrial = useCallback(async () => {
+    if (!session?.access_token) return;
+    try {
+      const res = await fetch('/api/v1/user/trial', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (res.ok) {
+        setTrial(normalizeTrial(await res.json()));
+      } else if (res.status === 404) {
+        setTrial(null);
+      }
+    } catch {
+      // Ignore background network errors
+    }
+  }, [session?.access_token]);
+
   const checkApiKey = useCallback(async () => {
     if (!session?.access_token) return;
     try {
@@ -65,6 +127,7 @@ export const DashboardPage: React.FC = () => {
         const data = await res.json();
         setHasApiKey(data.count > 0);
         setApiKeysCount(data.count || 0);
+        if (data.trial) setTrial(normalizeTrial(data.trial));
       } else {
         const legacyRes = await fetch('/api/v1/user/api-key', {
           headers: { Authorization: `Bearer ${session.access_token}` },
@@ -113,7 +176,8 @@ export const DashboardPage: React.FC = () => {
   useEffect(() => {
     fetchScanHistory();
     checkApiKey();
-  }, [fetchScanHistory, checkApiKey]);
+    fetchTrial();
+  }, [fetchScanHistory, checkApiKey, fetchTrial]);
 
   const scrollToAiManager = () => {
     const el = document.getElementById('ai-models-manager');
@@ -121,6 +185,14 @@ export const DashboardPage: React.FC = () => {
       el.scrollIntoView({ behavior: 'smooth' });
     } else {
       openProfileModal();
+    }
+  };
+
+  const scrollToLauncher = () => {
+    const el = document.getElementById('scan-launcher');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.querySelector<HTMLInputElement>('input[type="url"]')?.focus({ preventScroll: true });
     }
   };
 
@@ -162,12 +234,19 @@ export const DashboardPage: React.FC = () => {
         const errData = await res.json().catch(() => ({}));
         if (res.status === 400 && /API key is required/i.test(errData.detail || '')) {
           setHasApiKey(false);
+          fetchTrial();
           openProfileModal();
         }
         throw new Error(errData.detail || `Scan request failed with status ${res.status}`);
       }
 
       const resData = await res.json();
+      if (resData.used_trial && typeof resData.trial_remaining === 'number') {
+        const remaining = Math.max(0, resData.trial_remaining);
+        setTrial((prev) =>
+          prev ? { ...prev, remaining, used: Math.max(0, prev.total - remaining) } : prev
+        );
+      }
       router.push(`/dashboard/scan/${resData.scan_id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to initialize QA scan');
@@ -199,12 +278,53 @@ export const DashboardPage: React.FC = () => {
   const totalScansCount = recentScans.length;
   const completedCount = recentScans.filter((s) => s.status === 'completed').length;
   const runningCount = recentScans.filter((s) => s.status === 'running' || s.status === 'pending').length;
+  const failedCount = recentScans.filter((s) => s.status === 'failed' || s.status === 'error').length;
   const successRate = totalScansCount > 0 ? Math.round((completedCount / totalScansCount) * 100) : 100;
+
+  const trialActive = hasApiKey === false && !!trial?.enabled && trial.remaining > 0;
+  const trialExhausted = hasApiKey === false && !!trial?.enabled && trial.remaining <= 0;
+  const keyMissing = hasApiKey === false && !trial?.enabled;
+
+  const aiTile = (() => {
+    if (hasApiKey === null) {
+      return { accent: 'neutral' as const, value: 'Checking…', hint: 'Looking up your AI keys', icon: <TbKey size={20} /> };
+    }
+    if (hasApiKey) {
+      return {
+        accent: 'success' as const,
+        value: `${apiKeysCount} ${apiKeysCount === 1 ? 'key' : 'keys'} active`,
+        hint: 'Click to manage your AI keys',
+        icon: <TbKey size={20} />,
+      };
+    }
+    if (trialActive && trial) {
+      return {
+        accent: 'info' as const,
+        value: 'Free trial',
+        hint: `${trial.remaining} of ${trial.total} free scan${trial.total === 1 ? '' : 's'} left · add your own key anytime`,
+        icon: <TbGift size={20} />,
+      };
+    }
+    if (trialExhausted) {
+      return {
+        accent: 'warning' as const,
+        value: 'Trial used up',
+        hint: 'Add a free Gemini key to keep scanning',
+        icon: <TbKey size={20} />,
+      };
+    }
+    return {
+      accent: 'danger' as const,
+      value: 'Key required',
+      hint: 'Click to configure your AI key',
+      icon: <TbKey size={20} />,
+    };
+  })();
 
   if (!sessionLoaded) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
-        <TbLoader2 size={36} className="pulse" color="#6366f1" />
+        <TbLoader2 size={36} className="pulse" style={{ color: 'var(--primary)' }} />
         <p style={{ color: 'var(--text-muted)' }}>Loading workspace...</p>
       </div>
     );
@@ -213,487 +333,249 @@ export const DashboardPage: React.FC = () => {
   if (!session) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '120px' }}>
-        <TbLoader2 size={36} className="pulse" color="#6366f1" />
+        <TbLoader2 size={36} className="pulse" style={{ color: 'var(--primary)' }} />
         <p style={{ color: 'var(--text-muted)' }}>Session unauthenticated. Redirecting to home...</p>
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', padding: '20px 0 60px' }}>
-      {/* Top Glassmorphic Bar */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '16px',
-          padding: '24px',
-          background: 'rgba(var(--panel-rgb), 0.7)',
-          backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(var(--ink-rgb), 0.08)',
-          borderRadius: '20px',
-          boxShadow: '0 12px 32px rgba(15, 23, 42, 0.105)',
-        }}
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)' }}>
-              QA Automation Dashboard
-            </h2>
-            <span
-              className={`${styles.tierPill} ${
-                userPlan === 'pro'
-                  ? styles.tierPro
-                  : userPlan === 'enterprise'
-                  ? styles.tierEnterprise
-                  : styles.tierFree
-              }`}
-            >
-              {userPlan.toUpperCase()} TIER
-            </span>
-          </div>
-          <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-            Launch autonomous multi-device browser testing agents and inspect AI-verified defect reports.
-          </p>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          {/* Admin Switcher Card */}
-          {isAdmin && (
-            <Link
-              href="/admin"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 16px',
-                borderRadius: '10px',
-                background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(99, 102, 241, 0.2))',
-                border: '1px solid rgba(168, 85, 247, 0.4)',
-                color: '#9333ea',
-                fontSize: '0.84rem',
-                fontWeight: 700,
-                textDecoration: 'none',
-                boxShadow: '0 4px 15px rgba(168, 85, 247, 0.15)',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              <RiShieldUserLine size={16} />
-              <span>Admin Console</span>
-              <TbExternalLink size={14} />
-            </Link>
-          )}
-
-          <button
-            onClick={fetchScanHistory}
-            className={styles.exportBtn}
-            disabled={loadingHistory}
-            style={{ padding: '8px 16px', fontSize: '0.84rem' }}
-          >
-            <RiRefreshLine size={16} className={loadingHistory ? 'pulse' : ''} /> Refresh History
-          </button>
-        </div>
+    <div className="page-shell">
+      <div className="enter-3d">
+        <PageHeader3D
+          eyebrow="Workspace"
+          title="QA Automation Dashboard"
+          badge={`${userPlan.toUpperCase()} TIER`}
+          subtitle="Launch autonomous multi-device browser testing agents and inspect AI-verified defect reports."
+          actions={
+            <>
+              <button type="button" className="btn btn-primary" onClick={scrollToLauncher}>
+                <TbScan size={16} /> New scan
+              </button>
+              <button
+                type="button"
+                onClick={fetchScanHistory}
+                className="btn btn-secondary"
+                disabled={loadingHistory}
+              >
+                <RiRefreshLine size={16} className={loadingHistory ? 'pulse' : ''} /> Refresh history
+              </button>
+              {isAdmin && (
+                <Link href="/admin" className="btn btn-secondary">
+                  <RiShieldUserLine size={16} />
+                  <span>Admin Console</span>
+                  <TbExternalLink size={14} />
+                </Link>
+              )}
+            </>
+          }
+        />
       </div>
 
-      {/* 4 Glassmorphism Metric Cards */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-          gap: '16px',
-        }}
-      >
-        {/* Card 1: Total Scans */}
-        <Tilt3D
-          max={7}
-          style={{
-            padding: '20px',
-            borderRadius: '16px',
-            background: 'rgba(var(--panel-rgb), 0.7)',
-            backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(var(--ink-rgb), 0.08)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.075)',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>Total Automated Scans</span>
-            <TbActivity size={20} color="#4f46e5" />
-          </div>
-          <div style={{ fontSize: '1.9rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
-            {totalScansCount}
-          </div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)' }}>
-            {completedCount} completed · {runningCount} active
-          </div>
-        </Tilt3D>
-
-        {/* Card 2: Success Rate */}
-        <Tilt3D
-          max={7}
-          style={{
-            padding: '20px',
-            borderRadius: '16px',
-            background: 'rgba(var(--panel-rgb), 0.7)',
-            backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(var(--ink-rgb), 0.08)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.075)',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>Verification Pass Rate</span>
-            <RiCheckDoubleLine size={20} color="#10b981" />
-          </div>
-          <div style={{ fontSize: '1.9rem', fontWeight: 800, color: '#059669', letterSpacing: '-0.02em' }}>
-            {successRate}%
-          </div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)' }}>
-            Across all crawled pages & viewport states
-          </div>
-        </Tilt3D>
-
-        {/* Card 3: AI Engine BYOK Status */}
-        <Tilt3D
-          max={7}
-          onClick={scrollToAiManager}
-          style={{
-            padding: '20px',
-            borderRadius: '16px',
-            background: hasApiKey
-              ? 'rgba(16, 185, 129, 0.05)'
-              : 'rgba(239, 68, 68, 0.06)',
-            backdropFilter: 'blur(16px)',
-            border: `1px solid ${hasApiKey ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.3)'}`,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.075)',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>AI Models & BYOK</span>
-            <TbKey size={20} color={hasApiKey ? '#059669' : '#dc2626'} />
-          </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: hasApiKey ? '#059669' : '#dc2626', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span
-              style={{
-                width: '9px',
-                height: '9px',
-                borderRadius: '50%',
-                background: hasApiKey ? '#10b981' : '#ef4444',
-                boxShadow: hasApiKey ? '0 0 10px #10b981' : '0 0 10px #ef4444',
-              }}
-            />
-            {hasApiKey ? `${apiKeysCount} ${apiKeysCount === 1 ? 'Key' : 'Keys'} Active` : 'Key Required'}
-          </div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)' }}>
-            {hasApiKey ? 'Click to manage multi-model keys ↓' : 'Click to configure AI API Key ↓'}
-          </div>
-        </Tilt3D>
-
-        {/* Card 4: Viewports Pool */}
-        <Tilt3D
-          max={7}
-          style={{
-            padding: '20px',
-            borderRadius: '16px',
-            background: 'rgba(var(--panel-rgb), 0.7)',
-            backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(var(--ink-rgb), 0.08)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.075)',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>Browser Matrix</span>
-            <TbDevices size={20} color="#0284c7" />
-          </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0284c7' }}>
-            3 Active Viewports
-          </div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)' }}>
-            Desktop (1920p) · Tablet (768p) · Mobile (375p)
-          </div>
-        </Tilt3D>
-      </div>
-
-      {/* Reminder if user has not yet configured their AI API key */}
-      {session && hasApiKey === false && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '16px',
-            padding: '18px 24px',
-            background: 'rgba(239, 68, 68, 0.08)',
-            border: '1px solid rgba(239, 68, 68, 0.35)',
-            borderRadius: '16px',
-            backdropFilter: 'blur(16px)',
-            flexWrap: 'wrap',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div
-              style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '12px',
-                background: 'rgba(239, 68, 68, 0.15)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#dc2626',
-              }}
-            >
-              <TbKey size={22} />
-            </div>
-            <div>
-              <div style={{ fontSize: '0.98rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                AI API Key Required for AI QA Analysis
-              </div>
-              <div style={{ fontSize: '0.84rem', color: 'var(--text-muted)', marginTop: '3px' }}>
-                Your tests crawl freely, but generating AI defect reports requires an active AI API key (Gemini, OpenAI, Claude, DeepSeek, or Local LLM).
-              </div>
-            </div>
-          </div>
-          <button
-            type="button"
+      {/* KPI tiles */}
+      <div className="bento" style={{ ['--grid-gap' as string]: '16px' } as React.CSSProperties}>
+        <div className="span-3 enter-3d" style={enterDelay(1)}>
+          <StatTile3D
+            label="Total automated scans"
+            value={totalScansCount}
+            icon={<TbActivity size={20} />}
+            hint={`${completedCount} completed · ${runningCount} active`}
+          />
+        </div>
+        <div className="span-3 enter-3d" style={enterDelay(2)}>
+          <StatTile3D
+            label="Verification pass rate"
+            value={`${successRate}%`}
+            accent="success"
+            icon={<RiCheckDoubleLine size={20} />}
+            hint="Across all crawled pages & viewport states"
+          />
+        </div>
+        <div className="span-3 enter-3d" style={enterDelay(3)}>
+          <StatTile3D
+            label="AI engine & BYOK"
+            value={aiTile.value}
+            compact
+            valueAccent
+            accent={aiTile.accent}
+            icon={aiTile.icon}
+            hint={aiTile.hint}
             onClick={scrollToAiManager}
-            className="btn btn-primary"
-            style={{
-              padding: '9px 18px',
-              fontSize: '0.84rem',
-              borderRadius: '10px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-              borderColor: 'rgba(var(--ink-rgb), 0.2)',
-            }}
+            actionLabel={`AI engine: ${aiTile.value}. ${aiTile.hint}`}
           >
-            <TbKey size={16} /> Configure API Keys Below ↓
+            {trialActive && trial && trial.total > 0 && trial.total <= 10 && (
+              <div className={d.trialTrack} aria-hidden="true">
+                {Array.from({ length: trial.total }, (_, i) => (
+                  <span key={i} className={`${d.trialStep} ${i < trial.remaining ? d.trialStepFilled : ''}`} />
+                ))}
+              </div>
+            )}
+          </StatTile3D>
+        </div>
+        <div className="span-3 enter-3d" style={enterDelay(4)}>
+          <StatTile3D
+            label="Browser matrix"
+            value="3 viewports"
+            compact
+            accent="info"
+            icon={<TbDevices size={20} />}
+            hint="Desktop 1920 · Tablet 768 · Mobile 375"
+          />
+        </div>
+      </div>
+
+      {/* Reminder when the user cannot scan without adding a key */}
+      {session && (trialExhausted || keyMissing) && (
+        <Surface3D
+          accent={trialExhausted ? 'warning' : 'danger'}
+          pad="sm"
+          className={`enter-3d ${d.banner}`}
+          role="status"
+          style={enterDelay(5)}
+        >
+          <div className={d.bannerBody}>
+            <span className="icon-well" aria-hidden="true">
+              <TbKey size={22} />
+            </span>
+            <div>
+              <p className={d.bannerTitle}>
+                {trialExhausted
+                  ? `You've used your ${trial?.total ?? 0} free trial scan${trial?.total === 1 ? '' : 's'}`
+                  : 'An AI API key is required for AI QA analysis'}
+              </p>
+              <p className={d.bannerText}>
+                {trialExhausted
+                  ? 'Add your own free Gemini API key to keep scanning. OpenAI, Claude, DeepSeek and local LLMs work too.'
+                  : 'Your tests crawl freely, but generating AI defect reports requires an active AI API key (Gemini, OpenAI, Claude, DeepSeek, or Local LLM).'}
+              </p>
+            </div>
+          </div>
+          <button type="button" onClick={scrollToAiManager} className="btn btn-primary">
+            <TbKey size={16} /> {trialExhausted ? 'Add a free Gemini key' : 'Configure API keys below'}
           </button>
-        </motion.div>
+        </Surface3D>
       )}
 
-      {/* Dedicated Multi-AI Provider & Model Integration Hub */}
-      {session && (
-        <ApiKeyManager onKeysUpdated={checkApiKey} />
-      )}
-
-      {/* New Scan Launch Card */}
-      <motion.div
-        className={styles.actionPanel}
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        style={{
-          background: 'rgba(var(--panel-rgb), 0.7)',
-          backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(var(--ink-rgb), 0.08)',
-          boxShadow: '0 20px 50px rgba(15, 23, 42, 0.12)',
-        }}
-      >
-        <ScanForm onSubmit={handleStartScan} loading={loading} error={error} />
-      </motion.div>
+      {/* New Scan Launch Console */}
+      <Surface3D ring pad="lg" className="enter-3d" style={enterDelay(5)}>
+        <ScanForm
+          onSubmit={handleStartScan}
+          loading={loading}
+          error={error}
+          trial={trial}
+          hasApiKey={hasApiKey}
+          onConfigureKey={scrollToAiManager}
+        />
+      </Surface3D>
 
       {/* Recent Scans History Section */}
-      <div
-        className={styles.adminTableCard}
-        style={{
-          background: 'rgba(var(--panel-rgb), 0.7)',
-          backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(var(--ink-rgb), 0.08)',
-          boxShadow: '0 16px 40px rgba(15, 23, 42, 0.105)',
-        }}
-      >
-        <div
-          className={styles.adminTableCardTitle}
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '12px',
-          }}
-        >
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-            <TbChecklist size={20} color="#4f46e5" />
-            <span style={{ fontWeight: 700 }}>Autonomous QA Run History</span>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500, marginLeft: '6px' }}>
-              ({filteredScans.length} of {recentScans.length} scans)
+      <Surface3D as="section" pad="sm" className="enter-3d" style={enterDelay(6)} aria-labelledby="run-history-title">
+        <div className={d.panelHead} style={{ padding: '8px 8px 16px' }}>
+          <div className={d.panelTitleBlock}>
+            <span className="icon-well" aria-hidden="true">
+              <TbChecklist size={20} />
             </span>
+            <div>
+              <span className="section-eyebrow">Run history</span>
+              <div className={d.panelTitleRow}>
+                <h2 id="run-history-title" className={d.panelTitle}>Autonomous QA runs</h2>
+                <span className={d.panelCount}>
+                  {filteredScans.length} of {recentScans.length} scans
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Search & Filter Controls */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <div style={{ position: 'relative' }}>
-              <RiSearchLine
-                size={14}
-                style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-subtle)' }}
-              />
+          <div className={d.panelTools}>
+            <div className={d.search}>
+              <RiSearchLine size={14} className={d.searchIcon} />
               <input
                 type="text"
                 placeholder="Filter by target URL..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  background: 'rgba(var(--ink-rgb), 0.04)',
-                  border: '1px solid rgba(var(--ink-rgb), 0.1)',
-                  borderRadius: '8px',
-                  padding: '5px 10px 5px 30px',
-                  fontSize: '0.8rem',
-                  color: 'var(--text-main)',
-                  outline: 'none',
-                }}
+                className={`${d.field} ${d.searchInput}`}
+                aria-label="Filter runs by target URL"
               />
             </div>
 
-            <div style={{ display: 'flex', gap: '4px', background: 'rgba(var(--ink-rgb), 0.03)', padding: '2px', borderRadius: '8px', border: '1px solid rgba(var(--ink-rgb), 0.06)' }}>
-              {(['all', 'completed', 'running', 'failed'] as const).map((filter) => (
-                <button
-                  key={filter}
-                  onClick={() => setStatusFilter(filter)}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: '6px',
-                    fontSize: '0.74rem',
-                    fontWeight: 600,
-                    textTransform: 'capitalize',
-                    background: statusFilter === filter ? 'rgba(99, 102, 241, 0.3)' : 'transparent',
-                    color: statusFilter === filter ? '#4338ca' : 'var(--text-muted)',
-                    border: `1px solid ${statusFilter === filter ? 'rgba(99, 102, 241, 0.4)' : 'transparent'}`,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {filter}
-                </button>
-              ))}
-            </div>
+            <SegmentedTabs3D
+              size="sm"
+              ariaLabel="Filter runs by status"
+              tabs={[
+                { id: 'all', label: 'All', badge: totalScansCount },
+                { id: 'completed', label: 'Completed', badge: completedCount },
+                { id: 'running', label: 'Running', badge: runningCount },
+                { id: 'failed', label: 'Failed', badge: failedCount },
+              ]}
+              active={statusFilter}
+              onChange={setStatusFilter}
+            />
           </div>
         </div>
 
-        <div className={styles.adminTableContainer}>
-          <table className={styles.adminTable}>
+        <div className="table-3d-wrap" style={{ ['--table-max-h' as string]: '560px' } as React.CSSProperties}>
+          <table className="table-3d">
             <thead>
               <tr>
-                <th>Target Web Application</th>
-                <th>Run Status</th>
-                <th>Auth Session</th>
-                <th>Initiated At</th>
-                <th>Actions &amp; Reports</th>
+                <th>Target web application</th>
+                <th>Run status</th>
+                <th>Auth session</th>
+                <th>Initiated at</th>
+                <th>Actions &amp; reports</th>
               </tr>
             </thead>
             <tbody>
               {filteredScans.map((s) => {
                 const isCompleted = s.status === 'completed';
                 const isRunning = s.status === 'running' || s.status === 'pending';
-                const isFailed = s.status === 'failed' || s.status === 'error';
 
                 return (
                   <tr key={s.id}>
-                    <td style={{ maxWidth: '340px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>{s.url}</span>
+                    <td>
+                      <div className={d.urlCell} title={s.url}>{s.url}</div>
                     </td>
                     <td>
-                      <span
-                        className={styles.severityBadge}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          background: isCompleted
-                            ? 'rgba(16, 185, 129, 0.15)'
-                            : isFailed
-                            ? 'rgba(239, 68, 68, 0.15)'
-                            : 'rgba(99, 102, 241, 0.15)',
-                          color: isCompleted
-                            ? '#059669'
-                            : isFailed
-                            ? '#dc2626'
-                            : '#4f46e5',
-                          border: `1px solid ${
-                            isCompleted
-                              ? 'rgba(16, 185, 129, 0.3)'
-                              : isFailed
-                              ? 'rgba(239, 68, 68, 0.3)'
-                              : 'rgba(99, 102, 241, 0.3)'
-                          }`,
-                        }}
-                      >
-                        {isRunning && <TbLoader2 size={12} className="pulse" />}
-                        {String(s.status || 'unknown').toUpperCase()}
+                      <span className={statusChip(String(s.status || 'unknown'))}>
+                        {String(s.status || 'unknown')}
                       </span>
                     </td>
                     <td>
-                      <span style={{ fontSize: '0.82rem', color: s.is_authenticated ? '#059669' : 'var(--text-subtle)' }}>
-                        {s.is_authenticated ? '🔒 Authenticated' : 'Public'}
-                      </span>
+                      {s.is_authenticated ? (
+                        <span className="chip chip--sm chip--primary">
+                          <TbLock size={11} /> Authenticated
+                        </span>
+                      ) : (
+                        <span className={d.metaCell}>Public</span>
+                      )}
                     </td>
-                    <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                    <td className={d.metaCell}>
                       {s.created_at ? new Date(s.created_at).toLocaleString() : 'N/A'}
                     </td>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <div className={d.rowActions}>
                         <Link
                           href={`/dashboard/scan/${s.id}`}
-                          className="btn btn-secondary"
-                          style={{
-                            padding: '6px 12px',
-                            fontSize: '0.8rem',
-                            borderRadius: '8px',
-                            textDecoration: 'none',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '5px',
-                            background: isRunning ? 'rgba(99, 102, 241, 0.15)' : 'rgba(var(--ink-rgb), 0.05)',
-                            borderColor: isRunning ? 'rgba(99, 102, 241, 0.35)' : 'rgba(var(--ink-rgb), 0.1)',
-                            color: isRunning ? '#4f46e5' : 'var(--text-main)',
-                          }}
+                          className={`btn ${isRunning ? 'btn-primary' : 'btn-secondary'} btn-sm`}
                         >
-                          <span>{isRunning ? 'Live Monitor' : 'View Report'}</span>
+                          <span>{isRunning ? 'Live monitor' : 'View report'}</span>
                           <TbArrowRight size={14} />
                         </Link>
 
                         {isCompleted && (
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <>
                             <button
                               type="button"
                               onClick={() => handleDirectDownload(s.id, 'pdf')}
                               disabled={downloadingScanId === `${s.id}-pdf`}
-                              className="btn btn-secondary"
+                              className="btn btn-secondary btn-sm"
                               title="Direct Cloud Download PDF Report"
-                              style={{
-                                padding: '6px 10px',
-                                fontSize: '0.78rem',
-                                borderRadius: '8px',
-                                color: '#dc2626',
-                                borderColor: 'rgba(239, 68, 68, 0.3)',
-                                background: 'rgba(239, 68, 68, 0.08)',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                cursor: 'pointer',
-                              }}
                             >
                               {downloadingScanId === `${s.id}-pdf` ? (
                                 <TbLoader2 size={13} className="pulse" />
                               ) : (
-                                <FaRegFilePdf size={13} color="#ef4444" />
+                                <FaRegFilePdf size={13} color="#e11d48" />
                               )}
                               <span>PDF</span>
                             </button>
@@ -701,29 +583,17 @@ export const DashboardPage: React.FC = () => {
                               type="button"
                               onClick={() => handleDirectDownload(s.id, 'xlsx')}
                               disabled={downloadingScanId === `${s.id}-xlsx`}
-                              className="btn btn-secondary"
+                              className="btn btn-secondary btn-sm"
                               title="Direct Cloud Download Excel Workbook"
-                              style={{
-                                padding: '6px 10px',
-                                fontSize: '0.78rem',
-                                borderRadius: '8px',
-                                color: '#059669',
-                                borderColor: 'rgba(16, 185, 129, 0.3)',
-                                background: 'rgba(16, 185, 129, 0.08)',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                cursor: 'pointer',
-                              }}
                             >
                               {downloadingScanId === `${s.id}-xlsx` ? (
                                 <TbLoader2 size={13} className="pulse" />
                               ) : (
-                                <RiFileExcel2Line size={13} color="#10b981" />
+                                <RiFileExcel2Line size={13} color="#059669" />
                               )}
                               <span>Excel</span>
                             </button>
-                          </div>
+                          </>
                         )}
                       </div>
                     </td>
@@ -733,17 +603,42 @@ export const DashboardPage: React.FC = () => {
 
               {filteredScans.length === 0 && (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: '42px', color: 'var(--text-muted)' }}>
-                    {recentScans.length === 0
-                      ? 'No scans launched yet. Enter a target URL in the panel above to begin your first automated QA run!'
-                      : 'No scans match your search query.'}
+                  <td colSpan={5}>
+                    {recentScans.length === 0 ? (
+                      <EmptyState3D
+                        compact
+                        icon={<TbScan size={16} />}
+                        title={loadingHistory ? 'Loading your runs…' : 'No scans yet'}
+                        description={
+                          loadingHistory
+                            ? undefined
+                            : 'Paste a target URL in the launch console above to map, test and grade your first site.'
+                        }
+                        action={
+                          loadingHistory ? undefined : (
+                            <button type="button" className="btn btn-primary btn-sm" onClick={scrollToLauncher}>
+                              <TbScan size={14} /> Start your first scan
+                            </button>
+                          )
+                        }
+                      />
+                    ) : (
+                      <EmptyState3D compact title="No runs match this filter" description="Try another status or clear the URL filter." />
+                    )}
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-      </div>
+      </Surface3D>
+
+      {/* Dedicated Multi-AI Provider & Model Integration Hub */}
+      {session && (
+        <div className="enter-3d" style={enterDelay(6)}>
+          <ApiKeyManager onKeysUpdated={checkApiKey} />
+        </div>
+      )}
     </div>
   );
 };
