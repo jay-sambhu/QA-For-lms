@@ -120,6 +120,11 @@ html, body {
   overflow-x: clip;
 }
 
+/* The floating header is sticky, so anchored and scrollIntoView targets stop below it */
+[id] {
+  scroll-margin-top: 96px;
+}
+
 /* The page glow lives in the fixed Backdrop3D layer, so scrolling never repaints it */
 body {
   background-color: var(--bg-color);
@@ -399,7 +404,7 @@ button {
 }
 
 .sideAdCloseBtn:hover {
-  color: #dc2626;
+  color: var(--tone-danger-ink);
 }
 
 .sideAdCard {
