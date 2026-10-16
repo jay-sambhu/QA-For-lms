@@ -12,6 +12,15 @@ import re
 
 from db import SessionLocal
 from models import User, Scan, Subscription, PaymentTransaction, ApiKey, BlogPost
+
+
+def _iso_utc(value):
+    """ISO timestamp with an explicit UTC offset (SQLite returns naive datetimes)."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.isoformat()
 from core.ai_config import (
     get_ai_providers_state,
     update_ai_provider_config,
@@ -142,7 +151,7 @@ async def list_admin_users(limit: int = 50) -> Dict[str, Any]:
                 "role": u.role,
                 "plan_tier": u.plan_tier or "free",
                 "scans_count": scan_count,
-                "created_at": u.created_at.isoformat() if u.created_at else None,
+                "created_at": _iso_utc(u.created_at),
             })
         return {"users": user_list, "total": len(user_list)}
 
@@ -175,8 +184,8 @@ async def list_admin_scans(limit: int = 50) -> Dict[str, Any]:
                     "url": s.url,
                     "status": s.status,
                     "is_authenticated": s.is_authenticated or False,
-                    "created_at": s.created_at.isoformat() if s.created_at else None,
-                    "completed_at": s.completed_at.isoformat() if s.completed_at else None,
+                    "created_at": _iso_utc(s.created_at),
+                    "completed_at": _iso_utc(s.completed_at),
                 }
                 for s in scans
             ],
@@ -281,8 +290,8 @@ async def list_api_keys() -> Dict[str, Any]:
                     "key_value": k.key_value[:10] + "..." + k.key_value[-4:] if len(k.key_value) > 15 else "***",
                     "status": k.status,
                     "service": k.service,
-                    "rate_limit_reset_at": k.rate_limit_reset_at.isoformat() if k.rate_limit_reset_at else None,
-                    "created_at": k.created_at.isoformat() if k.created_at else None,
+                    "rate_limit_reset_at": _iso_utc(k.rate_limit_reset_at),
+                    "created_at": _iso_utc(k.created_at),
                 }
                 for k in keys
             ]

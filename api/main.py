@@ -609,7 +609,7 @@ async def get_current_user_profile(user=Depends(require_user)):
             "is_admin": is_admin,
             "plan_tier": db_user.plan_tier or "free",
             "has_gemini_key": bool(db_user.gemini_api_key),
-            "created_at": db_user.created_at.isoformat() if db_user.created_at else None,
+            "created_at": _iso_utc(db_user.created_at),
             "dashboard_url": "/admin" if is_admin else "/dashboard",
         }
 
