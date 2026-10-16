@@ -16,6 +16,7 @@ import {
   TbReportAnalytics,
   TbArrowRight,
   TbSparkles,
+  TbGift,
 } from 'react-icons/tb';
 import {
   SiFastapi,
@@ -30,6 +31,7 @@ import { Hero3DMap } from '../components/three/Hero3DMap';
 import { Tilt3D } from '../components/three/Tilt3D';
 import { Reveal } from '../components/three/Reveal';
 import styles from '../app/page.module.css';
+import c from '../app/content3d.module.css';
 
 const METHODS = [
   {
@@ -77,7 +79,7 @@ const METHODS = [
 ];
 
 const STEPS = [
-  { title: 'Point it at your site', desc: 'Paste a URL, optionally add a login. No setup or SDK required.' },
+  { title: 'Point it at your site', desc: 'Paste a URL, optionally add a login. No SDK or code changes required to start.' },
   { title: 'We map every page in 3D', desc: 'Headless browsers crawl each viewport, click through flows and record evidence.' },
   { title: 'Get a graded report', desc: 'AI triage turns raw findings into prioritised defects you can export and share.' },
 ];
@@ -125,6 +127,11 @@ export const LandingPage: React.FC = () => {
               </>
             )}
           </div>
+
+          <p className={c.trialNote}>
+            <TbGift size={16} />
+            <span><strong>Free to start</strong> during beta, no credit card required.</span>
+          </p>
 
           <div className={styles.heroChecks}>
             <span><RiCheckboxCircleFill size={16} color="#059669" /> No setup</span>

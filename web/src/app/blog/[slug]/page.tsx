@@ -3,9 +3,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { RiArrowLeftLine, RiTimeLine, RiCalendarLine } from "react-icons/ri";
-import { TbSparkles, TbArrowRight } from "react-icons/tb";
+import { TbSparkles, TbArrowRight, TbGift } from "react-icons/tb";
 import { serverApiBase } from "../../../lib/serverApiBase";
 import { BLOG_POSTS, type BlogPost } from "../../../data/blogPosts";
+import { PageHeader3D, Surface3D } from "../../../components/three";
+import c from "../../content3d.module.css";
 
 export const dynamicParams = true;
 export const revalidate = 15;
@@ -93,6 +95,31 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
   };
 }
 
+type Block =
+  | { kind: "h2"; text: string }
+  | { kind: "list"; items: string[] }
+  | { kind: "step"; text: string }
+  | { kind: "p"; text: string };
+
+function toBlocks(content: string[]): Block[] {
+  const blocks: Block[] = [];
+  for (const paragraph of content) {
+    if (paragraph.startsWith("### ")) {
+      blocks.push({ kind: "h2", text: paragraph.replace("### ", "") });
+    } else if (paragraph.startsWith("- ")) {
+      const last = blocks[blocks.length - 1];
+      const item = paragraph.replace("- ", "");
+      if (last && last.kind === "list") last.items.push(item);
+      else blocks.push({ kind: "list", items: [item] });
+    } else if (/^\d+\.\s/.test(paragraph)) {
+      blocks.push({ kind: "step", text: paragraph });
+    } else {
+      blocks.push({ kind: "p", text: paragraph });
+    }
+  }
+  return blocks;
+}
+
 export default async function BlogPostPage({ params }: BlogPostPageProps) {
   const { slug } = await params;
   const post = await getPostBySlug(slug);
@@ -127,273 +154,112 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
     keywords: post.tags.join(", "),
   };
 
+  const blocks = toBlocks(post.content);
+
   return (
-    <article style={S.container}>
+    <div className="page-shell">
       {/* Structured Schema for Search Engines */}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
       />
 
-      {/* Back button */}
-      <div style={S.backRow}>
-        <Link href="/blog" style={S.backLink}>
-          <RiArrowLeftLine size={16} style={{ marginRight: 6 }} />
+      <div className="enter-3d">
+        <Link href="/blog" className="btn btn-secondary btn-sm">
+          <RiArrowLeftLine size={16} />
           Back to all articles
         </Link>
       </div>
 
-      {/* Header */}
-      <header style={S.header}>
-        <div style={S.metaTop}>
-          <span style={S.categoryBadge}>{post.category}</span>
-          <span style={S.metaItem}><RiCalendarLine size={14} style={{ marginRight: 4 }} /> {post.publishedAt}</span>
-          <span style={S.metaItem}><RiTimeLine size={14} style={{ marginRight: 4 }} /> {post.readingTime}</span>
-        </div>
-        <h1 style={S.title}>{post.title}</h1>
-        <p style={S.leadText}>{post.excerpt}</p>
-
-        {/* Author info */}
-        <div style={S.authorCard}>
-          <img src={post.author.avatar} alt={post.author.name} style={S.authorAvatar} />
-          <div>
-            <div style={S.authorName}>{post.author.name}</div>
-            <div style={S.authorRole}>{post.author.role}</div>
+      <PageHeader3D
+        eyebrow={post.category}
+        title={post.title}
+        subtitle={post.excerpt}
+        className="enter-3d"
+        style={{ ["--enter-delay" as string]: "60ms" } as React.CSSProperties}
+      >
+        <div className={c.postHeadMeta}>
+          <div className={c.author}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={post.author.avatar} alt={post.author.name} className={c.authorAvatar} />
+            <div>
+              <div className={c.authorName}>{post.author.name}</div>
+              <div className={c.authorRole}>{post.author.role}</div>
+            </div>
+          </div>
+          <div className={c.metaRow}>
+            <span className={c.metaItem}><RiCalendarLine size={14} /> {post.publishedAt}</span>
+            <span className={c.metaItem}><RiTimeLine size={14} /> {post.readingTime}</span>
           </div>
         </div>
-      </header>
+      </PageHeader3D>
 
-      {/* Article Content */}
-      <div style={S.contentWrapper}>
-        {post.content.map((paragraph, index) => {
-          if (paragraph.startsWith("### ")) {
-            return (
-              <h2 key={index} style={S.h2}>
-                {paragraph.replace("### ", "")}
-              </h2>
-            );
-          }
-          if (paragraph.startsWith("- ")) {
-            return (
-              <li key={index} style={S.listItem}>
-                {paragraph.replace("- ", "")}
-              </li>
-            );
-          }
-          if (/^\d+\.\s/.test(paragraph)) {
-            return (
-              <p key={index} style={S.orderedItem}>
-                {paragraph}
-              </p>
-            );
-          }
-          return (
-            <p key={index} style={S.paragraph}>
-              {paragraph}
-            </p>
-          );
-        })}
-      </div>
+      <div className={c.articleCol}>
+        <Surface3D
+          as="article"
+          pad="lg"
+          className="enter-3d"
+          style={{ ["--enter-delay" as string]: "120ms" } as React.CSSProperties}
+        >
+          <div className={c.prose}>
+            {blocks.map((block, index) => {
+              if (block.kind === "h2") return <h2 key={index}>{block.text}</h2>;
+              if (block.kind === "list") {
+                return (
+                  <ul key={index}>
+                    {block.items.map((item, j) => (
+                      <li key={j}>{item}</li>
+                    ))}
+                  </ul>
+                );
+              }
+              if (block.kind === "step") {
+                return (
+                  <p key={index} className={c.step}>
+                    {block.text}
+                  </p>
+                );
+              }
+              return <p key={index}>{block.text}</p>;
+            })}
+          </div>
 
-      {/* Tags */}
-      <div style={S.tagSection}>
-        <span style={S.tagLabel}>Topics:</span>
-        {post.tags.map((tag) => (
-          <span key={tag} style={S.tagPill}>
-            #{tag}
+          <div className={c.topics}>
+            <span className={c.topicsLabel}>Topics</span>
+            {post.tags.map((tag) => (
+              <span key={tag} className="chip chip--neutral chip--sm">
+                #{tag}
+              </span>
+            ))}
+          </div>
+        </Surface3D>
+
+        <Surface3D
+          as="section"
+          ring
+          pad="lg"
+          className={`${c.cta} enter-3d`}
+          style={{ ["--enter-delay" as string]: "180ms" } as React.CSSProperties}
+          aria-labelledby="post-cta-title"
+        >
+          <span className="chip chip--success chip--dot">
+            <TbSparkles size={13} /> Start continuous testing
           </span>
-        ))}
+          <h3 id="post-cta-title" className={c.ctaTitle}>Experience autonomous web QA in action</h3>
+          <p className={c.ctaDesc}>
+            Enter your URL to launch an automated multi-viewport crawl with synthetic interaction testing and executive defect grading.
+          </p>
+          <div className={c.ctaActions}>
+            <Link href="/dashboard" className="btn btn-primary">
+              Run free website scan <TbArrowRight size={18} />
+            </Link>
+            <span className={c.trialNote}>
+              <TbGift size={16} />
+              <span><strong>Free to start</strong> during beta, no credit card required.</span>
+            </span>
+          </div>
+        </Surface3D>
       </div>
-
-      {/* Bottom CTA Banner */}
-      <section style={S.ctaSection}>
-        <div style={S.ctaBadge}>
-          <TbSparkles size={14} style={{ marginRight: 4 }} />
-          START CONTINUOUS TESTING
-        </div>
-        <h3 style={S.ctaTitle}>Experience Autonomous Web QA in Action</h3>
-        <p style={S.ctaDesc}>
-          Enter your URL to launch an automated multi-viewport crawl with synthetic interaction testing and executive defect grading.
-        </p>
-        <Link href="/dashboard" style={S.ctaBtn}>
-          Run Free Website Scan <TbArrowRight size={18} style={{ marginLeft: 6 }} />
-        </Link>
-      </section>
-    </article>
+    </div>
   );
 }
-
-const S: Record<string, React.CSSProperties> = {
-  container: {
-    maxWidth: "820px",
-    margin: "0 auto",
-    padding: "32px 16px 80px",
-  },
-  backRow: {
-    marginBottom: "28px",
-  },
-  backLink: {
-    display: "inline-flex",
-    alignItems: "center",
-    color: "#4f46e5",
-    fontSize: "0.88rem",
-    fontWeight: 600,
-    textDecoration: "none",
-  },
-  header: {
-    marginBottom: "40px",
-    borderBottom: "1px solid rgba(var(--ink-rgb), 0.08)",
-    paddingBottom: "32px",
-  },
-  metaTop: {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-    flexWrap: "wrap",
-    marginBottom: "16px",
-  },
-  categoryBadge: {
-    fontSize: "0.76rem",
-    fontWeight: 700,
-    padding: "3px 10px",
-    borderRadius: "14px",
-    backgroundColor: "rgba(99, 102, 241, 0.14)",
-    color: "#4f46e5",
-    border: "1px solid rgba(99, 102, 241, 0.25)",
-  },
-  metaItem: {
-    fontSize: "0.8rem",
-    color: "var(--text-muted)",
-    display: "inline-flex",
-    alignItems: "center",
-  },
-  title: {
-    fontSize: "clamp(1.8rem, 4vw, 2.7rem)",
-    fontWeight: 800,
-    color: "var(--text-heading)",
-    lineHeight: 1.25,
-    letterSpacing: "-0.02em",
-    margin: "0 0 16px",
-  },
-  leadText: {
-    fontSize: "clamp(1.05rem, 2vw, 1.2rem)",
-    color: "var(--text-body)",
-    lineHeight: 1.6,
-    margin: "0 0 24px",
-  },
-  authorCard: {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-  },
-  authorAvatar: {
-    width: "42px",
-    height: "42px",
-    borderRadius: "50%",
-    border: "1px solid rgba(var(--ink-rgb), 0.15)",
-  },
-  authorName: {
-    fontSize: "0.92rem",
-    fontWeight: 700,
-    color: "var(--text-main)",
-  },
-  authorRole: {
-    fontSize: "0.78rem",
-    color: "var(--text-subtle)",
-  },
-  contentWrapper: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "20px",
-    fontSize: "1.02rem",
-    lineHeight: 1.8,
-    color: "var(--text-main)",
-  },
-  h2: {
-    fontSize: "1.55rem",
-    fontWeight: 700,
-    color: "var(--text-heading)",
-    margin: "24px 0 8px",
-    letterSpacing: "-0.01em",
-  },
-  paragraph: {
-    margin: 0,
-  },
-  listItem: {
-    marginLeft: "20px",
-    lineHeight: 1.7,
-  },
-  orderedItem: {
-    margin: 0,
-    lineHeight: 1.7,
-  },
-  tagSection: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    flexWrap: "wrap",
-    marginTop: "44px",
-    paddingTop: "24px",
-    borderTop: "1px solid rgba(var(--ink-rgb), 0.08)",
-  },
-  tagLabel: {
-    fontSize: "0.82rem",
-    fontWeight: 700,
-    color: "var(--text-subtle)",
-  },
-  tagPill: {
-    fontSize: "0.8rem",
-    fontWeight: 500,
-    padding: "4px 10px",
-    borderRadius: "8px",
-    backgroundColor: "rgba(var(--ink-rgb), 0.04)",
-    border: "1px solid rgba(var(--ink-rgb), 0.08)",
-    color: "var(--text-muted)",
-  },
-  ctaSection: {
-    marginTop: "60px",
-    padding: "clamp(24px, 4vw, 36px)",
-    borderRadius: "20px",
-    background: "linear-gradient(135deg, rgba(var(--panel-rgb), 0.85) 0%, rgba(var(--panel-rgb), 0.95) 100%)",
-    border: "1px solid rgba(99, 102, 241, 0.35)",
-    textAlign: "center",
-    boxShadow: "0 20px 40px -15px rgba(15, 23, 42, 0.15)",
-  },
-  ctaBadge: {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "4px 12px",
-    borderRadius: "16px",
-    backgroundColor: "rgba(16, 185, 129, 0.12)",
-    border: "1px solid rgba(16, 185, 129, 0.28)",
-    color: "#059669",
-    fontSize: "0.75rem",
-    fontWeight: 700,
-    marginBottom: "12px",
-  },
-  ctaTitle: {
-    fontSize: "clamp(1.3rem, 3vw, 1.8rem)",
-    fontWeight: 700,
-    color: "var(--text-heading)",
-    margin: "0 0 10px",
-  },
-  ctaDesc: {
-    fontSize: "0.95rem",
-    color: "var(--text-muted)",
-    maxWidth: "540px",
-    margin: "0 auto 22px",
-    lineHeight: 1.55,
-  },
-  ctaBtn: {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "12px 26px",
-    borderRadius: "12px",
-    backgroundColor: "#6366f1",
-    color: "#ffffff",
-    fontSize: "0.92rem",
-    fontWeight: 700,
-    textDecoration: "none",
-    boxShadow: "0 4px 18px rgba(99, 102, 241, 0.4)",
-  },
-};

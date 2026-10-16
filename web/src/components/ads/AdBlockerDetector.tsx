@@ -10,6 +10,7 @@ import {
 } from "react-icons/lu";
 import Link from "next/link";
 import { useAuth } from "../../context/AuthContext";
+import c from "../../app/content3d.module.css";
 
 const DISMISS_KEY = "adblock_dismissed";
 
@@ -111,59 +112,61 @@ export const AdBlockerDetector: React.FC = () => {
   }
 
   return (
-    <div style={styles.overlay}>
-      <div style={styles.modal} role="dialog" aria-modal="true" aria-labelledby="adblock-title">
+    <div className={c.overlay}>
+      <div className={`glass-3d tone-danger ${c.modal}`} role="dialog" aria-modal="true" aria-labelledby="adblock-title">
         {/* Close / Dismiss icon */}
         <button
+          type="button"
           onClick={dismiss}
-          style={styles.closeBtn}
+          className={c.modalClose}
           aria-label="Dismiss ad blocker warning"
         >
           <X size={18} />
         </button>
 
         {/* Warning Icon Badge */}
-        <div style={styles.iconWrapper}>
-          <ShieldAlert size={36} color="#ef4444" />
-        </div>
+        <span className={`icon-well icon-well--lg ${c.modalIcon}`} aria-hidden="true">
+          <ShieldAlert size={28} />
+        </span>
 
         {/* Header Text */}
-        <h2 id="adblock-title" style={styles.title}>
+        <h2 id="adblock-title" className={c.modalTitle}>
           Ad Blocker Detected
         </h2>
-        <p style={styles.subtitle}>
+        <p className={c.modalSubtitle}>
           Please disable your ad blocker to support free QA scans
         </p>
 
         {/* Explanation Card */}
-        <div style={styles.infoBox}>
-          <p style={styles.infoText}>
+        <div className={`surface-inset ${c.modalInfo}`}>
+          <p>
             <strong>JASUSS.TECH</strong> provides autonomous multi-viewport web QA crawling, regression testing, and executive reporting completely free.
           </p>
-          <p style={{ ...styles.infoText, marginTop: 8, color: "var(--text-muted)" }}>
+          <p>
             Our infrastructure and AI analysis are sponsored by display advertisements. To keep this platform free and accessible to all developers, please whitelist our domain or disable your ad blocker.
           </p>
         </div>
 
         {/* Whitelisting Tips */}
-        <div style={styles.stepsBox}>
-          <div style={styles.stepItem}>
-            <CheckCircle2 size={15} color="#10b981" style={{ flexShrink: 0, marginTop: 2 }} />
+        <div className={`surface-inset ${c.modalSteps}`}>
+          <div className={c.modalStep}>
+            <CheckCircle2 size={15} />
             <span>Click your ad blocker extension icon (uBlock, AdBlock, Brave Shields, etc.)</span>
           </div>
-          <div style={styles.stepItem}>
-            <CheckCircle2 size={15} color="#10b981" style={{ flexShrink: 0, marginTop: 2 }} />
+          <div className={c.modalStep}>
+            <CheckCircle2 size={15} />
             <span>Toggle the power switch or select <strong>&quot;Pause on this site&quot;</strong></span>
           </div>
-          <div style={styles.stepItem}>
-            <CheckCircle2 size={15} color="#10b981" style={{ flexShrink: 0, marginTop: 2 }} />
+          <div className={c.modalStep}>
+            <CheckCircle2 size={15} />
             <span>Click <strong>&quot;Recheck &amp; Reload&quot;</strong> below</span>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div style={styles.actions}>
+        <div className={c.modalActions}>
           <button
+            type="button"
             onClick={() => {
               checkAdBlocker();
               if (typeof window !== "undefined") {
@@ -171,170 +174,26 @@ export const AdBlockerDetector: React.FC = () => {
               }
             }}
             disabled={isChecking}
-            style={styles.primaryBtn}
+            className="btn btn-primary"
           >
-            <RefreshCw size={15} className={isChecking ? "spin" : ""} style={{ marginRight: 8 }} />
+            <RefreshCw size={15} className={isChecking ? "pulse" : ""} />
             {isChecking ? "Checking..." : "Recheck & Reload Page"}
           </button>
 
-          <Link href="/pricing" onClick={dismiss} style={styles.secondaryBtn}>
-            Ad-free Pro (coming soon) <ExternalLink size={14} style={{ marginLeft: 6 }} />
+          <Link href="/pricing" onClick={dismiss} className="btn btn-secondary">
+            Ad-free Pro (coming soon) <ExternalLink size={14} />
           </Link>
         </div>
 
         {/* Temporary Dismiss Footer */}
-        <div style={styles.dismissFooter}>
-          <button
-            onClick={dismiss}
-            style={styles.textDismissBtn}
-          >
-            Dismiss for this session
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={dismiss}
+          className={c.modalDismiss}
+        >
+          Dismiss for this session
+        </button>
       </div>
     </div>
   );
-};
-
-const styles: Record<string, React.CSSProperties> = {
-  overlay: {
-    position: "fixed",
-    inset: 0,
-    backgroundColor: "rgba(10, 15, 29, 0.85)",
-    backdropFilter: "blur(8px)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 999999,
-    padding: "20px",
-    animation: "fadeIn 0.25s ease-out",
-  },
-  modal: {
-    position: "relative",
-    width: "100%",
-    maxWidth: "520px",
-    backgroundColor: "var(--surface)",
-    border: "1px solid rgba(239, 68, 68, 0.35)",
-    boxShadow: "0 25px 50px -12px rgba(15, 23, 42, 0.21), 0 0 35px rgba(239, 68, 68, 0.15)",
-    borderRadius: "18px",
-    padding: "32px 28px 24px",
-    color: "var(--text-main)",
-    textAlign: "center",
-  },
-  closeBtn: {
-    position: "absolute",
-    top: "16px",
-    right: "16px",
-    background: "transparent",
-    border: "none",
-    color: "var(--text-muted)",
-    cursor: "pointer",
-    padding: "6px",
-    borderRadius: "8px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconWrapper: {
-    width: "68px",
-    height: "68px",
-    margin: "0 auto 16px",
-    borderRadius: "50%",
-    backgroundColor: "rgba(239, 68, 68, 0.12)",
-    border: "1px solid rgba(239, 68, 68, 0.3)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  title: {
-    fontSize: "1.45rem",
-    fontWeight: 700,
-    margin: "0 0 6px",
-    color: "var(--text-heading)",
-    letterSpacing: "-0.01em",
-  },
-  subtitle: {
-    fontSize: "0.92rem",
-    color: "#dc2626",
-    fontWeight: 500,
-    margin: "0 0 20px",
-  },
-  infoBox: {
-    backgroundColor: "var(--surface-elevated)",
-    border: "1px solid rgba(var(--ink-rgb), 0.08)",
-    borderRadius: "12px",
-    padding: "16px",
-    textAlign: "left",
-    marginBottom: "16px",
-  },
-  infoText: {
-    fontSize: "0.84rem",
-    lineHeight: 1.5,
-    margin: 0,
-    color: "var(--text-main)",
-  },
-  stepsBox: {
-    backgroundColor: "var(--surface-elevated)",
-    border: "1px solid rgba(148, 163, 184, 0.1)",
-    borderRadius: "10px",
-    padding: "12px 14px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-    marginBottom: "24px",
-    textAlign: "left",
-  },
-  stepItem: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: "10px",
-    fontSize: "0.8rem",
-    color: "var(--text-body)",
-    lineHeight: 1.4,
-  },
-  actions: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "10px",
-  },
-  primaryBtn: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#ef4444",
-    color: "#ffffff",
-    border: "none",
-    borderRadius: "10px",
-    padding: "12px 20px",
-    fontSize: "0.92rem",
-    fontWeight: 600,
-    cursor: "pointer",
-    boxShadow: "0 4px 14px rgba(239, 68, 68, 0.35)",
-    transition: "background-color 0.2s ease",
-  },
-  secondaryBtn: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(var(--ink-rgb), 0.06)",
-    color: "#2563eb",
-    border: "1px solid rgba(147, 197, 253, 0.25)",
-    borderRadius: "10px",
-    padding: "11px 20px",
-    fontSize: "0.88rem",
-    fontWeight: 500,
-    textDecoration: "none",
-    transition: "background-color 0.2s ease",
-  },
-  dismissFooter: {
-    marginTop: "14px",
-  },
-  textDismissBtn: {
-    background: "transparent",
-    border: "none",
-    color: "var(--text-subtle)",
-    fontSize: "0.78rem",
-    cursor: "pointer",
-    textDecoration: "underline",
-  },
 };

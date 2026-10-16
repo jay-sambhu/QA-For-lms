@@ -9,6 +9,8 @@ import {
   LuShieldCheck as ShieldCheck,
 } from "react-icons/lu";
 import { GoogleAdSenseUnit } from "./GoogleAdSenseUnit";
+import { accentProps, cx } from "../three";
+import c from "../../app/content3d.module.css";
 
 // ─── Ad data ─────────────────────────────────────────────────────────────────
 export interface AdCreative {
@@ -145,25 +147,24 @@ export const AdBanner: React.FC<AdBannerProps> = ({ isAuthenticated, onCycleComp
 
   if (!isAuthenticated) return null;
 
+  const sponsorAccent = accentProps(currentAd.accentColor as `#${string}`);
+
   return (
-    <div style={S.wrapper}>
+    <div className={cx("surface-3d surface-3d--accent", c.ad)} aria-label="Advertisement">
       {/* Header */}
-      <div style={S.header}>
-        <div style={S.adLabel}>
-          <span style={S.adDot} />
-          ADVERTISEMENT · GOOGLE ADSENSE
-        </div>
-        <div style={S.headerRight}>
-          <span style={S.adsenseBadge}>
-            <ShieldCheck size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />
+      <div className={c.adHeader}>
+        <span className={c.adLabel}>Advertisement · Google AdSense</span>
+        <div className={c.adHeaderRight}>
+          <span className="chip chip--sm chip--info">
+            <ShieldCheck size={12} />
             Verified Partner · AdSense
           </span>
-          <span style={S.adCount}>{adNumber} / {ADS.length} (30s)</span>
+          <span className={c.adCount}>{adNumber} / {ADS.length} (30s)</span>
         </div>
       </div>
 
       {/* Embedded Google AdSense Tag Container */}
-      <div style={S.adsenseContainer}>
+      <div className={cx("surface-inset", c.adSlot)}>
         <GoogleAdSenseUnit
           client={adClient}
           style={{ minHeight: "60px" }}
@@ -171,72 +172,61 @@ export const AdBanner: React.FC<AdBannerProps> = ({ isAuthenticated, onCycleComp
       </div>
 
       {/* Sponsor Creative Card */}
-      <div style={S.card}>
+      <div className={cx(c.adCard, sponsorAccent.className)} style={sponsorAccent.style}>
         {/* Image */}
-        <div style={S.imageWrapper}>
+        <div className={c.adImage}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={currentAd.imageSrc} alt={currentAd.headline} style={S.image} key={currentAd.id} />
-          <div style={S.imageOverlay} />
-          <button style={S.muteBtn} onClick={() => setIsMuted((m) => !m)} aria-label="Toggle mute" type="button">
+          <img src={currentAd.imageSrc} alt={currentAd.headline} key={currentAd.id} />
+          <div className={c.adImageShade} />
+          <button className={c.adMute} onClick={() => setIsMuted((m) => !m)} aria-label="Mute" aria-pressed={isMuted} type="button">
             {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
           </button>
         </div>
 
         {/* Copy */}
-        <div style={S.copy}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <p style={S.sponsorName}>{currentAd.sponsor}</p>
-            <span style={{ ...S.sponsorPill, background: currentAd.badgeColor, color: currentAd.accentColor }}>
-              Featured
-            </span>
+        <div className={c.adCopy}>
+          <div className={c.adSponsorRow}>
+            <p className={c.adSponsor}>{currentAd.sponsor}</p>
+            <span className="chip chip--sm chip--accent">Featured</span>
           </div>
-          <h3 style={S.headline}>{currentAd.headline}</h3>
-          <p style={S.subline}>{currentAd.subline}</p>
+          <h3 className={c.adHeadline}>{currentAd.headline}</h3>
+          <p className={c.adSubline}>{currentAd.subline}</p>
           <a
             href={currentAd.ctaUrl}
             target="_blank"
             rel="noopener noreferrer"
-            style={{ ...S.ctaBtn, background: currentAd.accentColor }}
+            className={c.adCta}
             onClick={() => trackClick(currentAd.id)}
           >
-            {currentAd.cta} <ExternalLink size={12} style={{ marginLeft: 5 }} />
+            {currentAd.cta} <ExternalLink size={12} />
           </a>
         </div>
 
         {/* Countdown */}
-        <div style={S.countdownWrapper}>
-          <CountdownRing timeLeft={timeLeft} total={AD_DURATION_SECONDS} accent={currentAd.accentColor} />
-        </div>
+        <CountdownRing timeLeft={timeLeft} total={AD_DURATION_SECONDS} accent="rgb(var(--accent-rgb))" />
       </div>
 
       {/* Progress + skip */}
-      <div style={S.footer}>
-        <div style={S.progressTrack}>
-          <div style={{ ...S.progressFill, width: `${progress}%`, background: currentAd.accentColor }} />
+      <div className={cx(c.adFooter, sponsorAccent.className)} style={sponsorAccent.style}>
+        <div className={c.adProgress} role="progressbar" aria-label="Time until next ad" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
+          <div className={c.adProgressFill} style={{ ["--p" as string]: progress / 100 } as React.CSSProperties} />
         </div>
-        <button type="button" style={S.skipBtn} onClick={advanceAd}>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={advanceAd}>
           Next ad <ChevronRight size={12} />
         </button>
       </div>
 
       {/* Dots */}
-      <div style={S.dots}>
+      <div className={cx(c.adDots, sponsorAccent.className)} style={sponsorAccent.style} aria-hidden="true">
         {ADS.map((ad, i) => (
-          <div
-            key={ad.id}
-            style={{
-              ...S.dot,
-              background: i === adIndex % ADS.length ? currentAd.accentColor : "rgba(148,163,184,0.25)",
-              transform: i === adIndex % ADS.length ? "scale(1.4)" : "scale(1)",
-            }}
-          />
+          <span key={ad.id} className={cx(c.adDot, i === adIndex % ADS.length && c.adDotActive)} />
         ))}
       </div>
 
       {/* Disclaimer */}
-      <p style={S.disclaimer}>
+      <p className={c.adNote}>
         Ads powered by Google AdSense & certified partners. Scan continues in the background.{" "}
-        <a href="/pricing" style={{ color: "#4f46e5", textDecoration: "none" }}>Pro plans coming soon</a>
+        <a href="/pricing">Pro plans coming soon</a>
         {" "}for an ad-free experience.
       </p>
     </div>
@@ -249,49 +239,16 @@ function CountdownRing({ timeLeft, total, accent }: { timeLeft: number; total: n
   const circ = 2 * Math.PI * r;
   const offset = circ * (timeLeft / total);
   return (
-    <div style={{ position: "relative", width: 60, height: 60, flexShrink: 0 }}>
-      <svg width={60} height={60} style={{ transform: "rotate(-90deg)" }}>
-        <circle cx={30} cy={30} r={r} fill="none" stroke="rgba(148,163,184,0.12)" strokeWidth={4} />
+    <div className={c.adRing}>
+      <svg width={60} height={60} aria-hidden="true">
+        <circle cx={30} cy={30} r={r} fill="none" stroke="rgba(var(--ink-rgb), 0.1)" strokeWidth={4} />
         <circle
           cx={30} cy={30} r={r} fill="none" stroke={accent} strokeWidth={4}
           strokeDasharray={circ} strokeDashoffset={circ - offset} strokeLinecap="round"
           style={{ transition: "stroke-dashoffset 0.9s linear" }}
         />
       </svg>
-      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", fontWeight: 700, color: "var(--text-main)" }}>
-        {timeLeft}s
-      </div>
+      <span className={c.adRingText}>{timeLeft}s</span>
     </div>
   );
 }
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
-const S: Record<string, React.CSSProperties> = {
-  wrapper: { background: "rgba(var(--panel-rgb), 0.88)", border: "1px solid rgba(99,102,241,0.18)", borderRadius: 16, padding: "16px 20px 14px", backdropFilter: "blur(14px)", marginTop: 18 },
-  header: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
-  adLabel: { display: "flex", alignItems: "center", gap: 6, fontSize: "0.63rem", fontWeight: 700, letterSpacing: "0.13em", color: "var(--text-muted)", textTransform: "uppercase" },
-  adDot: { width: 7, height: 7, borderRadius: "50%", background: "#4285f4", boxShadow: "0 0 6px #4285f4" },
-  headerRight: { display: "flex", alignItems: "center", gap: 10 },
-  adsenseBadge: { fontSize: "0.71rem", fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "rgba(66,133,244,0.12)", color: "#2563eb", border: "1px solid rgba(66,133,244,0.25)", display: "inline-flex", alignItems: "center" },
-  sponsorPill: { fontSize: "0.65rem", fontWeight: 600, padding: "1px 7px", borderRadius: 12 },
-  adCount: { fontSize: "0.71rem", color: "var(--text-subtle)" },
-  adsenseContainer: { marginBottom: 12, borderRadius: 8, overflow: "hidden" },
-  card: { display: "flex", gap: 16, alignItems: "center" },
-  imageWrapper: { position: "relative", flexShrink: 0, width: 280, height: 158, borderRadius: 10, overflow: "hidden", border: "1px solid rgba(var(--ink-rgb), 0.07)" },
-  image: { width: "100%", height: "100%", objectFit: "cover" },
-  imageOverlay: { position: "absolute", inset: 0, background: "linear-gradient(90deg,rgba(var(--ink-rgb), 0) 55%,rgba(var(--ink-rgb), 0.06) 100%)", pointerEvents: "none" },
-  muteBtn: { position: "absolute", bottom: 8, right: 8, background: "rgba(15, 23, 42, 0.35)", border: "none", borderRadius: 6, padding: "4px 6px", cursor: "pointer", color: "var(--text-body)", display: "flex", alignItems: "center" },
-  copy: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 },
-  sponsorName: { fontSize: "0.7rem", fontWeight: 700, color: "var(--text-subtle)", textTransform: "uppercase", letterSpacing: "0.08em", margin: 0 },
-  headline: { fontSize: "1rem", fontWeight: 700, color: "var(--text-main)", margin: 0, lineHeight: 1.35 },
-  subline: { fontSize: "0.81rem", color: "var(--text-muted)", margin: 0, lineHeight: 1.5 },
-  ctaBtn: { display: "inline-flex", alignItems: "center", padding: "8px 16px", borderRadius: 8, color: "#fff", fontWeight: 600, fontSize: "0.81rem", textDecoration: "none", alignSelf: "flex-start", marginTop: 4 },
-  countdownWrapper: { display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" },
-  footer: { display: "flex", alignItems: "center", gap: 12, marginTop: 14 },
-  progressTrack: { flex: 1, height: 3, borderRadius: 4, background: "rgba(148,163,184,0.12)", overflow: "hidden" },
-  progressFill: { height: "100%", borderRadius: 4, transition: "width 1s linear" },
-  skipBtn: { flexShrink: 0, background: "transparent", border: "1px solid rgba(148,163,184,0.18)", borderRadius: 6, padding: "3px 10px", cursor: "pointer", color: "var(--text-subtle)", fontSize: "0.74rem", display: "flex", alignItems: "center", gap: 2 },
-  dots: { display: "flex", justifyContent: "center", gap: 6, marginTop: 10 },
-  dot: { width: 7, height: 7, borderRadius: "50%", transition: "all 0.3s ease" },
-  disclaimer: { textAlign: "center", fontSize: "0.68rem", color: "#475569", marginTop: 10, marginBottom: 0 },
-};

@@ -13,6 +13,7 @@ import {
 } from "react-icons/tb";
 import { useAuth } from "../../context/AuthContext";
 import { GoogleAdSenseUnit } from "./GoogleAdSenseUnit";
+import c from "../../app/content3d.module.css";
 
 interface SideAdRailsProps {
   children: React.ReactNode;
@@ -31,10 +32,10 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
     <div className="sideAdRailsContainer">
       {/* Left Sidebar Rail */}
       {!isPaidUser && !leftDismissed && (
-        <aside className="sideAdRail sideAdRailLeft" aria-label="Sponsored QA Tools">
+        <aside className={`sideAdRail sideAdRailLeft ${c.rail}`} aria-label="Sponsored QA Tools">
           <div className="sideAdRailHeader">
             <span className="sideAdBadge">
-              <TbShieldCheck size={13} color="#4f46e5" />
+              <TbShieldCheck size={13} color="var(--tone-primary)" />
               <span>SPONSORED QA</span>
             </span>
             <button
@@ -42,6 +43,7 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
               onClick={() => setLeftDismissed(true)}
               className="sideAdCloseBtn"
               title="Hide sponsored rail for this session"
+              aria-label="Hide sponsored rail for this session"
             >
               <TbX size={13} />
             </button>
@@ -52,10 +54,10 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
             href="https://playwright.dev"
             target="_blank"
             rel="noopener noreferrer"
-            className="sideAdCard"
+            className={`sideAdCard ${c.railCard} tone-success`}
           >
             <div className="sideAdCardTop">
-              <span className="sideAdIconBox" style={{ background: "rgba(16, 185, 129, 0.15)", color: "#10b981" }}>
+              <span className={`icon-well icon-well--sm ${c.railIcon}`}>
                 <TbDeviceDesktop size={15} />
               </span>
               <span className="sideAdCategory">TEST AUTOMATION</span>
@@ -64,7 +66,7 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
             <p className="sideAdCardDesc">
               Parallel multi-browser test execution with instant trace debugging and video replay.
             </p>
-            <span className="sideAdAction">
+            <span className={`sideAdAction ${c.railAction}`}>
               Explore Tool <TbExternalLink size={12} />
             </span>
           </a>
@@ -74,10 +76,10 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
             href="https://www.postman.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="sideAdCard"
+            className={`sideAdCard ${c.railCard} tone-warning`}
           >
             <div className="sideAdCardTop">
-              <span className="sideAdIconBox" style={{ background: "rgba(249, 115, 22, 0.15)", color: "#f97316" }}>
+              <span className={`icon-well icon-well--sm ${c.railIcon}`}>
                 <TbBolt size={15} />
               </span>
               <span className="sideAdCategory">API TESTING</span>
@@ -86,7 +88,7 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
             <p className="sideAdCardDesc">
               Automated endpoint fuzzing, schema drift detection, and contract regression tests.
             </p>
-            <span className="sideAdAction">
+            <span className={`sideAdAction ${c.railAction}`}>
               Inspect APIs <TbExternalLink size={12} />
             </span>
           </a>
@@ -103,7 +105,7 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
 
           {/* Free Tier Callout */}
           <div className="sideAdFooter">
-            <span style={{ fontSize: "0.72rem", color: "var(--text-subtle)" }}>Free Tier Plan</span>
+            <span className="chip chip--sm chip--neutral" style={{ alignSelf: "center" }}>Free Tier Plan</span>
             <Link href="/pricing" className="sideAdUpgradeLink">
               Remove ads with Pro →
             </Link>
@@ -118,10 +120,10 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
 
       {/* Right Sidebar Rail */}
       {!isPaidUser && !rightDismissed && (
-        <aside className="sideAdRail sideAdRailRight" aria-label="Developer Ecosystem">
+        <aside className={`sideAdRail sideAdRailRight ${c.rail}`} aria-label="Developer Ecosystem">
           <div className="sideAdRailHeader">
             <span className="sideAdBadge">
-              <TbSparkles size={13} color="#0284c7" />
+              <TbSparkles size={13} color="var(--tone-info)" />
               <span>DEV ECOSYSTEM</span>
             </span>
             <button
@@ -129,6 +131,7 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
               onClick={() => setRightDismissed(true)}
               className="sideAdCloseBtn"
               title="Hide sponsored rail for this session"
+              aria-label="Hide sponsored rail for this session"
             >
               <TbX size={13} />
             </button>
@@ -139,10 +142,10 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
             href="https://sentry.io"
             target="_blank"
             rel="noopener noreferrer"
-            className="sideAdCard"
+            className={`sideAdCard ${c.railCard} tone-violet`}
           >
             <div className="sideAdCardTop">
-              <span className="sideAdIconBox" style={{ background: "rgba(168, 85, 247, 0.15)", color: "#a855f7" }}>
+              <span className={`icon-well icon-well--sm ${c.railIcon}`}>
                 <TbServer2 size={15} />
               </span>
               <span className="sideAdCategory">OBSERVABILITY</span>
@@ -151,7 +154,7 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
             <p className="sideAdCardDesc">
               Real-time stack trace monitoring, frontend telemetry, and user session crash diagnostics.
             </p>
-            <span className="sideAdAction">
+            <span className={`sideAdAction ${c.railAction}`}>
               View Telemetry <TbExternalLink size={12} />
             </span>
           </a>
@@ -161,10 +164,10 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
             href="https://k6.io"
             target="_blank"
             rel="noopener noreferrer"
-            className="sideAdCard"
+            className={`sideAdCard ${c.railCard} tone-info`}
           >
             <div className="sideAdCardTop">
-              <span className="sideAdIconBox" style={{ background: "rgba(56, 189, 248, 0.15)", color: "#0284c7" }}>
+              <span className={`icon-well icon-well--sm ${c.railIcon}`}>
                 <TbBolt size={15} />
               </span>
               <span className="sideAdCategory">PERFORMANCE</span>
@@ -173,7 +176,7 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
             <p className="sideAdCardDesc">
               Developer-centric load and stress testing for up to 100k simulated concurrent virtual users.
             </p>
-            <span className="sideAdAction">
+            <span className={`sideAdAction ${c.railAction}`}>
               Benchmark App <TbExternalLink size={12} />
             </span>
           </a>
@@ -190,7 +193,7 @@ export const SideAdRails: React.FC<SideAdRailsProps> = ({ children }) => {
 
           {/* Free Tier Callout */}
           <div className="sideAdFooter">
-            <span style={{ fontSize: "0.72rem", color: "var(--text-subtle)" }}>JASUSS Cloud</span>
+            <span className="chip chip--sm chip--neutral" style={{ alignSelf: "center" }}>JASUSS Cloud</span>
             <Link href="/blog" className="sideAdUpgradeLink">
               Read QA Articles →
             </Link>
