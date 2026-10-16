@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RiKey2Line, RiAddLine, RiDeleteBinLine, RiRefreshLine } from 'react-icons/ri';
+import { RiKey2Line, RiAddLine, RiDeleteBinLine, RiRefreshLine, RiErrorWarningFill } from 'react-icons/ri';
 import { useAuth } from '../../context/AuthContext';
-import styles from '../../app/page.module.css';
+import { Surface3D, EmptyState3D } from '../three';
+import a from './admin3d.module.css';
 
 interface ApiKey {
   id: string;
@@ -48,7 +49,7 @@ export const ApiKeyManager: React.FC = () => {
     if (!newKey.trim()) return;
     setError(null);
     setLoading(true);
-    
+
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (session?.access_token) {
@@ -92,83 +93,117 @@ export const ApiKeyManager: React.FC = () => {
     }
   };
 
+  const activeCount = keys.filter((k) => k.status === 'active').length;
+
   return (
-    <div style={{ background: 'rgba(var(--panel-rgb), 0.7)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(148, 163, 184, 0.1)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h3 style={{ fontSize: '1.2rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <RiKey2Line color="#10b981" /> Gemini API Key Rotation Manager
-        </h3>
-        <button onClick={fetchKeys} className={styles.exportBtn} disabled={loading} style={{ padding: '6px 12px', fontSize: '0.85rem' }}>
-          <RiRefreshLine /> Refresh
+    <Surface3D as="section" aria-labelledby="api-keys-title">
+      <div className={a.panelHead}>
+        <div className={a.panelTitleBlock}>
+          <span className="icon-well tone-success" aria-hidden="true">
+            <RiKey2Line size={20} />
+          </span>
+          <div>
+            <span className="section-eyebrow">Key rotation</span>
+            <div className={a.panelTitleRow}>
+              <h2 id="api-keys-title" className={a.panelTitle}>Gemini API Key Rotation Manager</h2>
+              <span className={`chip chip--sm ${activeCount > 0 ? 'chip--success chip--dot' : 'chip--neutral'}`}>
+                {activeCount} active
+              </span>
+            </div>
+            <p className={a.panelSub}>
+              Add multiple Gemini API keys to automatically rotate them if one hits a 429 Too Many Requests limit.
+            </p>
+          </div>
+        </div>
+        <button type="button" onClick={fetchKeys} className="btn btn-secondary btn-sm" disabled={loading}>
+          <RiRefreshLine size={14} className={loading ? 'pulse' : ''} /> Refresh
         </button>
       </div>
 
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '20px' }}>
-        Add multiple Gemini API keys to automatically rotate them if one hits a `429 Too Many Requests` limit.
-      </p>
+      <div className={a.panelBody}>
+        {error && (
+          <div className={`${a.notice} ${a.noticeDanger}`} role="alert">
+            <RiErrorWarningFill size={18} />
+            {error}
+          </div>
+        )}
 
-      {error && (
-        <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '0.9rem' }}>
-          {error}
-        </div>
-      )}
+        <form onSubmit={handleAddKey} className={`surface-inset ${a.inset}`}>
+          <div className={a.fieldGroup}>
+            <label htmlFor="admin-new-gemini-key" className={a.fieldLabel}>
+              <RiAddLine size={14} /> Add a Gemini key to the pool
+            </label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+              <input
+                id="admin-new-gemini-key"
+                type="password"
+                value={newKey}
+                onChange={(e) => setNewKey(e.target.value)}
+                placeholder="Paste new Gemini API Key here (AIzaSy...)"
+                autoComplete="off"
+                className={`${a.field} ${a.mono}`}
+                style={{ flex: '1 1 260px' }}
+              />
+              <button type="submit" disabled={loading || !newKey.trim()} className="btn btn-primary">
+                <RiAddLine size={16} /> Add Key
+              </button>
+            </div>
+          </div>
+        </form>
 
-      <form onSubmit={handleAddKey} style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
-        <input 
-          type="password"
-          value={newKey}
-          onChange={(e) => setNewKey(e.target.value)}
-          placeholder="Paste new Gemini API Key here (AIzaSy...)"
-          style={{ flex: 1, padding: '10px 16px', borderRadius: '8px', background: 'rgba(var(--panel-rgb), 0.7)', border: '1px solid rgba(148, 163, 184, 0.2)', color: 'var(--text-main)' }}
-        />
-        <button type="submit" disabled={loading || !newKey.trim()} className="btn btn-primary" style={{ padding: '0 20px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <RiAddLine /> Add Key
-        </button>
-      </form>
-
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid rgba(148, 163, 184, 0.1)', color: 'var(--text-muted)', textAlign: 'left' }}>
-              <th style={{ padding: '12px' }}>Key (Masked)</th>
-              <th style={{ padding: '12px' }}>Status</th>
-              <th style={{ padding: '12px' }}>Added At</th>
-              <th style={{ padding: '12px' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {keys.length === 0 ? (
+        <div className="table-3d-wrap">
+          <table className="table-3d">
+            <thead>
               <tr>
-                <td colSpan={4} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-subtle)' }}>No API keys configured. Using fallback from .env</td>
+                <th>Key (Masked)</th>
+                <th>Status</th>
+                <th>Added At</th>
+                <th>Actions</th>
               </tr>
-            ) : (
-              keys.map(key => (
-                <tr key={key.id} style={{ borderBottom: '1px solid rgba(148, 163, 184, 0.05)' }}>
-                  <td style={{ padding: '12px', color: 'var(--text-main)', fontFamily: 'monospace' }}>{key.key_value}</td>
-                  <td style={{ padding: '12px' }}>
-                    <span style={{ 
-                      padding: '4px 8px', 
-                      borderRadius: '4px', 
-                      fontSize: '0.8rem', 
-                      background: key.status === 'active' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                      color: key.status === 'active' ? '#10b981' : '#ef4444' 
-                    }}>
-                      {key.status.toUpperCase()}
-                      {key.rate_limit_reset_at && ` (Resets: ${new Date(key.rate_limit_reset_at).toLocaleTimeString()})`}
-                    </span>
-                  </td>
-                  <td style={{ padding: '12px', color: 'var(--text-muted)' }}>{new Date(key.created_at!).toLocaleString()}</td>
-                  <td style={{ padding: '12px' }}>
-                    <button onClick={() => handleDeleteKey(key.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                      <RiDeleteBinLine size={18} />
-                    </button>
+            </thead>
+            <tbody>
+              {keys.length === 0 ? (
+                <tr>
+                  <td colSpan={4}>
+                    <EmptyState3D
+                      compact
+                      accent="success"
+                      icon={<RiKey2Line size={16} />}
+                      title="No API keys configured"
+                      description="The engine is using the fallback key from .env until you add one here."
+                    />
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                keys.map(key => (
+                  <tr key={key.id}>
+                    <td className={`${a.mono} ${a.titleCell}`}>{key.key_value}</td>
+                    <td>
+                      <div className={a.rowActions}>
+                        <span className={`chip chip--sm ${key.status === 'active' ? 'chip--success chip--dot' : 'chip--danger chip--dot'}`}>
+                          {key.status.toUpperCase()}
+                        </span>
+                        {key.rate_limit_reset_at && (
+                          <span className={a.metaCell}>
+                            Resets {new Date(key.rate_limit_reset_at).toLocaleTimeString()}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className={a.metaCell}>{new Date(key.created_at!).toLocaleString()}</td>
+                    <td>
+                      <button type="button" onClick={() => handleDeleteKey(key.id)} className="btn btn-danger btn-sm">
+                        <RiDeleteBinLine size={14} />
+                        <span className="sr-only">Delete key</span>
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+    </Surface3D>
   );
 };

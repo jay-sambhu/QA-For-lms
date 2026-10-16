@@ -21,9 +21,11 @@ import {
   TbPlugConnected,
   TbLoader2,
   TbAdjustments,
+  TbLink,
 } from 'react-icons/tb';
 import { useAuth } from '../../context/AuthContext';
-import styles from '../../app/page.module.css';
+import { Surface3D } from '../three';
+import a from './admin3d.module.css';
 
 export const AIProviderConfig: React.FC = () => {
   const { session } = useAuth();
@@ -155,27 +157,41 @@ export const AIProviderConfig: React.FC = () => {
     }
   };
 
+  const noticeClass =
+    feedback?.type === 'success' ? a.noticeSuccess : feedback?.type === 'warning' ? a.noticeWarning : a.noticeDanger;
+
   return (
-    <div className={styles.adminTableCard}>
-      <div className={styles.adminTableCardTitle}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-          <RiCpuLine size={20} color="#4f46e5" /> Multi-AI Provider & Engine Setup
-        </span>
-        <span style={{ fontSize: '0.8rem', color: '#059669', fontWeight: 600 }}>
-          ACTIVE: {providersData?.active_provider?.toUpperCase()} ({providersData?.active_model})
-        </span>
+    <Surface3D as="section" aria-labelledby="ai-provider-title">
+      <div className={a.panelHead}>
+        <div className={a.panelTitleBlock}>
+          <span className="icon-well" aria-hidden="true">
+            <RiCpuLine size={20} />
+          </span>
+          <div>
+            <span className="section-eyebrow">AI engine</span>
+            <div className={a.panelTitleRow}>
+              <h2 id="ai-provider-title" className={a.panelTitle}>Multi-AI Provider & Engine Setup</h2>
+            </div>
+            <p className={a.panelSub}>Choose the reasoning provider, model and credentials used by every scan.</p>
+          </div>
+        </div>
+        {providersData?.active_provider && (
+          <span className="chip chip--success chip--live">
+            Active: {providersData.active_provider.toUpperCase()} ({providersData.active_model})
+          </span>
+        )}
       </div>
 
-      <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <div className={a.panelBody}>
         {feedback && (
-          <div className={`${styles.authBanner} ${feedback.type === 'success' ? styles.authBannerSuccess : styles.authBannerError}`}>
+          <div className={`${a.notice} ${noticeClass}`} role="status">
             {feedback.type === 'success' ? <RiCheckDoubleFill size={18} /> : <RiErrorWarningFill size={18} />}
             <span>{feedback.text}</span>
           </div>
         )}
 
         {/* AI Provider Switcher Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
+        <div className={a.providerGrid} role="group" aria-label="AI providers">
           {providersData?.providers?.map((p: any) => {
             const isSelected = selectedProvider === p.id;
             const isActive = providersData?.active_provider === p.id;
@@ -185,30 +201,19 @@ export const AIProviderConfig: React.FC = () => {
                 key={p.id}
                 type="button"
                 onClick={() => handleProviderSelect(p.id)}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px',
-                  padding: '14px',
-                  background: isSelected ? 'rgba(99, 102, 241, 0.15)' : 'rgba(var(--ink-rgb), 0.03)',
-                  border: `1px solid ${isSelected ? '#6366f1' : 'rgba(var(--ink-rgb), 0.08)'}`,
-                  borderRadius: '14px',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                }}
+                aria-pressed={isSelected}
+                className={a.providerCard}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  {getProviderIcon(p.id)}
-                  {isActive && (
-                    <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 6px', background: 'rgba(16, 185, 129, 0.2)', color: '#059669', borderRadius: '4px' }}>
-                      IN USE
-                    </span>
-                  )}
+                <div className={a.providerTop}>
+                  <span className="icon-well icon-well--sm" aria-hidden="true">
+                    {getProviderIcon(p.id)}
+                  </span>
+                  {isActive && <span className="chip chip--sm chip--success chip--solid">In use</span>}
                 </div>
-                <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-main)' }}>{p.name}</div>
-                <div style={{ fontSize: '0.75rem', color: p.is_configured ? '#059669' : 'var(--text-muted)' }}>
-                  {p.is_configured ? `● Configured (${p.masked_key || 'Active'})` : '○ Key Required'}
+                <div className={a.providerName}>{p.name}</div>
+                <div className={`${a.providerState} ${p.is_configured ? a.providerStateOn : ''}`}>
+                  <span className={a.providerDot} aria-hidden="true" />
+                  {p.is_configured ? `Configured (${p.masked_key || 'Active'})` : 'Key required'}
                 </div>
               </button>
             );
@@ -217,21 +222,20 @@ export const AIProviderConfig: React.FC = () => {
 
         {/* Selected Provider Form */}
         {currentProviderMeta && (
-          <form onSubmit={handleSaveConfig} style={{ display: 'flex', flexDirection: 'column', gap: '18px', background: 'rgba(var(--ink-rgb), 0.037)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(var(--ink-rgb), 0.06)' }}>
-            <div style={{ fontSize: '0.88rem', color: 'var(--text-muted)' }}>
-              {currentProviderMeta.description}
-            </div>
+          <form onSubmit={handleSaveConfig} className={`surface-inset ${a.inset}`}>
+            <p className={a.providerDesc}>{currentProviderMeta.description}</p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+            <div className={a.fieldGrid}>
               {/* Model Selector */}
-              <div className={styles.modalFormGroup}>
-                <label className={styles.modalFormLabel}>
-                  <RiCpuLine size={14} style={{ display: 'inline', marginRight: '4px' }} /> Reasoning Model Selection
+              <div className={a.fieldGroup}>
+                <label htmlFor="ai-model-select" className={a.fieldLabel}>
+                  <RiCpuLine size={14} /> Reasoning Model Selection
                 </label>
                 <select
+                  id="ai-model-select"
                   value={selectedModel}
                   onChange={(e) => setSelectedModel(e.target.value)}
-                  className={styles.modalInput}
+                  className={a.field}
                 >
                   {currentProviderMeta.models?.map((m: string) => (
                     <option key={m} value={m}>{m}</option>
@@ -240,23 +244,25 @@ export const AIProviderConfig: React.FC = () => {
               </div>
 
               {/* API Key Input */}
-              <div className={styles.modalFormGroup}>
-                <label className={styles.modalFormLabel}>
-                  <RiKey2Line size={14} style={{ display: 'inline', marginRight: '4px' }} /> Secret API Key ({currentProviderMeta.env_key_name})
+              <div className={a.fieldGroup}>
+                <label htmlFor="ai-api-key" className={a.fieldLabel}>
+                  <RiKey2Line size={14} /> Secret API Key ({currentProviderMeta.env_key_name})
                 </label>
-                <div style={{ position: 'relative' }}>
+                <div className={a.passwordWrap}>
                   <input
+                    id="ai-api-key"
                     type={showKey ? 'text' : 'password'}
                     placeholder={currentProviderMeta.is_configured ? `Configured (${currentProviderMeta.masked_key}) — enter to update` : 'sk-... or AI API Key'}
                     value={apiKeyInput}
                     onChange={(e) => setApiKeyInput(e.target.value)}
-                    className={styles.modalInput}
-                    style={{ paddingRight: '40px' }}
+                    autoComplete="off"
+                    className={a.field}
                   />
                   <button
                     type="button"
                     onClick={() => setShowKey(!showKey)}
-                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}
+                    className={`${a.iconBtn} ${a.passwordToggle}`}
+                    aria-label={showKey ? 'Hide API key' : 'Show API key'}
                   >
                     {showKey ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
                   </button>
@@ -266,44 +272,45 @@ export const AIProviderConfig: React.FC = () => {
 
             {/* Custom Endpoint Input (for DeepSeek / Local LLM) */}
             {currentProviderMeta.requires_endpoint && (
-              <div className={styles.modalFormGroup}>
-                <label className={styles.modalFormLabel}>
-                  Custom Base URL / Inference Endpoint
+              <div className={a.fieldGroup}>
+                <label htmlFor="ai-endpoint" className={a.fieldLabel}>
+                  <TbLink size={14} /> Custom Base URL / Inference Endpoint
                 </label>
                 <input
+                  id="ai-endpoint"
                   type="url"
                   placeholder={currentProviderMeta.default_endpoint || 'http://localhost:11434/v1'}
                   value={customEndpoint}
                   onChange={(e) => setCustomEndpoint(e.target.value)}
-                  className={styles.modalInput}
+                  className={`${a.field} ${a.mono}`}
                 />
               </div>
             )}
 
             {/* Temperature Slider */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: 'var(--text-body)' }}>
-                <TbAdjustments size={16} color="#4f46e5" /> Inference Temperature: <strong style={{ color: 'var(--text-heading)' }}>{temperature}</strong>
-              </div>
+            <div className={a.rangeRow}>
+              <label htmlFor="ai-temperature" className={a.rangeLabel}>
+                <TbAdjustments size={16} /> Inference Temperature: <strong>{temperature}</strong>
+              </label>
               <input
+                id="ai-temperature"
                 type="range"
                 min="0.0"
                 max="1.0"
                 step="0.05"
                 value={temperature}
                 onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                style={{ width: '180px', accentColor: '#6366f1' }}
+                className={a.range}
               />
             </div>
 
             {/* Actions */}
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '6px' }}>
+            <div className={a.formActions}>
               <button
                 type="button"
                 onClick={handleTestConnection}
                 disabled={testing}
                 className="btn btn-secondary"
-                style={{ padding: '9px 16px', fontSize: '0.85rem' }}
               >
                 {testing ? <TbLoader2 size={16} className="pulse" /> : <TbPlugConnected size={16} />}
                 <span>Test Connection</span>
@@ -313,7 +320,6 @@ export const AIProviderConfig: React.FC = () => {
                 type="submit"
                 disabled={saving}
                 className="btn btn-primary"
-                style={{ padding: '9px 20px', fontSize: '0.85rem' }}
               >
                 {saving ? <TbLoader2 size={16} className="pulse" /> : <RiSave3Line size={16} />}
                 <span>Save & Activate Provider</span>
@@ -322,6 +328,6 @@ export const AIProviderConfig: React.FC = () => {
           </form>
         )}
       </div>
-    </div>
+    </Surface3D>
   );
 };

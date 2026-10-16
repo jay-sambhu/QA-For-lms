@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState } from 'react';
-import { RiShieldUserFill, RiUser3Line, RiCheckLine } from 'react-icons/ri';
-import { TbLoader2 } from 'react-icons/tb';
-import styles from '../../app/page.module.css';
+import { RiShieldUserFill, RiUser3Line, RiCheckLine, RiErrorWarningFill } from 'react-icons/ri';
+import { TbLoader2, TbUsers } from 'react-icons/tb';
+import { Surface3D, EmptyState3D } from '../three';
+import a from './admin3d.module.css';
 
 interface UserItem {
   id: string;
@@ -19,6 +20,12 @@ interface TenantTableProps {
   sessionToken?: string;
   onRoleUpdated?: () => void;
 }
+
+const tierChip = (tier?: string) => {
+  if (tier === 'pro') return 'chip chip--sm chip--primary';
+  if (tier === 'enterprise') return 'chip chip--sm chip--violet';
+  return 'chip chip--sm chip--neutral';
+};
 
 export const TenantTable: React.FC<TenantTableProps> = ({ users, sessionToken, onRoleUpdated }) => {
   const [localUsers, setLocalUsers] = useState<UserItem[]>(users);
@@ -61,26 +68,35 @@ export const TenantTable: React.FC<TenantTableProps> = ({ users, sessionToken, o
     }
   };
 
+  const adminCount = localUsers.filter((u) => u.role === 'admin').length;
+
   return (
-    <div className={styles.adminTableCard}>
-      <div className={styles.adminTableCardTitle}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <RiShieldUserFill size={20} color="#4f46e5" />
-          <span>Registered Platform Tenants & Role Governance</span>
+    <Surface3D as="section" pad="sm" aria-labelledby="tenants-title">
+      <div className={`${a.panelHead} ${a.panelHeadTable}`}>
+        <div className={a.panelTitleBlock}>
+          <span className="icon-well" aria-hidden="true">
+            <TbUsers size={20} />
+          </span>
+          <div>
+            <span className="section-eyebrow">Role governance</span>
+            <div className={a.panelTitleRow}>
+              <h2 id="tenants-title" className={a.panelTitle}>Registered Platform Tenants</h2>
+              <span className="chip chip--sm chip--violet chip--dot">{adminCount} admins</span>
+            </div>
+          </div>
         </div>
-        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-          {localUsers.length} total users in database
-        </span>
+        <span className={a.panelCount}>{localUsers.length} total users in database</span>
       </div>
 
       {errorMsg && (
-        <div style={{ margin: '12px 20px', padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '10px', color: '#dc2626', fontSize: '0.85rem' }}>
+        <div className={`${a.notice} ${a.noticeDanger}`} role="alert" style={{ margin: '0 8px 12px' }}>
+          <RiErrorWarningFill size={18} />
           {errorMsg}
         </div>
       )}
 
-      <div className={styles.adminTableContainer}>
-        <table className={styles.adminTable}>
+      <div className="table-3d-wrap" style={{ ['--table-max-h' as string]: '640px' } as React.CSSProperties}>
+        <table className="table-3d">
           <thead>
             <tr>
               <th>User ID</th>
@@ -100,68 +116,25 @@ export const TenantTable: React.FC<TenantTableProps> = ({ users, sessionToken, o
 
               return (
                 <tr key={u.id}>
-                  <td style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: '#4f46e5' }}>
-                    {u.id.substring(0, 8)}...
-                  </td>
+                  <td className={`${a.idCell} ${a.mono}`}>{u.id.substring(0, 8)}...</td>
+                  <td className={a.emailCell} title={u.email}>{u.email}</td>
                   <td>
-                    <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>{u.email}</span>
+                    <span className={tierChip(u.plan_tier)}>{u.plan_tier?.toUpperCase() || 'FREE'}</span>
                   </td>
+                  <td>{u.scans_count} scans</td>
                   <td>
-                    <span
-                      className={`${styles.tierPill} ${
-                        u.plan_tier === 'pro'
-                          ? styles.tierPro
-                          : u.plan_tier === 'enterprise'
-                          ? styles.tierEnterprise
-                          : styles.tierFree
-                      }`}
-                    >
-                      {u.plan_tier?.toUpperCase() || 'FREE'}
+                    <span className={`chip chip--sm ${isAdmin ? 'chip--violet chip--solid' : 'chip--neutral'}`}>
+                      {isAdmin ? <RiShieldUserFill size={12} /> : <RiUser3Line size={12} />}
+                      {u.role.toUpperCase()}
                     </span>
                   </td>
                   <td>
-                    <span style={{ color: 'var(--text-body)' }}>{u.scans_count} scans</span>
-                  </td>
-                  <td>
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                        padding: '3px 10px',
-                        borderRadius: '999px',
-                        fontSize: '0.74rem',
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        background: isAdmin ? 'rgba(168, 85, 247, 0.18)' : 'rgba(148, 163, 184, 0.14)',
-                        color: isAdmin ? '#9333ea' : 'var(--text-muted)',
-                        border: `1px solid ${isAdmin ? 'rgba(168, 85, 247, 0.35)' : 'rgba(148, 163, 184, 0.2)'}`,
-                      }}
-                    >
-                      {isAdmin ? <RiShieldUserFill size={13} /> : <RiUser3Line size={13} />}
-                      {u.role}
-                    </span>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div className={a.rowActions}>
                       <button
                         type="button"
                         disabled={isUpdating}
                         onClick={() => handleRoleChange(u.id, isAdmin ? 'user' : 'admin')}
-                        style={{
-                          padding: '5px 12px',
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          borderRadius: '8px',
-                          background: isAdmin ? 'rgba(239, 68, 68, 0.1)' : 'rgba(99, 102, 241, 0.15)',
-                          color: isAdmin ? '#dc2626' : '#4f46e5',
-                          border: `1px solid ${isAdmin ? 'rgba(239, 68, 68, 0.25)' : 'rgba(99, 102, 241, 0.35)'}`,
-                          cursor: isUpdating ? 'not-allowed' : 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          transition: 'all 0.2s ease',
-                        }}
+                        className={`btn btn-sm ${isAdmin ? 'btn-danger' : 'btn-primary'}`}
                       >
                         {isUpdating ? (
                           <>
@@ -170,7 +143,7 @@ export const TenantTable: React.FC<TenantTableProps> = ({ users, sessionToken, o
                           </>
                         ) : isSuccess ? (
                           <>
-                            <RiCheckLine size={14} color="#10b981" />
+                            <RiCheckLine size={14} />
                             Saved
                           </>
                         ) : isAdmin ? (
@@ -181,20 +154,25 @@ export const TenantTable: React.FC<TenantTableProps> = ({ users, sessionToken, o
                       </button>
                     </div>
                   </td>
-                  <td>{u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}</td>
+                  <td className={a.metaCell}>{u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}</td>
                 </tr>
               );
             })}
             {localUsers.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
-                  No users recorded yet.
+                <td colSpan={7}>
+                  <EmptyState3D
+                    compact
+                    icon={<TbUsers size={16} />}
+                    title="No users recorded yet"
+                    description="Tenants appear here as soon as they sign up."
+                  />
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
-    </div>
+    </Surface3D>
   );
 };

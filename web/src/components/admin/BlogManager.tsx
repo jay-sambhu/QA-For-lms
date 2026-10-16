@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
   RiArticleLine,
@@ -13,10 +14,12 @@ import {
   RiRefreshLine,
   RiDraftLine,
   RiSendPlaneLine,
+  RiErrorWarningFill,
 } from "react-icons/ri";
-import { TbLoader2 } from "react-icons/tb";
+import { TbLoader2, TbFileText, TbWorld, TbPencil } from "react-icons/tb";
 import { useAuth } from "../../context/AuthContext";
-import styles from "../../app/page.module.css";
+import { Surface3D, StatTile3D, EmptyState3D } from "../three";
+import a from "./admin3d.module.css";
 
 interface BlogArticle {
   id: string;
@@ -53,6 +56,9 @@ const DEFAULT_CATEGORIES = [
   "Architecture & Scalability",
   "Performance & SEO",
 ];
+
+const enterDelay = (step: number) =>
+  ({ ["--enter-delay" as string]: `${step * 60}ms` }) as React.CSSProperties;
 
 export const BlogManager: React.FC = () => {
   const { session } = useAuth();
@@ -317,613 +323,441 @@ export const BlogManager: React.FC = () => {
     }
   };
 
-  return (
-    <div className={styles.adminTableCard} style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-      {/* Top Header & Actions */}
+  const editor = isEditorOpen && (
+    <div className={a.overlay}>
       <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "14px",
-          borderBottom: "1px solid rgba(var(--ink-rgb), 0.08)",
-          paddingBottom: "16px",
-        }}
+        className={`glass-3d ${a.dialog}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="blog-editor-title"
       >
-        <div>
-          <h3
-            style={{
-              fontSize: "1.2rem",
-              fontWeight: 700,
-              color: "var(--text-main)",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              margin: 0,
-            }}
-          >
-            <RiArticleLine color="#6366f1" size={22} />
-            Dynamic Blog Management &amp; Content Engine
-          </h3>
-          <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", margin: "4px 0 0" }}>
-            Create and maintain dynamic articles served directly to the public blog and search engine crawlers.
-          </p>
-        </div>
-
-        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+        <div className={a.dialogHead}>
+          <div>
+            <h3 id="blog-editor-title" className={a.dialogTitle}>
+              {editingBlogId ? "Edit Blog Article" : "Write Dynamic Blog Article"}
+            </h3>
+            <p className={a.dialogSub}>
+              Changes are saved directly to PostgreSQL and served to public viewers.
+            </p>
+          </div>
           <button
-            onClick={fetchBlogs}
-            disabled={loading}
-            className="btn btn-secondary"
-            style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.85rem", padding: "8px 14px" }}
+            type="button"
+            onClick={() => setIsEditorOpen(false)}
+            className={a.closeBtn}
+            title="Close editor"
+            aria-label="Close editor"
           >
-            <RiRefreshLine className={loading ? "pulse" : ""} size={16} /> Refresh
-          </button>
-          <button
-            onClick={openNewArticleModal}
-            className="btn btn-primary"
-            style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.85rem", padding: "8px 16px" }}
-          >
-            <RiAddLine size={18} /> Write New Article
+            <RiCloseLine size={22} />
           </button>
         </div>
-      </div>
 
-      {/* KPI Stats Bar */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: "12px",
-        }}
-      >
-        <div style={S.statCard}>
-          <div style={S.statLabel}>Total Articles</div>
-          <div style={S.statVal}>{stats.total}</div>
-        </div>
-        <div style={S.statCard}>
-          <div style={S.statLabel}>Published (Live)</div>
-          <div style={{ ...S.statVal, color: "#10b981" }}>{stats.published}</div>
-        </div>
-        <div style={S.statCard}>
-          <div style={S.statLabel}>Drafts (Unpublished)</div>
-          <div style={{ ...S.statVal, color: "#f59e0b" }}>{stats.drafts}</div>
-        </div>
-      </div>
+        <form onSubmit={handleSaveArticle} className={a.dialogForm}>
+          {/* Row 1: Title & Slug */}
+          <div className={a.fieldGrid}>
+            <div className={a.fieldGroup}>
+              <label htmlFor="blog-title" className={a.fieldLabel}>Article Title *</label>
+              <input
+                id="blog-title"
+                type="text"
+                required
+                value={formTitle}
+                onChange={(e) => handleTitleChange(e.target.value)}
+                placeholder="e.g. Autonomous Quality Assurance for Next.js Web Apps"
+                className={a.field}
+              />
+            </div>
+            <div className={a.fieldGroup}>
+              <label htmlFor="blog-slug" className={a.fieldLabel}>URL Slug (Unique path) *</label>
+              <input
+                id="blog-slug"
+                type="text"
+                required
+                value={formSlug}
+                onChange={(e) => setFormSlug(e.target.value)}
+                placeholder="autonomous-quality-assurance-nextjs"
+                className={`${a.field} ${a.mono}`}
+              />
+            </div>
+          </div>
 
-      {/* Notification Banner */}
-      {feedbackMsg && (
-        <div
-          style={{
-            padding: "10px 16px",
-            borderRadius: "10px",
-            fontSize: "0.9rem",
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            background: feedbackMsg.type === "success" ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
-            color: feedbackMsg.type === "success" ? "#059669" : "#dc2626",
-            border: `1px solid ${feedbackMsg.type === "success" ? "rgba(16, 185, 129, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
-          }}
-        >
-          {feedbackMsg.type === "success" ? <RiCheckLine size={18} /> : <RiCloseLine size={18} />}
-          {feedbackMsg.text}
-        </div>
-      )}
-
-      {/* Articles Table */}
-      <div className={styles.adminTableContainer} style={{ overflowX: "auto" }}>
-        <table className={styles.adminTable}>
-          <thead>
-            <tr>
-              <th>Title &amp; Slug</th>
-              <th>Category</th>
-              <th>Reading Time</th>
-              <th>Status</th>
-              <th>Author</th>
-              <th>Published</th>
-              <th style={{ textAlign: "right" }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {blogs.length === 0 ? (
-              <tr>
-                <td colSpan={7} style={{ textAlign: "center", padding: "32px", color: "var(--text-muted)" }}>
-                  {loading ? "Loading articles from database..." : "No articles found. Click 'Write New Article' to create one."}
-                </td>
-              </tr>
-            ) : (
-              blogs.map((b) => (
-                <tr key={b.id}>
-                  <td>
-                    <div style={{ fontWeight: 600, color: "var(--text-main)", fontSize: "0.92rem", marginBottom: "4px" }}>
-                      {b.title}
-                    </div>
-                    <div style={{ fontSize: "0.78rem", color: "#6366f1", fontFamily: "monospace" }}>
-                      /blog/{b.slug}
-                    </div>
-                  </td>
-                  <td>
-                    <span
-                      style={{
-                        padding: "3px 8px",
-                        borderRadius: "6px",
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        background: "rgba(99, 102, 241, 0.15)",
-                        color: "#4f46e5",
-                        border: "1px solid rgba(99, 102, 241, 0.3)",
-                      }}
-                    >
-                      {b.category}
-                    </span>
-                  </td>
-                  <td style={{ fontSize: "0.82rem", color: "var(--text-body)" }}>{b.reading_time || "5 min read"}</td>
-                  <td>
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "5px",
-                        padding: "3px 9px",
-                        borderRadius: "12px",
-                        fontSize: "0.75rem",
-                        fontWeight: 700,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.04em",
-                        background: b.status === "published" ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)",
-                        color: b.status === "published" ? "#059669" : "#d97706",
-                        border: `1px solid ${b.status === "published" ? "rgba(16, 185, 129, 0.3)" : "rgba(245, 158, 11, 0.3)"}`,
-                      }}
-                    >
-                      {b.status === "published" ? <RiCheckLine size={12} /> : <RiDraftLine size={12} />}
-                      {b.status}
-                    </span>
-                  </td>
-                  <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
-                    <div>{b.author?.name || "Admin"}</div>
-                    <div style={{ fontSize: "0.74rem", color: "var(--text-subtle)" }}>{b.author?.role || ""}</div>
-                  </td>
-                  <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                    {b.published_at ? new Date(b.published_at).toLocaleDateString() : "Draft"}
-                  </td>
-                  <td style={{ textAlign: "right" }}>
-                    <div style={{ display: "inline-flex", gap: "6px", alignItems: "center" }}>
-                      {b.status === "published" && (
-                      <Link
-                        href={`/blog/${b.slug}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn btn-secondary"
-                        style={{ padding: "6px 10px", fontSize: "0.78rem" }}
-                        title="View live post"
-                      >
-                        <RiEyeLine size={14} /> View
-                      </Link>
-                      )}
-
-                      <button
-                        onClick={() => openEditArticleModal(b)}
-                        className="btn btn-secondary"
-                        style={{ padding: "6px 10px", fontSize: "0.78rem" }}
-                        title="Edit article"
-                      >
-                        <RiEditLine size={14} /> Edit
-                      </button>
-
-                      <button
-                        onClick={() => handleToggleStatus(b)}
-                        disabled={actionLoading === `toggle-${b.id}`}
-                        className="btn btn-secondary"
-                        style={{
-                          padding: "6px 10px",
-                          fontSize: "0.78rem",
-                          color: b.status === "published" ? "#d97706" : "#059669",
-                        }}
-                        title={b.status === "published" ? "Unpublish to draft" : "Publish immediately"}
-                      >
-                        {actionLoading === `toggle-${b.id}` ? (
-                          <TbLoader2 className="pulse" size={14} />
-                        ) : b.status === "published" ? (
-                          "Unpublish"
-                        ) : (
-                          "Publish"
-                        )}
-                      </button>
-
-                      <button
-                        onClick={() => handleDelete(b)}
-                        disabled={actionLoading === `delete-${b.id}`}
-                        className="btn btn-secondary"
-                        style={{ padding: "6px 10px", fontSize: "0.78rem", color: "#dc2626" }}
-                        title="Delete article"
-                      >
-                        {actionLoading === `delete-${b.id}` ? (
-                          <TbLoader2 className="pulse" size={14} />
-                        ) : (
-                          <RiDeleteBinLine size={14} />
-                        )}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Editor Modal */}
-      {isEditorOpen && (
-        <div style={S.modalOverlay}>
-          <div style={S.modalCard}>
-            <div style={S.modalHeader}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: "1.3rem", fontWeight: 700, color: "var(--text-main)" }}>
-                  {editingBlogId ? "Edit Blog Article" : "Write Dynamic Blog Article"}
-                </h3>
-                <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                  Changes are saved directly to PostgreSQL and served to public viewers.
-                </p>
-              </div>
-              <button
-                onClick={() => setIsEditorOpen(false)}
-                style={S.closeModalBtn}
-                title="Close editor"
+          {/* Row 2: Category, Reading Time, Status */}
+          <div className={a.fieldGrid3}>
+            <div className={a.fieldGroup}>
+              <label htmlFor="blog-category" className={a.fieldLabel}>Category</label>
+              <select
+                id="blog-category"
+                value={formCategory}
+                onChange={(e) => setFormCategory(e.target.value)}
+                className={a.field}
               >
-                <RiCloseLine size={22} />
+                {DEFAULT_CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+                <option value="custom">+ Custom Category</option>
+              </select>
+              {formCategory === "custom" && (
+                <input
+                  type="text"
+                  placeholder="Enter custom category"
+                  aria-label="Custom category"
+                  value={formCustomCategory}
+                  onChange={(e) => setFormCustomCategory(e.target.value)}
+                  className={a.field}
+                />
+              )}
+            </div>
+
+            <div className={a.fieldGroup}>
+              <label htmlFor="blog-reading-time" className={a.fieldLabel}>Estimated Reading Time</label>
+              <input
+                id="blog-reading-time"
+                type="text"
+                value={formReadingTime}
+                onChange={(e) => setFormReadingTime(e.target.value)}
+                placeholder="e.g. 6 min read"
+                className={a.field}
+              />
+            </div>
+
+            <div className={a.fieldGroup}>
+              <label htmlFor="blog-status" className={a.fieldLabel}>Publication Status</label>
+              <select
+                id="blog-status"
+                value={formStatus}
+                onChange={(e) => setFormStatus(e.target.value as any)}
+                className={a.field}
+              >
+                <option value="published">Published (Live immediately)</option>
+                <option value="draft">Draft (Admin eyes only)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Row 3: Author Name & Role */}
+          <div className={a.fieldGrid}>
+            <div className={a.fieldGroup}>
+              <label htmlFor="blog-author-name" className={a.fieldLabel}>Author Name</label>
+              <input
+                id="blog-author-name"
+                type="text"
+                value={formAuthorName}
+                onChange={(e) => setFormAuthorName(e.target.value)}
+                placeholder="Nexus Core Engineering"
+                className={a.field}
+              />
+            </div>
+            <div className={a.fieldGroup}>
+              <label htmlFor="blog-author-role" className={a.fieldLabel}>Author Role / Affiliation</label>
+              <input
+                id="blog-author-role"
+                type="text"
+                value={formAuthorRole}
+                onChange={(e) => setFormAuthorRole(e.target.value)}
+                placeholder="Platform Architecture Team"
+                className={a.field}
+              />
+            </div>
+          </div>
+
+          {/* Row 4: Tags */}
+          <div className={a.fieldGroup}>
+            <label htmlFor="blog-tags" className={a.fieldLabel}>Article Tags (Comma separated)</label>
+            <input
+              id="blog-tags"
+              type="text"
+              value={formTags}
+              onChange={(e) => setFormTags(e.target.value)}
+              placeholder="Autonomous QA, Regression Testing, Web Vitals, Next.js"
+              className={a.field}
+            />
+          </div>
+
+          {/* Row 5: Excerpt */}
+          <div className={a.fieldGroup}>
+            <label htmlFor="blog-excerpt" className={a.fieldLabel}>Article Excerpt (SEO summary &amp; card preview) *</label>
+            <textarea
+              id="blog-excerpt"
+              required
+              rows={2}
+              value={formExcerpt}
+              onChange={(e) => setFormExcerpt(e.target.value)}
+              placeholder="Brief 1-2 sentence overview explaining the core value of this article..."
+              className={`${a.field} ${a.textarea}`}
+            />
+          </div>
+
+          {/* Row 6: Content Editor & Live Preview Switch */}
+          <div className={a.fieldGroup}>
+            <div className={a.contentHead}>
+              <label htmlFor="blog-content" className={a.fieldLabel}>
+                Article Content *{" "}
+                <span className={a.fieldHint}>
+                  (Separate paragraphs with a blank line. Supports headers `### Title` and lists `- Item`)
+                </span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setPreviewMode(!previewMode)}
+                className={a.linkBtn}
+                aria-pressed={previewMode}
+              >
+                <RiEyeLine size={14} />
+                {previewMode ? "Switch to Edit View" : "Live Preview"}
               </button>
             </div>
 
-            <form onSubmit={handleSaveArticle} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              {/* Row 1: Title & Slug */}
-              <div style={S.formGrid2}>
+            {previewMode ? (
+              <div className={`surface-inset ${a.preview}`}>
+                <h3 className={a.previewTitle}>{formTitle || "Article Title Preview"}</h3>
+                <p className={a.previewExcerpt}>
+                  {formExcerpt || "Excerpt preview will render here..."}
+                </p>
                 <div>
-                  <label style={S.label}>Article Title *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formTitle}
-                    onChange={(e) => handleTitleChange(e.target.value)}
-                    placeholder="e.g. Autonomous Quality Assurance for Next.js Web Apps"
-                    style={S.input}
-                  />
-                </div>
-                <div>
-                  <label style={S.label}>URL Slug (Unique path) *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formSlug}
-                    onChange={(e) => setFormSlug(e.target.value)}
-                    placeholder="autonomous-quality-assurance-nextjs"
-                    style={{ ...S.input, fontFamily: "monospace" }}
-                  />
+                  {formContent
+                    .split("\n\n")
+                    .filter(Boolean)
+                    .map((para, i) => {
+                      if (para.startsWith("### ")) {
+                        return (
+                          <h4 key={i} className={a.previewH}>
+                            {para.replace("### ", "")}
+                          </h4>
+                        );
+                      }
+                      return (
+                        <p key={i} className={a.previewP}>
+                          {para}
+                        </p>
+                      );
+                    })}
                 </div>
               </div>
-
-              {/* Row 2: Category, Reading Time, Status */}
-              <div style={S.formGrid3}>
-                <div>
-                  <label style={S.label}>Category</label>
-                  <select
-                    value={formCategory}
-                    onChange={(e) => setFormCategory(e.target.value)}
-                    style={S.input}
-                  >
-                    {DEFAULT_CATEGORIES.map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
-                    ))}
-                    <option value="custom">+ Custom Category</option>
-                  </select>
-                  {formCategory === "custom" && (
-                    <input
-                      type="text"
-                      placeholder="Enter custom category"
-                      value={formCustomCategory}
-                      onChange={(e) => setFormCustomCategory(e.target.value)}
-                      style={{ ...S.input, marginTop: "8px" }}
-                    />
-                  )}
-                </div>
-
-                <div>
-                  <label style={S.label}>Estimated Reading Time</label>
-                  <input
-                    type="text"
-                    value={formReadingTime}
-                    onChange={(e) => setFormReadingTime(e.target.value)}
-                    placeholder="e.g. 6 min read"
-                    style={S.input}
-                  />
-                </div>
-
-                <div>
-                  <label style={S.label}>Publication Status</label>
-                  <select
-                    value={formStatus}
-                    onChange={(e) => setFormStatus(e.target.value as any)}
-                    style={S.input}
-                  >
-                    <option value="published">Published (Live immediately)</option>
-                    <option value="draft">Draft (Admin eyes only)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Row 3: Author Name & Role */}
-              <div style={S.formGrid2}>
-                <div>
-                  <label style={S.label}>Author Name</label>
-                  <input
-                    type="text"
-                    value={formAuthorName}
-                    onChange={(e) => setFormAuthorName(e.target.value)}
-                    placeholder="Nexus Core Engineering"
-                    style={S.input}
-                  />
-                </div>
-                <div>
-                  <label style={S.label}>Author Role / Affiliation</label>
-                  <input
-                    type="text"
-                    value={formAuthorRole}
-                    onChange={(e) => setFormAuthorRole(e.target.value)}
-                    placeholder="Platform Architecture Team"
-                    style={S.input}
-                  />
-                </div>
-              </div>
-
-              {/* Row 4: Tags */}
-              <div>
-                <label style={S.label}>Article Tags (Comma separated)</label>
-                <input
-                  type="text"
-                  value={formTags}
-                  onChange={(e) => setFormTags(e.target.value)}
-                  placeholder="Autonomous QA, Regression Testing, Web Vitals, Next.js"
-                  style={S.input}
-                />
-              </div>
-
-              {/* Row 5: Excerpt */}
-              <div>
-                <label style={S.label}>Article Excerpt (SEO summary &amp; card preview) *</label>
-                <textarea
-                  required
-                  rows={2}
-                  value={formExcerpt}
-                  onChange={(e) => setFormExcerpt(e.target.value)}
-                  placeholder="Brief 1-2 sentence overview explaining the core value of this article..."
-                  style={S.textarea}
-                />
-              </div>
-
-              {/* Row 6: Content Editor & Live Preview Switch */}
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                  <label style={S.label}>
-                    Article Content *{" "}
-                    <span style={{ fontWeight: 400, color: "var(--text-subtle)" }}>
-                      (Separate paragraphs with a blank line. Supports headers `### Title` and lists `- Item`)
-                    </span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewMode(!previewMode)}
-                    style={{
-                      background: "transparent",
-                      border: "none",
-                      color: "#4f46e5",
-                      fontSize: "0.82rem",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                    }}
-                  >
-                    <RiEyeLine size={14} />
-                    {previewMode ? "Switch to Edit View" : "Live Preview"}
-                  </button>
-                </div>
-
-                {previewMode ? (
-                  <div style={S.previewBox}>
-                    <h3 style={{ color: "var(--text-main)", marginTop: 0 }}>{formTitle || "Article Title Preview"}</h3>
-                    <p style={{ color: "var(--text-muted)", fontStyle: "italic", borderLeft: "3px solid #6366f1", paddingLeft: "12px" }}>
-                      {formExcerpt || "Excerpt preview will render here..."}
-                    </p>
-                    <div style={{ marginTop: "16px", color: "var(--text-main)", lineHeight: 1.8 }}>
-                      {formContent
-                        .split("\n\n")
-                        .filter(Boolean)
-                        .map((para, i) => {
-                          if (para.startsWith("### ")) {
-                            return (
-                              <h4 key={i} style={{ color: "#4f46e5", marginTop: "18px", marginBottom: "8px" }}>
-                                {para.replace("### ", "")}
-                              </h4>
-                            );
-                          }
-                          return (
-                            <p key={i} style={{ marginBottom: "14px" }}>
-                              {para}
-                            </p>
-                          );
-                        })}
-                    </div>
-                  </div>
-                ) : (
-                  <textarea
-                    required
-                    rows={12}
-                    value={formContent}
-                    onChange={(e) => setFormContent(e.target.value)}
-                    placeholder="Write your article body here... Separate each paragraph or section with two enter keys (blank line)."
-                    style={{ ...S.textarea, fontFamily: "inherit", fontSize: "0.92rem", lineHeight: 1.6 }}
-                  />
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  gap: "12px",
-                  borderTop: "1px solid rgba(var(--ink-rgb), 0.08)",
-                  paddingTop: "16px",
-                  marginTop: "8px",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setIsEditorOpen(false)}
-                  className="btn btn-secondary"
-                  disabled={actionLoading !== null}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={actionLoading !== null}
-                  className="btn btn-primary"
-                  style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
-                >
-                  {actionLoading ? (
-                    <>
-                      <TbLoader2 className="pulse" size={16} /> Saving article...
-                    </>
-                  ) : (
-                    <>
-                      <RiSendPlaneLine size={16} />
-                      {editingBlogId ? "Update Article" : "Save & Publish Article"}
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
+            ) : (
+              <textarea
+                id="blog-content"
+                required
+                rows={12}
+                value={formContent}
+                onChange={(e) => setFormContent(e.target.value)}
+                placeholder="Write your article body here... Separate each paragraph or section with two enter keys (blank line)."
+                className={`${a.field} ${a.textarea}`}
+              />
+            )}
           </div>
-        </div>
-      )}
+
+          {/* Action Buttons */}
+          <div className={a.dialogActions}>
+            <button
+              type="button"
+              onClick={() => setIsEditorOpen(false)}
+              className="btn btn-secondary"
+              disabled={actionLoading !== null}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={actionLoading !== null}
+              className="btn btn-primary"
+            >
+              {actionLoading ? (
+                <>
+                  <TbLoader2 className="pulse" size={16} /> Saving article...
+                </>
+              ) : (
+                <>
+                  <RiSendPlaneLine size={16} />
+                  {editingBlogId ? "Update Article" : "Save & Publish Article"}
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
-};
 
-const S: Record<string, React.CSSProperties> = {
-  statCard: {
-    padding: "12px 16px",
-    borderRadius: "12px",
-    background: "rgba(var(--ink-rgb), 0.03)",
-    border: "1px solid rgba(var(--ink-rgb), 0.06)",
-  },
-  statLabel: {
-    fontSize: "0.75rem",
-    color: "var(--text-muted)",
-    fontWeight: 600,
-    textTransform: "uppercase",
-    letterSpacing: "0.05em",
-    marginBottom: "4px",
-  },
-  statVal: {
-    fontSize: "1.5rem",
-    fontWeight: 800,
-    color: "var(--text-main)",
-  },
-  modalOverlay: {
-    position: "fixed",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    background: "rgba(15, 23, 42, 0.35)",
-    backdropFilter: "blur(8px)",
-    zIndex: 9999,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "20px",
-  },
-  modalCard: {
-    width: "100%",
-    maxWidth: "840px",
-    maxHeight: "90vh",
-    overflowY: "auto",
-    background: "rgba(var(--panel-rgb), 0.96)",
-    border: "1px solid rgba(99, 102, 241, 0.3)",
-    borderRadius: "20px",
-    padding: "28px",
-    boxShadow: "0 25px 50px -12px rgba(15, 23, 42, 0.21)",
-  },
-  modalHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: "20px",
-    borderBottom: "1px solid rgba(var(--ink-rgb), 0.08)",
-    paddingBottom: "14px",
-  },
-  closeModalBtn: {
-    background: "rgba(var(--ink-rgb), 0.05)",
-    border: "1px solid rgba(var(--ink-rgb), 0.1)",
-    borderRadius: "8px",
-    color: "var(--text-muted)",
-    padding: "6px",
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  formGrid2: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-    gap: "14px",
-  },
-  formGrid3: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: "14px",
-  },
-  label: {
-    display: "block",
-    fontSize: "0.82rem",
-    fontWeight: 600,
-    color: "var(--text-body)",
-    marginBottom: "6px",
-  },
-  input: {
-    width: "100%",
-    padding: "10px 14px",
-    borderRadius: "10px",
-    background: "rgba(var(--ink-rgb), 0.052)",
-    border: "1px solid rgba(var(--ink-rgb), 0.12)",
-    color: "var(--text-main)",
-    fontSize: "0.88rem",
-    outline: "none",
-    boxSizing: "border-box",
-  },
-  textarea: {
-    width: "100%",
-    padding: "12px 14px",
-    borderRadius: "10px",
-    background: "rgba(var(--ink-rgb), 0.052)",
-    border: "1px solid rgba(var(--ink-rgb), 0.12)",
-    color: "var(--text-main)",
-    fontSize: "0.88rem",
-    outline: "none",
-    boxSizing: "border-box",
-    resize: "vertical",
-  },
-  previewBox: {
-    padding: "18px",
-    borderRadius: "10px",
-    background: "rgba(var(--ink-rgb), 0.06)",
-    border: "1px solid rgba(99, 102, 241, 0.25)",
-    maxHeight: "350px",
-    overflowY: "auto",
-  },
+  return (
+    <div className={a.stack}>
+      {/* KPI Stats */}
+      <div className="bento" style={{ ["--grid-gap" as string]: "16px" } as React.CSSProperties}>
+        <div className="span-4 enter-3d" style={enterDelay(1)}>
+          <StatTile3D label="Total Articles" value={stats.total} icon={<TbFileText size={20} />} hint="Stored in PostgreSQL" />
+        </div>
+        <div className="span-4 enter-3d" style={enterDelay(2)}>
+          <StatTile3D label="Published (Live)" value={stats.published} accent="success" icon={<TbWorld size={20} />} hint="Visible to the public blog and crawlers" />
+        </div>
+        <div className="span-4 enter-3d" style={enterDelay(3)}>
+          <StatTile3D label="Drafts (Unpublished)" value={stats.drafts} accent="warning" icon={<TbPencil size={20} />} hint="Admin eyes only" />
+        </div>
+      </div>
+
+      <Surface3D as="section" pad="sm" className="enter-3d" style={enterDelay(4)} aria-labelledby="blog-manager-title">
+        {/* Top Header & Actions */}
+        <div className={`${a.panelHead} ${a.panelHeadTable}`}>
+          <div className={a.panelTitleBlock}>
+            <span className="icon-well" aria-hidden="true">
+              <RiArticleLine size={20} />
+            </span>
+            <div>
+              <span className="section-eyebrow">Content engine</span>
+              <div className={a.panelTitleRow}>
+                <h2 id="blog-manager-title" className={a.panelTitle}>Dynamic Blog Management</h2>
+                <span className={a.panelCount}>{blogs.length} articles</span>
+              </div>
+              <p className={a.panelSub}>
+                Create and maintain dynamic articles served directly to the public blog and search engine crawlers.
+              </p>
+            </div>
+          </div>
+
+          <div className={a.panelTools}>
+            <button
+              type="button"
+              onClick={fetchBlogs}
+              disabled={loading}
+              className="btn btn-secondary btn-sm"
+            >
+              <RiRefreshLine className={loading ? "pulse" : ""} size={16} /> Refresh
+            </button>
+            <button
+              type="button"
+              onClick={openNewArticleModal}
+              className="btn btn-primary btn-sm"
+            >
+              <RiAddLine size={18} /> Write New Article
+            </button>
+          </div>
+        </div>
+
+        {/* Notification Banner */}
+        {feedbackMsg && (
+          <div
+            className={`${a.notice} ${feedbackMsg.type === "success" ? a.noticeSuccess : a.noticeDanger}`}
+            role="status"
+            style={{ margin: "0 8px 12px" }}
+          >
+            {feedbackMsg.type === "success" ? <RiCheckLine size={18} /> : <RiErrorWarningFill size={18} />}
+            {feedbackMsg.text}
+          </div>
+        )}
+
+        {/* Articles Table */}
+        <div className="table-3d-wrap">
+          <table className="table-3d">
+            <thead>
+              <tr>
+                <th>Title &amp; Slug</th>
+                <th>Category</th>
+                <th>Reading Time</th>
+                <th>Status</th>
+                <th>Author</th>
+                <th>Published</th>
+                <th style={{ textAlign: "right" }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {blogs.length === 0 ? (
+                <tr>
+                  <td colSpan={7}>
+                    <EmptyState3D
+                      compact
+                      icon={<RiArticleLine size={16} />}
+                      title={loading ? "Loading articles from database..." : "No articles found"}
+                      description={loading ? undefined : "Click 'Write New Article' to create one."}
+                    />
+                  </td>
+                </tr>
+              ) : (
+                blogs.map((b) => (
+                  <tr key={b.id}>
+                    <td>
+                      <div className={a.titleCell}>{b.title}</div>
+                      <div className={`${a.slugCell} ${a.mono}`}>/blog/{b.slug}</div>
+                    </td>
+                    <td>
+                      <span className="chip chip--sm chip--primary">{b.category}</span>
+                    </td>
+                    <td className={a.metaCell}>{b.reading_time || "5 min read"}</td>
+                    <td>
+                      <span className={`chip chip--sm ${b.status === "published" ? "chip--success chip--dot" : "chip--warning"}`}>
+                        {b.status === "published" ? <RiCheckLine size={12} /> : <RiDraftLine size={12} />}
+                        {b.status.toUpperCase()}
+                      </span>
+                    </td>
+                    <td>
+                      <div className={a.authorCell}>{b.author?.name || "Admin"}</div>
+                      <div className={a.authorRole}>{b.author?.role || ""}</div>
+                    </td>
+                    <td className={a.metaCell}>
+                      {b.published_at ? new Date(b.published_at).toLocaleDateString() : "Draft"}
+                    </td>
+                    <td>
+                      <div className={`${a.rowActions} ${a.rowActionsEnd}`}>
+                        {b.status === "published" && (
+                        <Link
+                          href={`/blog/${b.slug}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-secondary btn-sm"
+                          title="View live post"
+                        >
+                          <RiEyeLine size={14} /> View
+                        </Link>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => openEditArticleModal(b)}
+                          className="btn btn-secondary btn-sm"
+                          title="Edit article"
+                        >
+                          <RiEditLine size={14} /> Edit
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleToggleStatus(b)}
+                          disabled={actionLoading === `toggle-${b.id}`}
+                          className="btn btn-secondary btn-sm"
+                          title={b.status === "published" ? "Unpublish to draft" : "Publish immediately"}
+                        >
+                          {actionLoading === `toggle-${b.id}` ? (
+                            <TbLoader2 className="pulse" size={14} />
+                          ) : b.status === "published" ? (
+                            "Unpublish"
+                          ) : (
+                            "Publish"
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(b)}
+                          disabled={actionLoading === `delete-${b.id}`}
+                          className="btn btn-danger btn-sm"
+                          title="Delete article"
+                        >
+                          {actionLoading === `delete-${b.id}` ? (
+                            <TbLoader2 className="pulse" size={14} />
+                          ) : (
+                            <RiDeleteBinLine size={14} />
+                          )}
+                          <span className="sr-only">Delete article</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Surface3D>
+
+      {editor && typeof document !== "undefined" ? createPortal(editor, document.body) : null}
+    </div>
+  );
 };
