@@ -34,10 +34,10 @@ from supabase import create_client, Client
 
 try:
     from db import SessionLocal, engine
-    from models import Scan, Base, User, BlogPost, UserApiKey
+    from models import Scan, Base, User, BlogPost, UserApiKey, TrialScan
 except ImportError:
     from ..db import SessionLocal, engine
-    from ..models import Scan, Base, User, BlogPost, UserApiKey
+    from ..models import Scan, Base, User, BlogPost, UserApiKey, TrialScan
 
 # Kept separate: if Celery is unavailable the API must still start (scans then
 # run through the bounded local fallback) instead of failing on the relative
@@ -210,9 +210,11 @@ def _get_plan_max_pages(plan_tier: str) -> int:
 _ACTIVE_SCAN_WINDOW_SECONDS = PIPELINE_TIMEOUT_SECONDS + 600
 
 
-def _enforce_scan_quota(user_id: str, plan_tier: str, is_admin: bool = False) -> None:
+def _enforce_scan_quota(user_id: str, plan_tier: str, is_admin: bool = False, db=None) -> None:
     """Reject a new scan when the user already has one in flight or has used
-    their plan's monthly allowance (billing PLANS[*]["max_scans_per_month"])."""
+    their plan's monthly allowance (billing PLANS[*]["max_scans_per_month"]).
+    Pass the session that will insert the scan (with the user row locked) so
+    parallel requests cannot both pass the one-active-scan check."""
     if is_admin:
         return
     from billing.gateways import PLANS
@@ -220,33 +222,159 @@ def _enforce_scan_quota(user_id: str, plan_tier: str, is_admin: bool = False) ->
     monthly_limit = plan.get("max_scans_per_month", 10)
     now = datetime.now(timezone.utc)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    with SessionLocal() as db:
-        active = (
+    active = (
+        db.query(Scan)
+        .filter(
+            Scan.user_id == user_id,
+            Scan.status.in_(("pending", "running")),
+            Scan.created_at >= now - timedelta(seconds=_ACTIVE_SCAN_WINDOW_SECONDS),
+        )
+        .count()
+    )
+    if active:
+        raise HTTPException(
+            status_code=409,
+            detail="You already have a scan in progress. Please wait for it to finish (or stop it) before starting another.",
+        )
+    if monthly_limit is not None and monthly_limit >= 0:
+        used = (
             db.query(Scan)
-            .filter(
-                Scan.user_id == user_id,
-                Scan.status.in_(("pending", "running")),
-                Scan.created_at >= now - timedelta(seconds=_ACTIVE_SCAN_WINDOW_SECONDS),
-            )
+            # Scans that failed on our side don't use up the allowance
+            .filter(Scan.user_id == user_id, Scan.created_at >= month_start, Scan.status != "failed")
             .count()
         )
-        if active:
+        if used >= monthly_limit:
             raise HTTPException(
-                status_code=409,
-                detail="You already have a scan in progress. Please wait for it to finish (or stop it) before starting another.",
+                status_code=429,
+                detail=f"You've used all {monthly_limit} scans included in your plan this month. Your allowance resets on the 1st.",
             )
-        if monthly_limit is not None and monthly_limit >= 0:
-            used = (
-                db.query(Scan)
-                # Scans that failed on our side don't use up the allowance
-                .filter(Scan.user_id == user_id, Scan.created_at >= month_start, Scan.status != "failed")
-                .count()
-            )
-            if used >= monthly_limit:
-                raise HTTPException(
-                    status_code=429,
-                    detail=f"You've used all {monthly_limit} scans included in your plan this month. Your allowance resets on the 1st.",
-                )
+
+
+# Serializes trial bookkeeping across API workers on Postgres (advisory locks
+# are transaction scoped, so the lock is released with the commit/rollback).
+_TRIAL_ADVISORY_LOCK_KEY = 0x5452_4941_4C53  # "TRIALS"
+
+
+def _lock_scan_creation(db, user_id: str, serialize_trials: bool) -> None:
+    """Lock the user row (and, for a trial scan, the global trial counter) so
+    the remaining/daily counts and the inserts that follow run atomically.
+    SQLite ignores FOR UPDATE but serializes writers anyway."""
+    if db.bind.dialect.name == "postgresql" and serialize_trials:
+        from sqlalchemy import text
+        db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _TRIAL_ADVISORY_LOCK_KEY})
+    db.query(User).filter(User.id == user_id).with_for_update().first()
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int((os.environ.get(name) or "").strip() or default)
+    except ValueError:
+        return default
+
+
+def _trial_server_key() -> Optional[str]:
+    """The owner's Gemini key that free-trial scans run on. Never sent to clients."""
+    return (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or "").strip() or None
+
+
+def _trial_free_scans() -> int:
+    return max(0, _env_int("TRIAL_FREE_SCANS", 3))
+
+
+def _trial_daily_limit() -> int:
+    """Global cap of trial scans per UTC day across all users; 0 disables the cap."""
+    return max(0, _env_int("TRIAL_DAILY_LIMIT", 50))
+
+
+def _trial_model() -> str:
+    return (os.environ.get("TRIAL_AI_MODEL") or "").strip() or AI_PROVIDERS_REGISTRY["gemini"].default_model
+
+
+def _trial_enabled() -> bool:
+    return bool(_trial_server_key()) and _trial_free_scans() > 0
+
+
+def _usable_user_key(key: UserApiKey) -> bool:
+    """A stored provider entry the scan can run on: any key, or a Local LLM
+    endpoint, which legitimately has no key."""
+    return bool(key.api_key) or (key.provider_id or "gemini").lower() == "local_llm"
+
+
+def _user_key_pool(db, user_id: str) -> list:
+    user_keys = (
+        db.query(UserApiKey)
+        .filter(UserApiKey.user_id == user_id)
+        .order_by(UserApiKey.is_default.desc(), UserApiKey.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "api_key": k.api_key,
+            "provider_id": k.provider_id or "gemini",
+            "model": k.model,
+            "endpoint": k.endpoint,
+            "label": k.key_name or k.provider_id,
+        }
+        for k in user_keys
+        if _usable_user_key(k)
+    ]
+
+
+def _user_has_own_key(db, user_id: str) -> bool:
+    if any(_usable_user_key(k) for k in db.query(UserApiKey).filter(UserApiKey.user_id == user_id).all()):
+        return True
+    db_user = db.query(User).filter(User.id == user_id).first()
+    return bool(db_user and (db_user.gemini_api_key or "").strip())
+
+
+def _trial_status(db, user_id: str) -> dict:
+    """Free-trial state for a user: scans run on the server key before they
+    must add their own. Trial scans that failed on our side are refunded."""
+    enabled = _trial_enabled()
+    total = _trial_free_scans() if enabled else 0
+    used = (
+        db.query(TrialScan)
+        .join(Scan, Scan.id == TrialScan.scan_id)
+        .filter(TrialScan.user_id == user_id, Scan.status != "failed")
+        .count()
+    )
+    daily_available = False
+    if enabled:
+        daily_limit = _trial_daily_limit()
+        if daily_limit <= 0:
+            daily_available = True
+        else:
+            day_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            daily_used = db.query(TrialScan).filter(TrialScan.created_at >= day_start).count()
+            daily_available = daily_used < daily_limit
+    return {
+        "enabled": enabled,
+        "total": total,
+        "used": used,
+        "remaining": max(0, total - used) if enabled else 0,
+        "has_own_key": _user_has_own_key(db, user_id),
+        "daily_available": daily_available,
+    }
+
+
+_NO_KEY_DETAIL = (
+    "An AI provider API key is required to generate the AI QA report. Please configure your API key "
+    "(Gemini, OpenAI, Claude, DeepSeek, or Local LLM) in your Workspace Profile settings before launching a scan."
+)
+_TRIAL_BUSY_DETAIL = (
+    "Free trial scans are busy right now (daily limit reached). "
+    "Add your own free Gemini API key to scan immediately."
+)
+
+
+def _trial_exhausted_detail(trial: dict) -> str:
+    if not trial.get("enabled"):
+        return _NO_KEY_DETAIL
+    total = trial.get("total", 0)
+    return (
+        f"An AI provider API key is required to keep scanning. You've used your {total} free trial "
+        f"scan{'' if total == 1 else 's'}. Add your own free Gemini API key in your profile to keep scanning."
+    )
 
 
 class ScanAuthPayload(BaseModel):
@@ -526,6 +654,7 @@ async def list_user_api_keys(user=Depends(require_user)):
 
         max_allowed = 999 if is_paid else 3
         count = len(existing_keys)
+        trial = _trial_status(db, user_id_val)
 
         return {
             "keys": [k.to_dict() for k in existing_keys],
@@ -535,6 +664,7 @@ async def list_user_api_keys(user=Depends(require_user)):
             "is_paid": is_paid,
             "can_add_more": is_paid or count < 3,
             "has_key": count > 0,
+            "trial": trial,
             "supported_providers": [
                 {
                     "id": pid,
@@ -548,6 +678,14 @@ async def list_user_api_keys(user=Depends(require_user)):
                 for pid, meta in AI_PROVIDERS_REGISTRY.items()
             ],
         }
+
+
+@app.get("/api/v1/user/trial")
+async def get_user_trial(user=Depends(require_user)):
+    """Free-trial allowance: scans a new user may run on the server's AI key before adding their own."""
+    user_id_val = str(getattr(user, "id", user))
+    with SessionLocal() as db:
+        return _trial_status(db, user_id_val)
 
 
 @app.post("/api/v1/user/api-keys")
@@ -1030,24 +1168,7 @@ def run_qa_pipeline(
     if not ai_keys_pool:
         try:
             with SessionLocal() as db:
-                user_keys = (
-                    db.query(UserApiKey)
-                    .filter(UserApiKey.user_id == str(user_id))
-                    .order_by(UserApiKey.is_default.desc(), UserApiKey.created_at.desc())
-                    .all()
-                )
-                if user_keys:
-                    ai_keys_pool = [
-                        {
-                            "api_key": k.api_key,
-                            "provider_id": k.provider_id or "gemini",
-                            "model": k.model,
-                            "endpoint": k.endpoint,
-                            "label": k.key_name or k.provider_id,
-                        }
-                        for k in user_keys
-                        if k.api_key
-                    ]
+                ai_keys_pool = _user_key_pool(db, str(user_id))
         except Exception as e:
             logger.warning("Could not fetch ai_keys_pool from DB for user %s: %s", user_id, e)
 
@@ -1140,7 +1261,7 @@ def run_qa_pipeline(
     except Exception:
         pass
 
-    secrets_to_redact = [v for v in (password, gemini_api_key, safe_token) if v]
+    secrets_to_redact = [v for v in (password, gemini_api_key, safe_token, _trial_server_key()) if v]
     for k_cfg in ai_keys_pool or []:
         k_val = k_cfg.get("api_key") if isinstance(k_cfg, dict) else None
         if k_val:
@@ -1407,21 +1528,7 @@ async def create_scan(
         user_plan = getattr(db_user_check, "plan_tier", "free") if db_user_check else "free"
         user_gemini_api_key = getattr(db_user_check, "gemini_api_key", None) if db_user_check else None
 
-        user_keys = (
-            db.query(UserApiKey)
-            .filter(UserApiKey.user_id == user_id_val)
-            .order_by(UserApiKey.is_default.desc(), UserApiKey.created_at.desc())
-            .all()
-        )
-        for k in user_keys:
-            if k.api_key:
-                ai_keys_pool.append({
-                    "api_key": k.api_key,
-                    "provider_id": k.provider_id or "gemini",
-                    "model": k.model,
-                    "endpoint": k.endpoint,
-                    "label": k.key_name or k.provider_id,
-                })
+        ai_keys_pool = _user_key_pool(db, user_id_val)
 
         if user_gemini_api_key and not any(k["api_key"] == user_gemini_api_key for k in ai_keys_pool):
             ai_keys_pool.append({
@@ -1439,12 +1546,12 @@ async def create_scan(
             primary_model_name = ai_keys_pool[0].get("model")
             primary_endpoint = ai_keys_pool[0].get("endpoint")
 
-    # Strict BYOK enforcement: User must supply their personal Gemini or AI API key in Profile
-    if not user_gemini_api_key and not ai_keys_pool:
-        raise HTTPException(
-            status_code=400,
-            detail="An AI provider API key is required to generate the AI QA report. Please configure your API key (Gemini, OpenAI, Claude, DeepSeek, or Local LLM) in your Workspace Profile settings before launching a scan."
-        )
+    # Strict BYOK enforcement: without a personal key the scan may only run as
+    # one of the user's free trial scans on the server key (decided below,
+    # inside the transaction that records the scan).
+    needs_trial = not (user_gemini_api_key or "").strip() and not ai_keys_pool
+    if needs_trial and not _trial_enabled():
+        raise HTTPException(status_code=400, detail=_NO_KEY_DETAIL)
 
     plan_max_pages = _get_plan_max_pages(user_plan)
     if request.max_pages > plan_max_pages:
@@ -1457,30 +1564,67 @@ async def create_scan(
     user_email = str(getattr(user, "email", "") or "")
     user_app_meta = getattr(user, "app_metadata", None) or {}
     is_admin = _is_admin_email(user_email) or (isinstance(user_app_meta, dict) and user_app_meta.get("role") == "admin")
-    await run_in_threadpool(_enforce_scan_quota, user_id_val, user_plan, is_admin)
 
+    # Persist in SQLAlchemy database as single source of truth. The quota,
+    # trial allowance and daily-cap checks run in the same transaction as the
+    # inserts, under a lock, so parallel POSTs (multiple uvicorn workers or
+    # replicas) cannot all pass a check-then-insert.
+    def _record_scan() -> Optional[int]:
+        with SessionLocal() as db:
+            try:
+                db_user = db.query(User).filter(User.id == user_id_val).first()
+                if not db_user:
+                    db_user = User(id=user_id_val, email=f"user_{user_id_val}@example.com", role="student")
+                    db.add(db_user)
+                    db.commit()
+            except Exception:
+                db.rollback()
 
-    # Persist in SQLAlchemy database as single source of truth
-    with SessionLocal() as db:
-        try:
-            from models import User
-            db_user = db.query(User).filter(User.id == user_id_val).first()
-            if not db_user:
-                db_user = User(id=user_id_val, email=f"user_{user_id_val}@example.com", role="student")
-                db.add(db_user)
-                db.commit()
-        except Exception:
-            db.rollback()
+            _lock_scan_creation(db, user_id_val, serialize_trials=needs_trial)
+            _enforce_scan_quota(user_id_val, user_plan, is_admin, db=db)
 
-        db_scan = Scan(
-            id=scan_id,
-            user_id=user_id_val,
-            url=request.url,
-            status="pending",
-            is_authenticated=is_authenticated,
-        )
-        db.add(db_scan)
-        db.commit()
+            remaining = None
+            if needs_trial:
+                trial = _trial_status(db, user_id_val)
+                if not trial["enabled"] or trial["remaining"] <= 0:
+                    raise HTTPException(status_code=400, detail=_trial_exhausted_detail(trial))
+                if not trial["daily_available"]:
+                    raise HTTPException(status_code=429, detail=_TRIAL_BUSY_DETAIL)
+                remaining = max(0, trial["remaining"] - 1)
+
+            db_scan = Scan(
+                id=scan_id,
+                user_id=user_id_val,
+                url=request.url,
+                status="pending",
+                is_authenticated=is_authenticated,
+            )
+            db.add(db_scan)
+            if needs_trial:
+                db.flush()
+                db.add(TrialScan(scan_id=scan_id, user_id=user_id_val, created_at=datetime.now(timezone.utc)))
+            db.commit()
+            return remaining
+
+    trial_remaining = await run_in_threadpool(_record_scan)
+    used_trial = needs_trial
+
+    if used_trial:
+        # The pipeline must run on the server key only: an explicit one-entry
+        # pool stops the worker from reloading keys the user may add later,
+        # which would run a scan already charged to the trial on their key.
+        user_gemini_api_key = _trial_server_key()
+        ai_keys_pool = [{
+            "api_key": user_gemini_api_key,
+            "provider_id": "gemini",
+            "model": _trial_model(),
+            "endpoint": None,
+            "label": "Free trial",
+        }]
+        primary_provider_id = "gemini"
+        primary_model_name = _trial_model()
+        primary_endpoint = None
+        logger.info("Scan %s runs as a free trial scan for user %s (%d remaining)", scan_id, user_id_val, trial_remaining)
 
     # Extract auth details securely without storing or logging passwords
     login_url = request.auth.login_url if request.auth else None
@@ -1534,6 +1678,8 @@ async def create_scan(
         "url": request.url,
         "status": "pending",
         "is_authenticated": is_authenticated,
+        "used_trial": used_trial,
+        "trial_remaining": trial_remaining,
         "message": "Scan queued successfully."
     }
 

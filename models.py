@@ -68,6 +68,14 @@ class Scan(Base):
     )
 
 
+class TrialScan(Base):
+    # A scan that ran on the server's AI key as one of the user's free trial scans
+    __tablename__ = "trial_scans"
+    scan_id = Column(String, ForeignKey("scans.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+
 class Subscription(Base):
     __tablename__ = "subscriptions"
     id = Column(String, primary_key=True)
