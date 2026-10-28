@@ -11,6 +11,17 @@ const MIME_TYPES: Record<ServerReportFormat, string> = {
   md: 'text/markdown; charset=utf-8',
 };
 
+/** HTTP failure from the reports API; `status` lets callers tell "no report" (404) from auth/server errors. */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 /** Parses filename from a Content-Disposition header (RFC 5987 filename* first). */
 export const extractFilenameFromDisposition = (disposition: string | null, fallbackFilename: string): string => {
   if (!disposition) return fallbackFilename;
@@ -46,7 +57,7 @@ export const saveBlob = (blob: Blob, filename: string) => {
 
 /**
  * Downloads a pre-generated report via GET /api/v1/scans/{id}/download/{format}.
- * Throws an Error (with the backend's `detail` when available) if the request fails,
+ * Throws an ApiError (with the backend's `detail` when available) if the request fails,
  * so callers never save an error payload as a report file.
  */
 export const downloadScanReport = async (
@@ -65,7 +76,7 @@ export const downloadScanReport = async (
     } catch {
       // Non-JSON error body (e.g. proxy error page)
     }
-    throw new Error(detail || `Download failed (HTTP ${res.status})`);
+    throw new ApiError(res.status, detail || `Download failed (HTTP ${res.status})`);
   }
   const filename = extractFilenameFromDisposition(
     res.headers.get('content-disposition'),

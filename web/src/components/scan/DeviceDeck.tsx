@@ -47,7 +47,7 @@ export const DeviceDeck: React.FC<DeviceDeckProps> = ({ activeDeviceName, active
         <span className="section-eyebrow">
           <TbActivity size={14} /> Live multi-device emulation
         </span>
-        <span className="chip chip--sm chip--success chip--dot">3 isolated contexts active</span>
+        <span className="chip chip--sm chip--success chip--dot">{DEVICES.length} isolated contexts active</span>
       </div>
 
       <div className={s.deckStage}>

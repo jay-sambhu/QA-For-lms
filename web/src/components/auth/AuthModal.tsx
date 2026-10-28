@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { m as motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
@@ -17,9 +17,31 @@ import {
 import { TbLoader2 } from 'react-icons/tb';
 import { useAuth, supabase } from '../../context/AuthContext';
 import { SegmentedTabs3D } from '../three';
-import styles from '../../app/page.module.css';
+import s from './auth3d.module.css';
 
 type AuthMode = 'signin' | 'signup';
+
+type OneTapNotification = {
+  isNotDisplayed?: () => boolean;
+  isSkippedMoment?: () => boolean;
+  isDismissedMoment?: () => boolean;
+  getDismissedReason?: () => string;
+};
+
+type GoogleIdentity = {
+  accounts: {
+    id: {
+      initialize: (config: {
+        client_id: string;
+        callback: (response: { credential?: string; error?: string }) => void;
+      }) => void;
+      prompt: (notification?: (n: OneTapNotification) => void) => void;
+    };
+  };
+};
+
+// One Tap gives no signal when the user ignores the prompt; re-enable the buttons after this.
+const ONE_TAP_TIMEOUT_MS = 20000;
 
 export const AuthModal: React.FC = () => {
   const router = useRouter();
@@ -31,8 +53,14 @@ export const AuthModal: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const reduceMotion = useReducedMotion();
+  const oneTapTimer = useRef<number | null>(null);
 
-  if (!authModalOpen) return null;
+  const clearOneTapTimer = () => {
+    if (oneTapTimer.current) window.clearTimeout(oneTapTimer.current);
+    oneTapTimer.current = null;
+  };
+
+  useEffect(() => clearOneTapTimer, []);
 
   const cardMotion = reduceMotion
     ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } }
@@ -59,6 +87,7 @@ export const AuthModal: React.FC = () => {
     setSuccess('');
 
     const triggerStandardOAuth = async () => {
+      clearOneTapTimer();
       try {
         const { error: oauthError } = await supabase!.auth.signInWithOAuth({
           provider: 'google',
@@ -68,10 +97,11 @@ export const AuthModal: React.FC = () => {
         });
         if (oauthError) {
           setError(oauthError.message || 'Google login failed. Please ensure Google provider is enabled in Supabase.');
-          setLoading(false);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Google sign-in request failed.');
+      } finally {
+        // The browser is navigating away on success; on failure the buttons must come back.
         setLoading(false);
       }
     };
@@ -86,17 +116,7 @@ export const AuthModal: React.FC = () => {
 
     try {
       // Use Google Identity Services (GIS) popup flow if available
-      const google = (window as unknown as Record<string, unknown>).google as {
-        accounts: {
-          id: {
-            initialize: (config: {
-              client_id: string;
-              callback: (response: { credential?: string; error?: string }) => void;
-            }) => void;
-            prompt: (notification?: (n: { isNotDisplayed?: () => boolean; isSkippedMoment?: () => boolean }) => void) => void;
-          };
-        };
-      };
+      const google = (window as unknown as Record<string, unknown>).google as GoogleIdentity | undefined;
 
       if (!google?.accounts?.id) {
         await triggerStandardOAuth();
@@ -107,6 +127,7 @@ export const AuthModal: React.FC = () => {
       google.accounts.id.initialize({
         client_id: clientId,
         callback: async (response: { credential?: string; error?: string }) => {
+          clearOneTapTimer();
           if (response.error || !response.credential) {
             await triggerStandardOAuth();
             return;
@@ -134,10 +155,22 @@ export const AuthModal: React.FC = () => {
         },
       });
 
+      clearOneTapTimer();
+      oneTapTimer.current = window.setTimeout(() => {
+        oneTapTimer.current = null;
+        setLoading(false);
+      }, ONE_TAP_TIMEOUT_MS);
+
       google.accounts.id.prompt((notification) => {
         // If One Tap is not displayed or skipped, fall back to standard Supabase OAuth redirect
         if (notification?.isNotDisplayed?.() || notification?.isSkippedMoment?.()) {
           triggerStandardOAuth();
+          return;
+        }
+        // The user closed the prompt: nothing else will fire, so release the buttons
+        if (notification?.isDismissedMoment?.() && notification.getDismissedReason?.() !== 'credential_returned') {
+          clearOneTapTimer();
+          setLoading(false);
         }
       });
     } catch {
@@ -251,171 +284,164 @@ export const AuthModal: React.FC = () => {
 
   return (
     <AnimatePresence>
-      <motion.div
-        className={styles.modalOverlay}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={closeAuthModal}
-      >
+      {authModalOpen && (
         <motion.div
-          className={`${styles.modalCard} glass-3d`}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="auth-modal-title"
-          style={{ transformPerspective: 1400, transformOrigin: '50% 0%' }}
-          {...cardMotion}
-          transition={{ duration: reduceMotion ? 0.15 : 0.45, ease: [0.16, 1, 0.3, 1] }}
-          onClick={(e) => e.stopPropagation()}
+          key="auth-modal-overlay"
+          className={s.modalOverlay}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={closeAuthModal}
         >
-          <div className={styles.modalHeader}>
-            <div className={styles.modalLogo} id="auth-modal-title">
-              <img src="/logo-icon.png" alt="" width={28} height={28} className={styles.modalLogoMark} />
-              <span>JASUSS Workspace</span>
-            </div>
-            <button
-              type="button"
-              onClick={closeAuthModal}
-              className={styles.modalCloseBtn}
-              title="Close"
-              aria-label="Close"
-            >
-              <RiCloseLine size={20} />
-            </button>
-          </div>
-
-          <div className={styles.modalTabs}>
-            <SegmentedTabs3D<AuthMode>
-              fullWidth
-              ariaLabel="Authentication mode"
-              idPrefix="auth"
-              tabs={[
-                { id: 'signin', label: 'Sign In', icon: <RiLoginCircleLine size={16} /> },
-                { id: 'signup', label: 'Get Started', icon: <RiUserAddLine size={16} /> },
-              ]}
-              active={authMode}
-              onChange={switchMode}
-            />
-          </div>
-
-          <form
-            onSubmit={authMode === 'signin' ? handleSignIn : handleSignUp}
-            className={styles.modalBody}
-            role="tabpanel"
-            id={`auth-panel-${authMode}`}
-            aria-labelledby={`auth-tab-${authMode}`}
+          <motion.div
+            className={`${s.modalCard} glass-3d`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="auth-modal-title"
+            style={{ transformPerspective: 1400, transformOrigin: '50% 0%' }}
+            {...cardMotion}
+            transition={{ duration: reduceMotion ? 0.15 : 0.45, ease: [0.16, 1, 0.3, 1] }}
+            onClick={(e) => e.stopPropagation()}
           >
-            {error && (
-              <div className={`${styles.authBanner} ${styles.authBannerError}`} role="alert">
-                <RiErrorWarningFill size={18} />
-                <span>{error}</span>
+            <div className={s.modalHeader}>
+              <div className={s.modalLogo} id="auth-modal-title">
+                <img src="/logo-icon.png" alt="" width={28} height={28} className={s.modalLogoMark} />
+                <span>JASUSS Workspace</span>
               </div>
-            )}
-
-            {success && (
-              <div className={`${styles.authBanner} ${styles.authBannerSuccess}`} role="status">
-                <RiCheckboxCircleFill size={18} />
-                <span>{success}</span>
-              </div>
-            )}
-
-            {/* Social OAuth Sign In Options (Google & GitHub) */}
-            <div className={styles.socialAuthContainer}>
-              <button
-                type="button"
-                onClick={handleGoogleSignIn}
-                disabled={loading}
-                className={`${styles.socialAuthBtn} ${styles.socialAuthBtnGoogle}`}
-              >
-                <RiGoogleFill size={18} color="#ea4335" />
-                <span>Google</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleGitHubSignIn}
-                disabled={loading}
-                className={`${styles.socialAuthBtn} ${styles.socialAuthBtnGithub}`}
-              >
-                <RiGithubFill size={18} />
-                <span>GitHub</span>
+              <button type="button" onClick={closeAuthModal} className={s.iconBtn} title="Close" aria-label="Close">
+                <RiCloseLine size={20} />
               </button>
             </div>
 
-            <div className={styles.socialAuthDivider}>
-              <span>or continue with email</span>
-            </div>
-
-            <div className={styles.modalFormGroup}>
-              <label className={styles.modalFormLabel} htmlFor="auth-email">
-                <RiMailLine size={14} /> Email Address
-              </label>
-              <input
-                id="auth-email"
-                type="email"
-                required
-                placeholder="name@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className={styles.modalInput}
-                autoComplete="email"
+            <div className={s.modalTabs}>
+              <SegmentedTabs3D<AuthMode>
+                fullWidth
+                ariaLabel="Authentication mode"
+                idPrefix="auth"
+                tabs={[
+                  { id: 'signin', label: 'Sign In', icon: <RiLoginCircleLine size={16} /> },
+                  { id: 'signup', label: 'Get Started', icon: <RiUserAddLine size={16} /> },
+                ]}
+                active={authMode}
+                onChange={switchMode}
               />
             </div>
 
-            <div className={styles.modalFormGroup}>
-              <label className={styles.modalFormLabel} htmlFor="auth-password">
-                <RiLockPasswordLine size={14} /> Password
-              </label>
-              <input
-                id="auth-password"
-                type="password"
-                required
-                placeholder="••••••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className={styles.modalInput}
-                autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'}
-              />
-            </div>
+            <form
+              onSubmit={authMode === 'signin' ? handleSignIn : handleSignUp}
+              className={s.modalBody}
+              role="tabpanel"
+              id={`auth-panel-${authMode}`}
+              aria-labelledby={`auth-tab-${authMode}`}
+            >
+              {error && (
+                <div className={`${s.notice} tone-danger`} role="alert">
+                  <RiErrorWarningFill size={18} />
+                  <span>{error}</span>
+                </div>
+              )}
 
-            {authMode === 'signup' && (
-              <div className={styles.modalFormGroup}>
-                <label className={styles.modalFormLabel} htmlFor="auth-confirm-password">
-                  <RiLockPasswordLine size={14} /> Confirm Password
+              {success && (
+                <div className={`${s.notice} tone-success`} role="status">
+                  <RiCheckboxCircleFill size={18} />
+                  <span>{success}</span>
+                </div>
+              )}
+
+              {/* Social OAuth Sign In Options (Google & GitHub) */}
+              <div className={s.socialGrid}>
+                <button
+                  type="button"
+                  onClick={handleGoogleSignIn}
+                  disabled={loading}
+                  className={`btn btn-secondary ${s.socialGoogle}`}
+                >
+                  <RiGoogleFill size={18} color="#ea4335" />
+                  <span>Google</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleGitHubSignIn}
+                  disabled={loading}
+                  className={`btn btn-secondary ${s.socialGithub}`}
+                >
+                  <RiGithubFill size={18} />
+                  <span>GitHub</span>
+                </button>
+              </div>
+
+              <div className={s.socialDivider}>
+                <span>or continue with email</span>
+              </div>
+
+              <div className={s.formGroup}>
+                <label className={s.formLabel} htmlFor="auth-email">
+                  <RiMailLine size={14} /> Email Address
                 </label>
                 <input
-                  id="auth-confirm-password"
+                  id="auth-email"
+                  type="email"
+                  required
+                  placeholder="name@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className={s.field}
+                  autoComplete="email"
+                />
+              </div>
+
+              <div className={s.formGroup}>
+                <label className={s.formLabel} htmlFor="auth-password">
+                  <RiLockPasswordLine size={14} /> Password
+                </label>
+                <input
+                  id="auth-password"
                   type="password"
                   required
                   placeholder="••••••••••••"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className={styles.modalInput}
-                  autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className={s.field}
+                  autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'}
                 />
               </div>
-            )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className={`btn btn-primary ${styles.modalSubmitBtn}`}
-            >
-              {loading ? (
-                <>
-                  <TbLoader2 size={18} className="pulse" />
-                  <span>{authMode === 'signin' ? 'Signing In...' : 'Creating Account...'}</span>
-                </>
-              ) : (
-                <>
-                  {authMode === 'signin' ? <RiLoginCircleLine size={18} /> : <RiUserAddLine size={18} />}
-                  <span>{authMode === 'signin' ? 'Sign In to Workspace' : 'Create JASUSS Account'}</span>
-                </>
+              {authMode === 'signup' && (
+                <div className={s.formGroup}>
+                  <label className={s.formLabel} htmlFor="auth-confirm-password">
+                    <RiLockPasswordLine size={14} /> Confirm Password
+                  </label>
+                  <input
+                    id="auth-confirm-password"
+                    type="password"
+                    required
+                    placeholder="••••••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className={s.field}
+                    autoComplete="new-password"
+                  />
+                </div>
               )}
-            </button>
-          </form>
+
+              <button type="submit" disabled={loading} className={`btn btn-primary ${s.submitBtn}`}>
+                {loading ? (
+                  <>
+                    <TbLoader2 size={18} className="pulse" />
+                    <span>{authMode === 'signin' ? 'Signing In...' : 'Creating Account...'}</span>
+                  </>
+                ) : (
+                  <>
+                    {authMode === 'signin' ? <RiLoginCircleLine size={18} /> : <RiUserAddLine size={18} />}
+                    <span>{authMode === 'signin' ? 'Sign In to Workspace' : 'Create JASUSS Account'}</span>
+                  </>
+                )}
+              </button>
+            </form>
+          </motion.div>
         </motion.div>
-      </motion.div>
+      )}
     </AnimatePresence>
   );
 };

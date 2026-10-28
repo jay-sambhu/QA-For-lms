@@ -1,11 +1,25 @@
 """
 Multi-AI Provider Configuration & Dynamic Engine Router for JASUSS (Powered by Nexus)
 Supports Google Gemini, OpenAI, Anthropic Claude, DeepSeek, and Local LLM endpoints.
+
+Admin-entered provider settings are persisted to a JSON file (AI_CONFIG_PATH,
+default <repo>/user_data/ai_provider_config.json) so the API and the worker
+see the same configuration and it survives a restart. The process
+environment is never modified: GEMINI_API_KEY in the environment is the
+owner's trial key and must not be overwritten by whatever an admin pastes
+into the AI Providers tab.
 """
 
+import json
 import os
+import tempfile
+import threading
+from pathlib import Path
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+
 
 class AIProviderMeta(BaseModel):
     id: str
@@ -77,8 +91,7 @@ AI_PROVIDERS_REGISTRY: Dict[str, AIProviderMeta] = {
     ),
 }
 
-# In-memory runtime active AI configuration state
-_RUNTIME_AI_STATE: Dict[str, Any] = {
+_DEFAULT_STATE: Dict[str, Any] = {
     "active_provider": "gemini",
     "active_model": "gemini-3.8-flash",
     "temperature": 0.2,
@@ -90,33 +103,111 @@ _RUNTIME_AI_STATE: Dict[str, Any] = {
     "custom_keys": {},
 }
 
+_STATE_LOCK = threading.Lock()
+
+
+def _config_path() -> Path:
+    raw = (os.environ.get("AI_CONFIG_PATH") or "").strip()
+    if raw:
+        return Path(raw)
+    return ROOT_DIR / "user_data" / "ai_provider_config.json"
+
+
+def _load_state() -> Dict[str, Any]:
+    state = json.loads(json.dumps(_DEFAULT_STATE))
+    path = _config_path()
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+    except (OSError, ValueError):
+        return state
+    if not isinstance(saved, dict):
+        return state
+    for key in ("active_provider", "active_model", "temperature", "max_tokens"):
+        if key in saved:
+            state[key] = saved[key]
+    for key in ("custom_endpoints", "custom_keys"):
+        if isinstance(saved.get(key), dict):
+            state[key].update({str(k): str(v) for k, v in saved[key].items() if v})
+    if state["active_provider"] not in AI_PROVIDERS_REGISTRY:
+        state["active_provider"] = _DEFAULT_STATE["active_provider"]
+        state["active_model"] = _DEFAULT_STATE["active_model"]
+    return state
+
+
+def _save_state(state: Dict[str, Any]) -> None:
+    """Atomic, owner-only write (the file holds API keys)."""
+    path = _config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=".ai_config_", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+        os.chmod(tmp_name, 0o600)
+        os.replace(tmp_name, path)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
+# In-memory runtime active AI configuration state (mirrors the file).
+_RUNTIME_AI_STATE: Dict[str, Any] = _load_state()
+
+
+def _refresh_state() -> Dict[str, Any]:
+    """Re-read the file so a change made by another process is visible."""
+    global _RUNTIME_AI_STATE
+    with _STATE_LOCK:
+        _RUNTIME_AI_STATE = _load_state()
+        return _RUNTIME_AI_STATE
+
+
+def get_provider_key(provider_id: str) -> Optional[str]:
+    """The admin-configured key for a provider, else the environment's."""
+    meta = AI_PROVIDERS_REGISTRY.get(provider_id)
+    if meta is None:
+        return None
+    state = _refresh_state()
+    custom = (state["custom_keys"].get(provider_id) or "").strip()
+    if custom:
+        return custom
+    env_val = (os.environ.get(meta.env_key_name) or "").strip()
+    return env_val or None
+
+
 def get_ai_providers_state() -> Dict[str, Any]:
     """Return complete list of providers with configuration and active status."""
+    state = _refresh_state()
     providers_list = []
     for pid, pmeta in AI_PROVIDERS_REGISTRY.items():
         # Check if environment or custom key exists
-        env_val = os.environ.get(pmeta.env_key_name) or _RUNTIME_AI_STATE["custom_keys"].get(pid)
+        env_val = state["custom_keys"].get(pid) or os.environ.get(pmeta.env_key_name)
         is_conf = bool(env_val and len(str(env_val).strip()) > 3)
-        
+
         # Mask key for safety
         masked_key = ""
         if is_conf and env_val:
             key_str = str(env_val).strip()
             masked_key = f"{key_str[:4]}...{key_str[-4:]}" if len(key_str) >= 8 else "****"
 
-        p_dict = pmeta.dict()
+        p_dict = pmeta.model_dump()
         p_dict["is_configured"] = is_conf
         p_dict["masked_key"] = masked_key
-        p_dict["current_endpoint"] = _RUNTIME_AI_STATE["custom_endpoints"].get(pid, pmeta.default_endpoint)
+        p_dict["key_source"] = "admin" if state["custom_keys"].get(pid) else ("env" if is_conf else None)
+        p_dict["current_endpoint"] = state["custom_endpoints"].get(pid, pmeta.default_endpoint)
         providers_list.append(p_dict)
 
     return {
-        "active_provider": _RUNTIME_AI_STATE["active_provider"],
-        "active_model": _RUNTIME_AI_STATE["active_model"],
-        "temperature": _RUNTIME_AI_STATE["temperature"],
-        "max_tokens": _RUNTIME_AI_STATE["max_tokens"],
+        "active_provider": state["active_provider"],
+        "active_model": state["active_model"],
+        "temperature": state["temperature"],
+        "max_tokens": state["max_tokens"],
         "providers": providers_list,
     }
+
 
 def update_ai_provider_config(
     provider_id: str,
@@ -126,29 +217,33 @@ def update_ai_provider_config(
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Update runtime active provider, model, API keys, or custom endpoint."""
+    """Update and persist the active provider, model, API keys, or custom endpoint."""
     if provider_id not in AI_PROVIDERS_REGISTRY:
         raise ValueError(f"Unknown AI provider: {provider_id}")
 
-    _RUNTIME_AI_STATE["active_provider"] = provider_id
+    with _STATE_LOCK:
+        state = _load_state()
+        state["active_provider"] = provider_id
 
-    if model:
-        _RUNTIME_AI_STATE["active_model"] = model
-    else:
-        _RUNTIME_AI_STATE["active_model"] = AI_PROVIDERS_REGISTRY[provider_id].default_model
+        if model:
+            state["active_model"] = model
+        else:
+            state["active_model"] = AI_PROVIDERS_REGISTRY[provider_id].default_model
 
-    if api_key and api_key.strip():
-        _RUNTIME_AI_STATE["custom_keys"][provider_id] = api_key.strip()
-        # Also set in env for compatibility
-        os.environ[AI_PROVIDERS_REGISTRY[provider_id].env_key_name] = api_key.strip()
+        if api_key and api_key.strip():
+            state["custom_keys"][provider_id] = api_key.strip()
 
-    if endpoint and endpoint.strip():
-        _RUNTIME_AI_STATE["custom_endpoints"][provider_id] = endpoint.strip()
+        if endpoint and endpoint.strip():
+            state["custom_endpoints"][provider_id] = endpoint.strip()
 
-    if temperature is not None:
-        _RUNTIME_AI_STATE["temperature"] = max(0.0, min(1.0, float(temperature)))
+        if temperature is not None:
+            state["temperature"] = max(0.0, min(1.0, float(temperature)))
 
-    if max_tokens is not None:
-        _RUNTIME_AI_STATE["max_tokens"] = max(256, min(16384, int(max_tokens)))
+        if max_tokens is not None:
+            state["max_tokens"] = max(256, min(16384, int(max_tokens)))
+
+        _save_state(state)
+        global _RUNTIME_AI_STATE
+        _RUNTIME_AI_STATE = state
 
     return get_ai_providers_state()

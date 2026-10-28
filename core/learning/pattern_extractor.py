@@ -1,6 +1,7 @@
 """
 Historical Learning and Failure Pattern Extraction Engine (Phase 13).
 """
+import hashlib
 import json
 import os
 import time
@@ -15,6 +16,12 @@ class FailurePatternModel(BaseModel):
     frequency: int = 1
     last_observed: str
     recommended_priority: str = "P0"
+
+
+def pattern_id_for(url: str, title: str) -> str:
+    """Stable id across processes: str.hash() is salted per interpreter, so
+    the same defect used to get a fresh id (and a fresh entry) every run."""
+    return "pat_" + hashlib.sha1(f"{url}|{title}".encode("utf-8")).hexdigest()[:12]
 
 
 class HistoricalLearningEngine:
@@ -36,10 +43,14 @@ class HistoricalLearningEngine:
                 pass
 
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        seen_this_run = set()
         for defect in scan_defects:
             url = defect.get("affected_url", "unknown_route")
             title = defect.get("title", "failure")
-            pid = f"pat_{hash(url + title) & 0xffffff:06x}"
+            pid = pattern_id_for(url, title)
+            if pid in seen_this_run:
+                continue
+            seen_this_run.add(pid)
 
             if pid in patterns_map:
                 existing = patterns_map[pid]

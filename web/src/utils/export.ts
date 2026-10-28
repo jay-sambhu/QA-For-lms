@@ -1,6 +1,14 @@
 // jspdf / jspdf-autotable / xlsx are heavy (~750 KB) and only needed for the client-side
 // fallback when the server has no pre-generated report, so they are loaded on demand.
-import { downloadScanReport, saveBlob } from './download';
+import type { jsPDF } from 'jspdf';
+import { ApiError, downloadScanReport, saveBlob } from './download';
+import type { DeviceBreakdown, Finding, QAReport, RegressionSummary, TestCase } from '../types/qa';
+
+declare module 'jspdf' {
+  interface jsPDF {
+    lastAutoTable?: { finalY: number };
+  }
+}
 
 export interface CanonicalExportData {
   target: string;
@@ -10,10 +18,11 @@ export interface CanonicalExportData {
   pagesCrawled: number;
   pagesDiscovered: number;
   durationSeconds: number;
+  /** null fields mean the report carried no score; exporters print "N/A" rather than a perfect grade */
   qualityScore: {
-    score: number;
-    grade: string;
-    summary: string;
+    score: number | null;
+    grade: string | null;
+    summary: string | null;
   };
   testCasesSummary: {
     total: number;
@@ -47,24 +56,42 @@ export interface CanonicalExportData {
     needs_manual_review: number;
     informational: number;
     duplicates: number;
-    regression: { 'new': number; fixed: number; unchanged: number; worsened: number; improved: number };
+    regression: RegressionSummary;
   };
-  findings: Array<any>;
-  testCases: Array<any>;
+  findings: Finding[];
+  testCases: TestCase[];
   crossDevice: {
+    /** false when the report has no cross-device telemetry at all */
+    measured: boolean;
     devices_tested: number;
     responsive_findings: number;
-    device_breakdown: { desktop: number; iphone: number; ipad: number };
+    device_breakdown: DeviceBreakdown;
   };
   isDegraded: boolean;
   degradedCount: number;
-  triageDetails?: Array<any>;
 }
+
+const EMPTY_BREAKDOWN: DeviceBreakdown = { desktop: 0, iphone: 0, ipad: 0 };
+
+const rate = (count: number, total: number) => (total > 0 ? Number(((count / total) * 100).toFixed(2)) : 0.0);
+
+const finiteOrNull = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
+
+const scoreText = (qs: CanonicalExportData['qualityScore']) =>
+  qs.score === null ? 'N/A' : `${qs.score} / 100`;
+
+const gradeText = (qs: CanonicalExportData['qualityScore']) => qs.grade ?? 'N/A';
+
+const summaryText = (qs: CanonicalExportData['qualityScore']) => qs.summary ?? 'N/A';
+
+const safeFileStem = (scanId: string, target: string) =>
+  (scanId && scanId !== 'N/A' ? scanId : target || 'scan').replace(/[^a-z0-9-]/gi, '_').toLowerCase();
 
 /**
  * Normalizes scan results from any API / report format into a strict canonical export model.
  */
-const extractCanonicalExportData = (results: any, scanId: string | null = ''): CanonicalExportData => {
+export const extractCanonicalExportData = (results: QAReport | null | undefined, scanId: string | null = ''): CanonicalExportData => {
   if (!results) {
     return {
       target: 'Unknown',
@@ -74,7 +101,7 @@ const extractCanonicalExportData = (results: any, scanId: string | null = ''): C
       pagesCrawled: 0,
       pagesDiscovered: 0,
       durationSeconds: 0,
-      qualityScore: { score: 100, grade: 'A', summary: 'Excellent' },
+      qualityScore: { score: null, grade: null, summary: null },
       testCasesSummary: {
         total: 0,
         executed: 0,
@@ -107,95 +134,73 @@ const extractCanonicalExportData = (results: any, scanId: string | null = ''): C
         needs_manual_review: 0,
         informational: 0,
         duplicates: 0,
-        regression: { 'new': 0, fixed: 0, unchanged: 0, worsened: 0, improved: 0 },
+        regression: { new: 0, fixed: 0, unchanged: 0, worsened: 0, improved: 0 },
       },
       findings: [],
       testCases: [],
       crossDevice: {
-        devices_tested: 3,
+        measured: false,
+        devices_tested: 0,
         responsive_findings: 0,
-        device_breakdown: { desktop: 0, iphone: 0, ipad: 0 },
+        device_breakdown: { ...EMPTY_BREAKDOWN },
       },
       isDegraded: false,
       degradedCount: 0,
     };
   }
 
-  const qa = results.qa_metrics || {};
-  const meta = results.report_metadata || {};
-  const summary = results.summary || {};
-  const severity = results.severity || {};
-  const triage = results.triage_metrics || {};
-  const tcm = results.test_case_metrics || qa.test_cases || {};
-  const qs = qa.quality_score || meta.quality_score || { score: 100, grade: 'A', summary: 'Excellent' };
-  const crawl = qa.crawl || meta.cross_device_metrics || {};
-  const findingsMetrics = qa.findings || {};
+  const qa = results.qa_metrics ?? {};
+  const meta = results.report_metadata;
+  const summary = results.summary;
+  const severity = results.severity ?? {};
+  const triage = results.triage_metrics;
+  const tcm = results.test_case_metrics ?? qa.test_cases;
+  const crawl = qa.crawl;
+  const crossDevice = meta?.cross_device_metrics ?? crawl;
+  const findingsMetrics = qa.findings ?? {};
 
-  const target = qa.target || meta.target || results.target || 'Unknown';
-  const resolvedScanId = scanId || results.id || results.scan_id || meta.scan_id || 'N/A';
-  const generatedAt = qa.generated_at || meta.generated_at || new Date().toISOString();
-  const status = results.status || 'completed';
+  const rawScore = qa.quality_score ?? meta?.quality_score;
+  const scoreObject = rawScore && typeof rawScore === 'object' ? rawScore : undefined;
+  const score = finiteOrNull(typeof rawScore === 'number' ? rawScore : scoreObject?.score);
+  const grade = scoreObject?.grade || qa.letter_grade || null;
+  const scoreSummary = scoreObject?.summary || qa.verdict || null;
 
-  const pagesCrawled = crawl.pages_crawled ?? meta.pages_crawled ?? 0;
-  const pagesDiscovered = crawl.pages_discovered ?? pagesCrawled;
-  const durationSeconds = qa.duration_seconds ?? meta.duration_seconds ?? 0;
+  const target = qa.target || meta?.target || 'Unknown';
+  const generatedAt = qa.generated_at || meta?.generated_at || new Date().toISOString();
+
+  const pagesCrawled = crawl?.pages_crawled ?? meta?.pages_crawled ?? 0;
+  const pagesDiscovered = crawl?.pages_discovered ?? crawl?.pages_attempted ?? pagesCrawled;
+  const durationSeconds = qa.duration_seconds ?? qa.duration?.duration_seconds ?? 0;
 
   // Test Case Metrics
-  const tcTotal = tcm.total ?? 0;
-  const tcPassed = tcm.passed ?? 0;
-  const tcFailed = tcm.failed ?? 0;
-  const tcSkipped = tcm.skipped ?? tcm.manual_review ?? 0;
-  const tcBlocked = tcm.blocked ?? 0;
-  const tcErrored = tcm.errored ?? 0;
-  const tcExecuted = tcm.executed ?? (tcPassed + tcFailed + tcErrored);
-  const tcPassRate = tcm.pass_rate ?? (tcTotal > 0 ? Number(((tcPassed / tcTotal) * 100).toFixed(2)) : 0.0);
-  const tcFailRate = tcm.fail_rate ?? (tcTotal > 0 ? Number(((tcFailed / tcTotal) * 100).toFixed(2)) : 0.0);
-  const tcSkipRate = tcm.skip_rate ?? (tcTotal > 0 ? Number(((tcSkipped / tcTotal) * 100).toFixed(2)) : 0.0);
-  const tcBlockRate = tcm.block_rate ?? (tcTotal > 0 ? Number(((tcBlocked / tcTotal) * 100).toFixed(2)) : 0.0);
-  const tcErroredRate = tcm.errored_rate ?? (tcTotal > 0 ? Number(((tcErrored / tcTotal) * 100).toFixed(2)) : 0.0);
-  const tcDurationMs = tcm.duration_ms ?? 0;
+  const tcTotal = tcm?.total ?? results.test_cases?.length ?? 0;
+  const tcPassed = tcm?.passed ?? 0;
+  const tcFailed = tcm?.failed ?? 0;
+  const tcSkipped = tcm?.skipped ?? (tcm && 'manual_review' in tcm ? tcm.manual_review : undefined) ?? 0;
+  const tcBlocked = tcm?.blocked ?? 0;
+  const tcErrored = tcm?.errored ?? 0;
+  const tcExecuted = tcm?.executed ?? tcPassed + tcFailed + tcErrored;
 
   // Findings Metrics
-  const bySev = findingsMetrics.by_severity || severity || {};
-  const byPri = findingsMetrics.by_priority || triage.priority || {};
-  const byClass = findingsMetrics.by_classification || {};
-  const reg = findingsMetrics.by_regression || triage.regression_summary || summary.regression_summary || {};
+  const bySev: Record<string, number | undefined> = findingsMetrics.by_severity ?? severity;
+  const byPri: Record<string, number | undefined> = findingsMetrics.by_priority ?? triage?.priority ?? {};
+  const byClass = findingsMetrics.by_classification ?? {};
+  const reg: Partial<RegressionSummary> =
+    findingsMetrics.by_regression ?? triage?.regression_summary ?? summary?.regression_summary ?? {};
 
-  const totalFindings = findingsMetrics.total ?? summary.total_candidates ?? (results.findings?.length || 0);
-  const criticalFindings = bySev.critical ?? 0;
-  const highFindings = bySev.high ?? 0;
-  const medFindings = bySev.medium ?? 0;
-  const lowFindings = bySev.low ?? 0;
-  const infoFindings = bySev.info ?? 0;
+  const totalFindings = findingsMetrics.total ?? summary?.total_candidates ?? results.findings?.length ?? 0;
 
-  const p0 = byPri.P0 ?? 0;
-  const p1 = byPri.P1 ?? 0;
-  const p2 = byPri.P2 ?? 0;
-  const p3 = byPri.P3 ?? 0;
-  const p4 = byPri.P4 ?? 0;
-
-  const confirmedBugs = byClass.confirmed_bug ?? triage.confirmed_bug ?? summary.confirmed_bugs ?? 0;
-  const highConf = byClass.high_confidence_candidate ?? triage.high_confidence_candidate ?? summary.potential_issues ?? 0;
-  const manualReview = byClass.needs_manual_review ?? triage.needs_manual_review ?? summary.manual_review ?? 0;
-  const informational = byClass.informational ?? triage.informational ?? summary.informational ?? 0;
-  const duplicates = byClass.duplicate ?? triage.duplicate ?? 0;
-
-  const isDegraded = Boolean(meta.ai_analysis_degraded || meta.ai_analysis_failures);
-  const degradedCount = meta.ai_analysis_failures ?? 0;
+  const isDegraded = Boolean(meta?.ai_analysis_degraded || meta?.ai_analysis_failures);
 
   return {
     target,
-    scanId: resolvedScanId,
+    scanId: scanId || 'N/A',
     generatedAt,
-    status,
+    status: 'completed',
     pagesCrawled,
     pagesDiscovered,
     durationSeconds,
-    qualityScore: {
-      score: typeof qs.score === 'number' ? qs.score : 100,
-      grade: qs.grade || 'A',
-      summary: qs.summary || 'Excellent',
-    },
+    qualityScore: { score, grade, summary: scoreSummary },
     testCasesSummary: {
       total: tcTotal,
       executed: tcExecuted,
@@ -204,64 +209,76 @@ const extractCanonicalExportData = (results: any, scanId: string | null = ''): C
       skipped: tcSkipped,
       blocked: tcBlocked,
       errored: tcErrored,
-      pass_rate: tcPassRate,
-      fail_rate: tcFailRate,
-      skip_rate: tcSkipRate,
-      block_rate: tcBlockRate,
-      errored_rate: tcErroredRate,
-      duration_ms: tcDurationMs,
+      pass_rate: tcm?.pass_rate ?? rate(tcPassed, tcTotal),
+      fail_rate: tcm?.fail_rate ?? rate(tcFailed, tcTotal),
+      skip_rate: tcm?.skip_rate ?? rate(tcSkipped, tcTotal),
+      block_rate: tcm?.block_rate ?? rate(tcBlocked, tcTotal),
+      errored_rate: tcm?.errored_rate ?? rate(tcErrored, tcTotal),
+      duration_ms: tcm?.duration_ms ?? 0,
     },
     findingsSummary: {
       total: totalFindings,
-      critical: criticalFindings,
-      high: highFindings,
-      medium: medFindings,
-      low: lowFindings,
-      info: infoFindings,
-      P0: p0,
-      P1: p1,
-      P2: p2,
-      P3: p3,
-      P4: p4,
-      confirmed_bugs: confirmedBugs,
-      high_confidence_candidates: highConf,
-      needs_manual_review: manualReview,
-      informational: informational,
-      duplicates: duplicates,
+      critical: bySev.critical ?? 0,
+      high: bySev.high ?? 0,
+      medium: bySev.medium ?? 0,
+      low: bySev.low ?? 0,
+      info: bySev.info ?? 0,
+      P0: byPri.P0 ?? 0,
+      P1: byPri.P1 ?? 0,
+      P2: byPri.P2 ?? 0,
+      P3: byPri.P3 ?? 0,
+      P4: byPri.P4 ?? 0,
+      confirmed_bugs: byClass.confirmed_bug ?? triage?.confirmed_bug ?? summary?.confirmed_bugs ?? 0,
+      high_confidence_candidates:
+        byClass.high_confidence_candidate ?? triage?.high_confidence_candidate ?? summary?.potential_issues ?? 0,
+      needs_manual_review: byClass.needs_manual_review ?? triage?.needs_manual_review ?? summary?.manual_review ?? 0,
+      informational: byClass.informational ?? triage?.informational ?? summary?.informational ?? 0,
+      duplicates: byClass.duplicate ?? triage?.duplicate ?? 0,
       regression: {
-        'new': reg.new ?? 0,
+        new: reg.new ?? 0,
         fixed: reg.fixed ?? 0,
         unchanged: reg.unchanged ?? 0,
         worsened: reg.worsened ?? 0,
         improved: reg.improved ?? 0,
       },
     },
-    findings: results.findings || [],
-    testCases: results.test_cases || [],
+    findings: results.findings ?? [],
+    testCases: results.test_cases ?? [],
     crossDevice: {
-      devices_tested: crawl.devices_tested ?? 3,
-      responsive_findings: crawl.responsive_findings ?? 0,
-      device_breakdown: crawl.device_breakdown || { desktop: 0, iphone: 0, ipad: 0 },
+      measured: Boolean(crossDevice && (crossDevice.devices_tested || crossDevice.device_breakdown)),
+      devices_tested: crossDevice?.devices_tested ?? 0,
+      responsive_findings: crossDevice?.responsive_findings ?? 0,
+      device_breakdown: { ...EMPTY_BREAKDOWN, ...(crossDevice?.device_breakdown ?? {}) },
     },
     isDegraded,
-    degradedCount,
+    degradedCount: meta?.ai_analysis_failures ?? 0,
   };
 };
+
+const DEVICE_ROWS: ReadonlyArray<{ label: string; key: keyof DeviceBreakdown }> = [
+  { label: 'Desktop (1920x1080)', key: 'desktop' },
+  { label: 'Mobile (iPhone 13, 390x844)', key: 'iphone' },
+  { label: 'Tablet (iPad, 820x1180)', key: 'ipad' },
+];
+
+const deviceStatus = (data: CanonicalExportData) => (data.crossDevice.measured ? 'Tested' : 'Not recorded');
+
+const testCaseStatus = (t: TestCase) => (t.status || t.execution_policy || 'skipped').toUpperCase();
 
 /**
  * Generates and triggers a PDF download for the QA scan.
  */
-const downloadPDF = async (results: any, scanId: string | null = '') => {
-  if (!results) return;
-  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+const downloadPDF = async (results: QAReport, scanId: string | null = '') => {
+  const [{ default: JsPDF }, { default: autoTable }] = await Promise.all([
     import('jspdf'),
     import('jspdf-autotable'),
   ]);
 
   const data = extractCanonicalExportData(results, scanId);
-  const doc = new jsPDF('p', 'mm', 'a4'); // A4 Portrait (210 x 297 mm)
+  const doc: jsPDF = new JsPDF('p', 'mm', 'a4'); // A4 Portrait (210 x 297 mm)
 
   const formattedDate = new Date(data.generatedAt).toLocaleString();
+  const tableEnd = (fallback: number) => (doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : fallback);
 
   // 1. Header Banner
   doc.setFillColor(30, 41, 59); // Slate 800
@@ -297,8 +314,11 @@ const downloadPDF = async (results: any, scanId: string | null = '') => {
   }
 
   // 3. Executive Overview Summary Table
+  const qs = data.qualityScore;
+  const healthText =
+    qs.score === null ? 'N/A (no score recorded)' : `${scoreText(qs)} (Grade ${gradeText(qs)} - ${summaryText(qs)})`;
   const overviewBody = [
-    ['Target URL', data.target, 'Site Health Score', `${data.qualityScore.score} / 100 (Grade ${data.qualityScore.grade} - ${data.qualityScore.summary})`],
+    ['Target URL', data.target, 'Site Health Score', healthText],
     ['Pages Crawled / Discovered', `${data.pagesCrawled} / ${data.pagesDiscovered}`, 'Scan Duration', `${data.durationSeconds}s`],
     ['Total Automated Test Cases', `${data.testCasesSummary.total}`, 'Test Pass Rate', `${data.testCasesSummary.pass_rate}%`],
     ['Total Defects / Findings', `${data.findingsSummary.total}`, 'Critical / High Severity', `${data.findingsSummary.critical} / ${data.findingsSummary.high}`],
@@ -314,7 +334,7 @@ const downloadPDF = async (results: any, scanId: string | null = '') => {
     margin: { left: 14, right: 14 },
   });
 
-  currentY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 8 : currentY + 36;
+  currentY = tableEnd(currentY + 36);
 
   // 4. Test Execution Summary Table
   const tc = data.testCasesSummary;
@@ -353,7 +373,7 @@ const downloadPDF = async (results: any, scanId: string | null = '') => {
     margin: { left: 14, right: 14 },
   });
 
-  currentY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 8 : currentY + 40;
+  currentY = tableEnd(currentY + 40);
 
   if (currentY > 230) {
     doc.addPage();
@@ -370,27 +390,43 @@ const downloadPDF = async (results: any, scanId: string | null = '') => {
     margin: { left: 14, right: 14 },
   });
 
-  currentY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 8 : currentY + 40;
+  currentY = tableEnd(currentY + 40);
 
-  // 6. Test Case Details Table (if any)
-  if (data.testCases && data.testCases.length > 0) {
+  // 6. Cross-device matrix (only when the pipeline recorded one)
+  if (data.crossDevice.measured) {
+    if (currentY > 240) {
+      doc.addPage();
+      currentY = 20;
+    }
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [['Device / Viewport', 'Status', 'Responsive Findings']],
+      body: DEVICE_ROWS.map((row) => [row.label, deviceStatus(data), data.crossDevice.device_breakdown[row.key].toString()]),
+      theme: 'striped',
+      headStyles: { fillColor: [14, 165, 233], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+      bodyStyles: { fontSize: 8.5 },
+      margin: { left: 14, right: 14 },
+    });
+
+    currentY = tableEnd(currentY + 30);
+  }
+
+  // 7. Test Case Details Table (if any)
+  if (data.testCases.length > 0) {
     if (currentY > 220) {
       doc.addPage();
       currentY = 20;
     }
 
-    const testCasesRows = data.testCases.map((t: any) => {
-      const rawStatus = (t.status || t.execution_policy || 'skipped').toUpperCase();
-      const durationStr = t.duration_ms ? `${t.duration_ms}ms` : '0ms';
-      return [
-        t.id || 'TC',
-        rawStatus,
-        t.title || 'Untitled Test',
-        durationStr,
-        t.expected_result || 'Expected pass',
-        t.actual_result || 'N/A',
-      ];
-    });
+    const testCasesRows = data.testCases.map((t) => [
+      t.id || 'TC',
+      testCaseStatus(t),
+      t.title || 'Untitled Test',
+      t.duration_ms ? `${t.duration_ms}ms` : '0ms',
+      t.expected_result || 'Expected pass',
+      t.actual_result || 'N/A',
+    ]);
 
     autoTable(doc, {
       startY: currentY,
@@ -410,30 +446,27 @@ const downloadPDF = async (results: any, scanId: string | null = '') => {
       margin: { left: 14, right: 14 },
     });
 
-    currentY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 8 : currentY + 40;
+    currentY = tableEnd(currentY + 40);
   }
 
-  // 7. Findings Details Table (if any)
-  if (data.findings && data.findings.length > 0) {
+  // 8. Findings Details Table (if any)
+  if (data.findings.length > 0) {
     if (currentY > 220) {
       doc.addPage();
       currentY = 20;
     }
 
-    const findingsRows = data.findings.map((f: any) => {
+    const findingsRows = data.findings.map((f) => {
       const sev = (f.severity || 'info').toUpperCase();
       const pri = (f.priority || 'P3').toUpperCase();
       const desc = `${f.title || 'Issue'}\n${(f.description || f.manual_verification || '').substring(0, 200)}`;
-      const rec = f.recommendation || f.recommended_action || 'Review and remediate.';
-      const pageLoc = f.page || f.url || 'N/A';
-
       return [
         f.id || 'BUG',
         `${sev}\n(${pri})`,
         desc,
-        rec,
+        f.recommendation || 'Review and remediate.',
         f.affected_pages_count?.toString() || '1',
-        pageLoc,
+        f.page || f.url || 'N/A',
       ];
     });
 
@@ -470,8 +503,8 @@ const downloadPDF = async (results: any, scanId: string | null = '') => {
     doc.text('Zero Defects Detected — Your site passed all automated QA checks cleanly.', 18, currentY + 9);
   }
 
-  // 8. Running Header & Footer with Pagination
-  const totalPages = (doc as any).internal.getNumberOfPages();
+  // 9. Running Header & Footer with Pagination
+  const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
 
@@ -493,31 +526,24 @@ const downloadPDF = async (results: any, scanId: string | null = '') => {
     doc.text(`Page ${i} of ${totalPages}`, 196, 292, { align: 'right' });
   }
 
-  const safeScanId = (scanId && scanId !== 'N/A' ? scanId : (data.target || 'scan')).toString().replace(/[^a-z0-9-]/gi, '_').toLowerCase();
-  const safeFilename = `qa-report-${safeScanId}.pdf`;
-  
-  try {
-    doc.save(safeFilename);
-  } catch (error) {
-    console.error("Failed to save PDF:", error);
-  }
+  doc.save(`qa-report-${safeFileStem(data.scanId, data.target)}.pdf`);
 };
 
 /**
  * Generates and triggers an Excel (.xlsx) workbook download for the QA scan.
  */
-const downloadExcel = async (results: any, scanId: string | null = '') => {
-  if (!results) return;
+const downloadExcel = async (results: QAReport, scanId: string | null = '') => {
   const XLSX = await import('xlsx');
 
   const data = extractCanonicalExportData(results, scanId);
   const tc = data.testCasesSummary;
   const fs = data.findingsSummary;
+  const qs = data.qualityScore;
 
   const wb = XLSX.utils.book_new();
 
   // 1. Executive Summary Sheet
-  const summarySheetData: Array<Array<any>> = [
+  const summarySheetData: Array<Array<string | number>> = [
     ['JASUSS QA PLATFORM — EXECUTIVE SCAN REPORT'],
     ['Powered by Nexus Autonomous QA Intelligence'],
     [],
@@ -531,13 +557,13 @@ const downloadExcel = async (results: any, scanId: string | null = '') => {
     ['Pages Discovered', data.pagesDiscovered],
     [],
     ['QUALITY & HEALTH', ''],
-    ['Site Health Score', data.qualityScore.score],
-    ['Health Grade', data.qualityScore.grade],
-    ['Health Summary', data.qualityScore.summary],
+    ['Site Health Score', qs.score ?? 'N/A'],
+    ['Health Grade', gradeText(qs)],
+    ['Health Summary', summaryText(qs)],
     [],
     ['TEST EXECUTION METRICS', 'COUNT', 'RATE (%)'],
     ['Total Test Cases', tc.total, tc.total > 0 ? 100.0 : 0.0],
-    ['Executed Test Cases', tc.executed, tc.total > 0 ? Number(((tc.executed / tc.total) * 100).toFixed(2)) : 0.0],
+    ['Executed Test Cases', tc.executed, rate(tc.executed, tc.total)],
     ['Passed', tc.passed, tc.pass_rate],
     ['Failed', tc.failed, tc.fail_rate],
     ['Skipped / Manual Review', tc.skipped, tc.skip_rate],
@@ -553,112 +579,103 @@ const downloadExcel = async (results: any, scanId: string | null = '') => {
     ['Low Severity', fs.low, 'P4 (Trivial)', fs.P4],
     ['Informational', fs.info, 'Duplicates Filtered', fs.duplicates],
     [],
+    ['REGRESSION VS PREVIOUS RUN', 'COUNT'],
+    ['New', fs.regression.new],
+    ['Fixed', fs.regression.fixed],
+    ['Unchanged', fs.regression.unchanged],
+    ['Worsened', fs.regression.worsened],
+    ['Improved', fs.regression.improved],
+    [],
   ];
 
   const summaryWs = XLSX.utils.aoa_to_sheet(summarySheetData);
-  // Auto-size columns for summary
   summaryWs['!cols'] = [{ wch: 35 }, { wch: 25 }, { wch: 30 }, { wch: 15 }];
   XLSX.utils.book_append_sheet(wb, summaryWs, 'Executive Summary');
 
   // 2. Test Cases Sheet
-  if (data.testCases && data.testCases.length > 0) {
-    const tcHeaders = ['Test Case ID', 'Status', 'Title', 'Category', 'Duration (ms)', 'Expected Result', 'Actual Result'];
-    const tcRows = data.testCases.map((t: any) => [
+  if (data.testCases.length > 0) {
+    const tcHeaders = ['Test Case ID', 'Status', 'Title', 'Category', 'Priority', 'Source Page', 'Duration (ms)', 'Expected Result', 'Actual Result'];
+    const tcRows = data.testCases.map((t) => [
       t.id || '',
-      (t.status || t.execution_policy || 'SKIPPED').toUpperCase(),
+      testCaseStatus(t),
       t.title || '',
-      t.category || t.viewport || '',
+      t.category || '',
+      t.priority || '',
+      t.source_page || '',
       t.duration_ms || 0,
       t.expected_result || '',
       t.actual_result || '',
     ]);
 
     const tcWs = XLSX.utils.aoa_to_sheet([tcHeaders, ...tcRows]);
-    tcWs['!cols'] = [{ wch: 15 }, { wch: 15 }, { wch: 40 }, { wch: 15 }, { wch: 15 }, { wch: 30 }, { wch: 30 }];
+    tcWs['!cols'] = [{ wch: 15 }, { wch: 12 }, { wch: 40 }, { wch: 15 }, { wch: 10 }, { wch: 30 }, { wch: 14 }, { wch: 30 }, { wch: 30 }];
     XLSX.utils.book_append_sheet(wb, tcWs, 'Test Cases');
   }
 
   // 3. Defect Findings Sheet
-  if (data.findings && data.findings.length > 0) {
+  if (data.findings.length > 0) {
     const findingHeaders = [
       'Finding ID',
       'Severity',
       'Priority',
       'Classification',
+      'Regression',
       'Title',
       'Location / URL',
       'Description',
       'Expected',
       'Actual',
       'Recommended Action',
+      'Affected Pages',
     ];
 
-    const findingRows = data.findings.map((f: any) => [
+    const findingRows = data.findings.map((f) => [
       f.id || '',
-      (f.severity || 'INFO').toUpperCase(),
+      (f.severity || 'info').toUpperCase(),
       (f.priority || 'P3').toUpperCase(),
       f.classification || '',
+      f.regression_status || '',
       f.title || '',
       f.page || f.url || '',
       f.description || '',
       f.expected_result || '',
       f.actual_result || '',
-      f.recommendation || f.recommended_action || '',
+      f.recommendation || '',
+      f.affected_pages_count ?? 1,
     ]);
 
     const findingsWs = XLSX.utils.aoa_to_sheet([findingHeaders, ...findingRows]);
-    findingsWs['!cols'] = [{ wch: 15 }, { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 35 }, { wch: 30 }, { wch: 40 }, { wch: 30 }, { wch: 30 }, { wch: 40 }];
+    findingsWs['!cols'] = [
+      { wch: 15 }, { wch: 10 }, { wch: 10 }, { wch: 18 }, { wch: 12 }, { wch: 35 },
+      { wch: 30 }, { wch: 40 }, { wch: 30 }, { wch: 30 }, { wch: 40 }, { wch: 14 },
+    ];
     XLSX.utils.book_append_sheet(wb, findingsWs, 'Defect Findings');
   }
 
-  // 4. Bug Triage Context (Optional)
-  if (data.triageDetails && data.triageDetails.length > 0) {
-    const triageHeaders = ['Finding ID', 'Resolution Status', 'Triage Notes', 'Developer Context', 'Assigned To'];
-    const triageRows = data.triageDetails.map((t: any) => [
-      t.finding_id || '',
-      t.status || '',
-      t.notes || '',
-      t.context || '',
-      t.assignee || '',
-    ]);
+  // 4. Cross-Device Matrix: real counts only, no invented performance figures
+  const cdHeaders = ['Device / Viewport', 'Status', 'Responsive Findings'];
+  const cdRows = DEVICE_ROWS.map((row) => [row.label, deviceStatus(data), data.crossDevice.device_breakdown[row.key]]);
+  cdRows.push([]);
+  cdRows.push(['Viewports tested', data.crossDevice.measured ? data.crossDevice.devices_tested : 'N/A', '']);
+  cdRows.push(['Total responsive findings', data.crossDevice.measured ? data.crossDevice.responsive_findings : 'N/A', '']);
 
-    const triageWs = XLSX.utils.aoa_to_sheet([triageHeaders, ...triageRows]);
-    triageWs['!cols'] = [{ wch: 15 }, { wch: 20 }, { wch: 40 }, { wch: 40 }, { wch: 20 }];
-    XLSX.utils.book_append_sheet(wb, triageWs, 'Bug Triage');
-  }
+  const cdWs = XLSX.utils.aoa_to_sheet([cdHeaders, ...cdRows]);
+  cdWs['!cols'] = [{ wch: 30 }, { wch: 15 }, { wch: 22 }];
+  XLSX.utils.book_append_sheet(wb, cdWs, 'Device Responsiveness');
 
-  // 5. Cross-Device Matrix (Optional)
-  if (data.crossDevice) {
-    const cdHeaders = ['Device / Viewport', 'Status', 'Defect Count', 'Performance Index'];
-    const bd = data.crossDevice.device_breakdown || {};
-    const cdRows = [
-      ['Desktop (1920x1080)', 'Tested', bd.desktop || 0, '100%'],
-      ['Mobile (iPhone)', 'Tested', bd.iphone || 0, '98%'],
-      ['Tablet (iPad)', 'Tested', bd.ipad || 0, '99%'],
-    ];
-
-    const cdWs = XLSX.utils.aoa_to_sheet([cdHeaders, ...cdRows]);
-    cdWs['!cols'] = [{ wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 20 }];
-    XLSX.utils.book_append_sheet(wb, cdWs, 'Device Responsiveness');
-  }
-
-  const safeScanId = (scanId && scanId !== 'N/A' ? scanId : (data.target || 'scan')).toString().replace(/[^a-z0-9-]/gi, '_').toLowerCase();
-  const safeFilename = `qa-report-${safeScanId}.xlsx`;
-
-  try {
-    XLSX.writeFile(wb, safeFilename);
-  } catch (error) {
-    console.error("Failed to save XLSX:", error);
-  }
+  XLSX.writeFile(wb, `qa-report-${safeFileStem(data.scanId, data.target)}.xlsx`);
 };
+
+const mdCell = (value: string | undefined, fallback: string) => (value || fallback).replace(/\|/g, '\\|');
 
 /**
  * Generates formatted Markdown report string from canonical data.
  */
-const generateMarkdownReport = (data: CanonicalExportData): string => {
+export const generateMarkdownReport = (data: CanonicalExportData): string => {
   const formattedDate = new Date(data.generatedAt).toLocaleString();
   const tc = data.testCasesSummary;
   const fs = data.findingsSummary;
+  const qs = data.qualityScore;
 
   const lines: string[] = [];
 
@@ -674,7 +691,11 @@ const generateMarkdownReport = (data: CanonicalExportData): string => {
   lines.push(`- **Target URL:** ${data.target}`);
   lines.push(`- **Scan ID:** \`${data.scanId}\``);
   lines.push(`- **Generated At:** ${formattedDate}`);
-  lines.push(`- **Overall Health Score:** **${data.qualityScore.score} / 100** (Grade **${data.qualityScore.grade}** - *${data.qualityScore.summary}*)`);
+  lines.push(
+    qs.score === null
+      ? '- **Overall Health Score:** N/A (no score was recorded for this run)'
+      : `- **Overall Health Score:** **${scoreText(qs)}** (Grade **${gradeText(qs)}** - *${summaryText(qs)}*)`
+  );
   lines.push(`- **Pages Crawled / Discovered:** ${data.pagesCrawled} / ${data.pagesDiscovered}`);
   lines.push(`- **Scan Duration:** ${data.durationSeconds}s`);
   lines.push(`- **Total Automated Test Cases:** ${tc.total} (Pass Rate: **${tc.pass_rate}%**)`);
@@ -702,35 +723,37 @@ const generateMarkdownReport = (data: CanonicalExportData): string => {
   lines.push(`| Informational | ${fs.info} | P4 (Trivial) | ${fs.P4} |`);
   lines.push(`| **Total Unique** | **${fs.total}** | Duplicates Filtered | ${fs.duplicates} |\n`);
 
-  if (data.crossDevice) {
+  lines.push('## 4. Cross-Device Responsiveness\n');
+  if (data.crossDevice.measured) {
     const cd = data.crossDevice;
-    lines.push('## 4. Cross-Device Responsiveness\n');
+    lines.push(`Viewports tested: **${cd.devices_tested}** · Responsive findings: **${cd.responsive_findings}**\n`);
     lines.push('| Device Viewport | Status | Responsive Findings |');
     lines.push('| :--- | :--- | :--- |');
-    lines.push(`| Desktop (1920x1080) | Tested | ${cd.device_breakdown.desktop} |`);
-    lines.push(`| Mobile (iPhone Viewport) | Tested | ${cd.device_breakdown.iphone} |`);
-    lines.push(`| Tablet (iPad Viewport) | Tested | ${cd.device_breakdown.ipad} |\n`);
+    DEVICE_ROWS.forEach((row) => {
+      lines.push(`| ${row.label} | ${deviceStatus(data)} | ${cd.device_breakdown[row.key]} |`);
+    });
+    lines.push('');
+  } else {
+    lines.push('No cross-device telemetry was recorded for this run.\n');
   }
 
-  if (data.testCases && data.testCases.length > 0) {
+  if (data.testCases.length > 0) {
     lines.push('## 5. Automated Test Cases Detail\n');
     lines.push('| ID | Status | Title | Duration | Expected Result | Actual Result |');
     lines.push('| :--- | :--- | :--- | :--- | :--- | :--- |');
-    data.testCases.forEach((t: any) => {
-      const status = (t.status || t.execution_policy || 'SKIPPED').toUpperCase();
+    data.testCases.forEach((t) => {
       const dur = t.duration_ms ? `${t.duration_ms}ms` : '0ms';
-      const cleanTitle = (t.title || 'Untitled').replace(/\|/g, '\\|');
-      const cleanExpected = (t.expected_result || 'Pass').replace(/\|/g, '\\|');
-      const cleanActual = (t.actual_result || 'N/A').replace(/\|/g, '\\|');
-      lines.push(`| \`${t.id || 'TC'}\` | **${status}** | ${cleanTitle} | ${dur} | ${cleanExpected} | ${cleanActual} |`);
+      lines.push(
+        `| \`${t.id || 'TC'}\` | **${testCaseStatus(t)}** | ${mdCell(t.title, 'Untitled')} | ${dur} | ${mdCell(t.expected_result, 'Pass')} | ${mdCell(t.actual_result, 'N/A')} |`
+      );
     });
     lines.push('');
   }
 
-  if (data.findings && data.findings.length > 0) {
+  if (data.findings.length > 0) {
     lines.push('## 6. Detailed Defect Findings\n');
-    data.findings.forEach((f: any, idx: number) => {
-      const sev = (f.severity || 'INFO').toUpperCase();
+    data.findings.forEach((f, idx) => {
+      const sev = (f.severity || 'info').toUpperCase();
       const pri = (f.priority || 'P3').toUpperCase();
       lines.push(`### ${idx + 1}. [${f.id || 'BUG'}] ${f.title || 'Untitled Defect'}\n`);
       lines.push(`- **Severity:** \`${sev}\` | **Priority:** \`${pri}\` | **Classification:** \`${f.classification || 'N/A'}\``);
@@ -738,10 +761,10 @@ const generateMarkdownReport = (data: CanonicalExportData): string => {
       if (f.description) lines.push(`- **Description:** ${f.description}`);
       if (f.expected_result) lines.push(`- **Expected Result:** ${f.expected_result}`);
       if (f.actual_result) lines.push(`- **Actual Result:** ${f.actual_result}`);
-      if (f.recommendation || f.recommended_action) lines.push(`- **Recommendation:** ${f.recommendation || f.recommended_action}`);
+      if (f.recommendation) lines.push(`- **Recommendation:** ${f.recommendation}`);
       if (f.reproduction?.steps && f.reproduction.steps.length > 0) {
         lines.push('- **Reproduction Steps:**');
-        f.reproduction.steps.forEach((step: string, sIdx: number) => {
+        f.reproduction.steps.forEach((step, sIdx) => {
           lines.push(`  ${sIdx + 1}. ${step}`);
         });
       }
@@ -760,35 +783,30 @@ const generateMarkdownReport = (data: CanonicalExportData): string => {
 /**
  * Downloads Markdown report file directly via Blob.
  */
-const downloadMarkdown = (results: any, scanId: string | null = '') => {
-  if (!results) return;
+const downloadMarkdown = (results: QAReport, scanId: string | null = '') => {
   const data = extractCanonicalExportData(results, scanId);
   const mdContent = generateMarkdownReport(data);
-
-  const safeScanId = scanId && scanId !== 'N/A' ? scanId : (data.target || 'scan').replace(/[^a-z0-9]/gi, '_').toLowerCase();
-  const filename = `qa-report-${safeScanId}.md`;
-
-  saveBlob(new Blob([mdContent], { type: 'text/markdown; charset=utf-8' }), filename);
+  saveBlob(
+    new Blob([mdContent], { type: 'text/markdown; charset=utf-8' }),
+    `qa-report-${safeFileStem(data.scanId, data.target)}.md`
+  );
 };
 
 /**
  * Downloads raw JSON report file directly via Blob.
  */
-const downloadJSON = (results: any, scanId: string | null = '') => {
-  if (!results) return;
+const downloadJSON = (results: QAReport, scanId: string | null = '') => {
   const data = extractCanonicalExportData(results, scanId);
-  const jsonContent = JSON.stringify(results, null, 2);
-
-  const safeScanId = scanId && scanId !== 'N/A' ? scanId : (data.target || 'scan').replace(/[^a-z0-9]/gi, '_').toLowerCase();
-  const filename = `qa-report-${safeScanId}.json`;
-
-  saveBlob(new Blob([jsonContent], { type: 'application/json; charset=utf-8' }), filename);
+  saveBlob(
+    new Blob([JSON.stringify(results, null, 2)], { type: 'application/json; charset=utf-8' }),
+    `qa-report-${safeFileStem(data.scanId, data.target)}.json`
+  );
 };
 
 export type ExportFormat = 'pdf' | 'excel' | 'xlsx' | 'json' | 'md' | 'markdown';
 
 export interface DownloadReportOptions {
-  results: any;
+  results: QAReport;
   scanId?: string | null;
   format: ExportFormat;
   sessionToken?: string | null;
@@ -796,7 +814,10 @@ export interface DownloadReportOptions {
 
 /**
  * Unified download handler for all report formats (PDF, Excel, JSON, Markdown).
- * Prefers the server's pre-generated file; falls back to client-side generation.
+ * Prefers the server's pre-generated file and only builds one in the browser when
+ * the server has none (404). Auth, quota and server errors are thrown to the caller
+ * so the UI can tell the user what went wrong instead of silently handing over a
+ * different, client-rendered file.
  */
 export const handleDownloadReport = async ({
   results,
@@ -805,7 +826,7 @@ export const handleDownloadReport = async ({
   sessionToken,
 }: DownloadReportOptions): Promise<void> => {
   const normFormat = format.toLowerCase() as ExportFormat;
-  const safeScanId = scanId || results?.report_metadata?.scan_id || results?.id || 'unknown';
+  const safeScanId = scanId || '';
   const serverFormat =
     normFormat === 'excel' || normFormat === 'xlsx'
       ? 'xlsx'
@@ -815,12 +836,12 @@ export const handleDownloadReport = async ({
       ? 'json'
       : 'pdf';
 
-  if (sessionToken && safeScanId !== 'unknown') {
+  if (sessionToken && safeScanId) {
     try {
-      await downloadScanReport(String(safeScanId), serverFormat, sessionToken);
+      await downloadScanReport(safeScanId, serverFormat, sessionToken);
       return;
-    } catch {
-      // Fall back to client-side generation below
+    } catch (e) {
+      if (!(e instanceof ApiError) || e.status !== 404) throw e;
     }
   }
 

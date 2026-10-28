@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createClient, type Session } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -115,9 +115,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // enforces admin access on every /api/v1/admin/* call.
     const current = sessionRef.current;
     if (current?.user && current.user.id === startUserId) {
-      const email = (current.user.email || '').toLowerCase();
-      const appRole = current.user.app_metadata?.role;
-      setUserRole(appRole === 'admin' || email === 'dellizulter@gmail.com' ? 'admin' : 'user');
+      setUserRole(current.user.app_metadata?.role === 'admin' ? 'admin' : 'user');
     }
     setRoleLoaded(true);
     return null;
@@ -175,24 +173,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe();
   }, [fetchUserProfile]);
 
-  const openAuthModal = (mode: 'signin' | 'signup' = 'signin') => {
+  const openAuthModal = useCallback((mode: 'signin' | 'signup' = 'signin') => {
     setAuthMode(mode);
     setAuthModalOpen(true);
-  };
+  }, []);
 
-  const closeAuthModal = () => {
+  const closeAuthModal = useCallback(() => {
     setAuthModalOpen(false);
-  };
+  }, []);
 
-  const openProfileModal = () => {
+  const openProfileModal = useCallback(() => {
     setProfileModalOpen(true);
-  };
+  }, []);
 
-  const closeProfileModal = () => {
+  const closeProfileModal = useCallback(() => {
     setProfileModalOpen(false);
-  };
+  }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     try {
       if (supabase) {
         await supabase.auth.signOut();
@@ -215,33 +213,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // eslint-disable-next-line @next/next/no-location-assign-relative-destination
       window.location.href = '/';
     }
-  };
+  }, []);
 
-  return (
-    <AuthContext.Provider
-      value={{
-        session,
-        sessionLoaded,
-        roleLoaded,
-        userProfile,
-        isAdmin,
-        authModalOpen,
-        authMode,
-        userPlan,
-        userRole,
-        profileModalOpen,
-        openAuthModal,
-        closeAuthModal,
-        openProfileModal,
-        closeProfileModal,
-        signOut,
-        refreshPlan,
-        fetchUserProfile,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo<AuthContextType>(
+    () => ({
+      session,
+      sessionLoaded,
+      roleLoaded,
+      userProfile,
+      isAdmin,
+      authModalOpen,
+      authMode,
+      userPlan,
+      userRole,
+      profileModalOpen,
+      openAuthModal,
+      closeAuthModal,
+      openProfileModal,
+      closeProfileModal,
+      signOut,
+      refreshPlan,
+      fetchUserProfile,
+    }),
+    [
+      session,
+      sessionLoaded,
+      roleLoaded,
+      userProfile,
+      isAdmin,
+      authModalOpen,
+      authMode,
+      userPlan,
+      userRole,
+      profileModalOpen,
+      openAuthModal,
+      closeAuthModal,
+      openProfileModal,
+      closeProfileModal,
+      signOut,
+      refreshPlan,
+      fetchUserProfile,
+    ],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => useContext(AuthContext);

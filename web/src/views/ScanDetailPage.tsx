@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -8,6 +8,7 @@ import {
   LuTriangleAlert as AlertTriangle,
   LuArrowLeft as ArrowLeft,
   LuRefreshCw as RefreshCw,
+  LuInfo as Info,
 } from 'react-icons/lu';
 import { TbCloudDownload, TbFileTypePdf, TbFileSpreadsheet, TbJson, TbMarkdown } from 'react-icons/tb';
 import { useAuth, supabase } from '../context/AuthContext';
@@ -15,7 +16,7 @@ import { downloadScanReport, type ServerReportFormat } from '../utils/download';
 import { ScanMonitor } from '../components/scan/ScanMonitor';
 import { ScanResults } from '../components/scan/ScanResults';
 import { AdBanner } from '../components/ads/AdBanner';
-import { QAReport, ProgressPayload, ScanStatus } from '../types/qa';
+import { QAReport, ProgressPayload, ScanStatus, ScanStatusResponse } from '../types/qa';
 import { PageHeader3D, Surface3D, cx } from '../components/three';
 import s from '../components/scan/scan3d.module.css';
 
@@ -33,11 +34,23 @@ const FORMAT_LABELS: Record<ServerReportFormat, string> = {
   md: 'Markdown',
 };
 
+const TERMINAL_STATUSES: ReadonlyArray<ScanStatus> = ['completed', 'failed', 'cancelled', 'error'];
+
+type Notice = { tone: 'danger' | 'info'; text: string } | null;
+
 const statusChip = (status: ScanStatus) => {
   if (status === 'completed') return <span className="chip chip--success chip--dot">Completed</span>;
   if (status === 'failed' || status === 'error') return <span className="chip chip--danger chip--dot">Failed</span>;
   if (status === 'cancelled') return <span className="chip chip--neutral chip--dot">Cancelled</span>;
   return <span className="chip chip--info chip--live">{status === 'pending' ? 'Queued' : 'Running'}</span>;
+};
+
+/** Seconds since an ISO timestamp, or null when it cannot be parsed. */
+const secondsSince = (iso?: string | null): number | null => {
+  if (!iso) return null;
+  const started = Date.parse(iso);
+  if (!Number.isFinite(started)) return null;
+  return Math.max(0, Math.floor((Date.now() - started) / 1000));
 };
 
 export const ScanDetailPage: React.FC = () => {
@@ -51,7 +64,10 @@ export const ScanDetailPage: React.FC = () => {
   const [progress, setProgress] = useState<ProgressPayload | null>(null);
   const [results, setResults] = useState<QAReport | null>(null);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState<Notice>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  // Real start time from the API (created_at); the local counter only runs when it is unknown.
+  const [startedAt, setStartedAt] = useState<string | null>(null);
   const [logFeed, setLogFeed] = useState<string[]>([
     'Initializing isolated browser environments across viewports...',
   ]);
@@ -60,12 +76,15 @@ export const ScanDetailPage: React.FC = () => {
   const [reportUnavailable, setReportUnavailable] = useState(false);
 
   const [retryCount, setRetryCount] = useState(0);
+  const [stopping, setStopping] = useState(false);
 
   // Keep track of consecutive polling errors to avoid console flood and handle backoff
   const consecutiveErrorsRef = useRef(0);
   // How many times we've seen status=completed with no results payload yet
   const completedNoResultsRef = useRef(0);
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Once the user has cancelled, in-flight polls that still report "running" are ignored
+  const cancelRequestedRef = useRef(false);
   // Latest access token, read by the poller without restarting it on every token refresh
   const accessTokenRef = useRef<string | undefined>(session?.access_token);
   const hasSession = !!session?.access_token;
@@ -75,16 +94,21 @@ export const ScanDetailPage: React.FC = () => {
     accessTokenRef.current = session?.access_token;
   }, [session?.access_token]);
 
-  // Elapsed timer
+  // Elapsed timer: anchored to the server's created_at when known
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
     if (status === 'pending' || status === 'running') {
-      timer = setInterval(() => setElapsedSeconds((p) => p + 1), 1000);
+      const tick = () => {
+        const fromServer = secondsSince(startedAt);
+        setElapsedSeconds((p) => (fromServer === null ? p + 1 : fromServer));
+      };
+      if (secondsSince(startedAt) !== null) tick();
+      timer = setInterval(tick, 1000);
     }
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [status]);
+  }, [status, startedAt]);
 
   // Update real-time log feed
   useEffect(() => {
@@ -97,32 +121,39 @@ export const ScanDetailPage: React.FC = () => {
   }, [progress?.message]);
 
   // Stop Scan handler
-  const handleStopScan = async () => {
-    if (!scanId || !session?.access_token) return;
+  const accessToken = session?.access_token;
+  const handleStopScan = useCallback(async () => {
+    if (!scanId || !accessToken) return;
+    setStopping(true);
+    setNotice(null);
     try {
       const res = await fetch(`/api/v1/scans/${scanId}/cancel`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${session.access_token}` },
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        alert(body.detail || `Could not stop the scan (HTTP ${res.status}).`);
+        setNotice({ tone: 'danger', text: body.detail || `Could not stop the scan (HTTP ${res.status}).` });
         return;
       }
+      cancelRequestedRef.current = true;
       setStatus('cancelled');
       setError('Scan was cancelled by user.');
     } catch {
-      alert('Network error while stopping the scan. Please try again.');
+      setNotice({ tone: 'danger', text: 'Network error while stopping the scan. Please try again.' });
+    } finally {
+      setStopping(false);
     }
-  };
+  }, [scanId, accessToken]);
 
   const handleReportDownload = async (fmt: ServerReportFormat) => {
     if (!scanId || !session?.access_token) return;
     setDownloadingFormat(fmt);
+    setNotice(null);
     try {
       await downloadScanReport(scanId, fmt, session.access_token);
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Download failed. Please try again.');
+      setNotice({ tone: 'danger', text: e instanceof Error ? e.message : 'Download failed. Please try again.' });
     } finally {
       setDownloadingFormat(null);
     }
@@ -132,8 +163,10 @@ export const ScanDetailPage: React.FC = () => {
   const handleManualRetry = () => {
     consecutiveErrorsRef.current = 0;
     completedNoResultsRef.current = 0;
+    cancelRequestedRef.current = false;
     setReportUnavailable(false);
     setError('');
+    setNotice(null);
     setStatus('pending');
     setRetryCount((c) => c + 1);
   };
@@ -261,10 +294,18 @@ export const ScanDetailPage: React.FC = () => {
 
         // Successful response - reset consecutive error counter
         consecutiveErrorsRef.current = 0;
-        const data = await res.json();
+        const data = (await res.json()) as ScanStatusResponse;
         if (!isMounted) return;
 
         if (data.url) setTargetUrl(data.url);
+        if (data.created_at) setStartedAt(data.created_at);
+
+        // A poll that left before the cancel committed still says "running"; keep the cancelled card.
+        if (cancelRequestedRef.current && !TERMINAL_STATUSES.includes(data.status)) {
+          scheduleNextPoll(2000);
+          return;
+        }
+
         setStatus(data.status);
 
         if (data.progress) {
@@ -313,7 +354,7 @@ export const ScanDetailPage: React.FC = () => {
         // Terminal state: Cancelled
         if (data.status === 'cancelled') {
           stopPolling();
-          setError('Scan was stopped by user.');
+          if (!cancelRequestedRef.current) setError('Scan was stopped by user.');
           return;
         }
 
@@ -387,6 +428,19 @@ export const ScanDetailPage: React.FC = () => {
     : 'Review the outcome below or launch a new scan from the dashboard.';
   const headerAccent = isLive ? 'info' : status === 'completed' ? 'success' : isTerminalIssue ? (status === 'cancelled' ? 'neutral' : 'danger') : undefined;
 
+  const noticeBox = notice && (
+    <div
+      className={cx(s.notice, notice.tone === 'danger' ? s.noticeDanger : s.noticeInfo)}
+      role={notice.tone === 'danger' ? 'alert' : 'status'}
+    >
+      {notice.tone === 'danger' ? <AlertTriangle size={16} aria-hidden="true" /> : <Info size={16} aria-hidden="true" />}
+      <span>{notice.text}</span>
+      <button type="button" className={cx('btn btn-ghost btn-sm', s.noticeDismiss)} onClick={() => setNotice(null)}>
+        Dismiss
+      </button>
+    </div>
+  );
+
   return (
     <div className="page-shell">
       <div className="enter-3d">
@@ -418,6 +472,8 @@ export const ScanDetailPage: React.FC = () => {
               elapsedSeconds={elapsedSeconds}
               logFeed={logFeed}
               onStop={handleStopScan}
+              stopping={stopping}
+              notice={noticeBox}
             />
           </Surface3D>
           {/* Ad banner — only for logged-in users during scan wait */}
@@ -472,14 +528,15 @@ export const ScanDetailPage: React.FC = () => {
               Your QA report has been generated and saved to your cloud storage. Use the buttons below to
               download it directly — no re-scanning required.
             </p>
-            <div className={s.stateActions}>
+            {noticeBox}
+            <div className={cx('neu-inset neu-inset--sm', s.formatRow)}>
               {(['pdf', 'xlsx', 'json', 'md'] as const).map((fmt) => (
                 <button
                   type="button"
                   key={fmt}
                   onClick={() => handleReportDownload(fmt)}
                   disabled={downloadingFormat === fmt}
-                  className="btn btn-secondary"
+                  className="neu-pressable"
                 >
                   {downloadingFormat === fmt ? <Loader2 size={16} className="pulse" /> : FORMAT_ICONS[fmt]}
                   {FORMAT_LABELS[fmt]}

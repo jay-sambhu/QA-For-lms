@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { TbAlertTriangle, TbLoader2 } from "react-icons/tb";
 import { supabase, useAuth } from "@/context/AuthContext";
 import { Surface3D } from "@/components/three";
-import styles from "@/app/page.module.css";
+import styles from "@/components/auth/auth3d.module.css";
 
 export default function AuthCallbackPage() {
   const router = useRouter();

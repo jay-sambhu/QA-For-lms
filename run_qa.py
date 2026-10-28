@@ -11,6 +11,7 @@ import asyncio
 import json
 import os
 import sys
+import time
 from datetime import datetime, timezone
 
 from core.state_machine import PipelineStateMachine, PipelineStage
@@ -31,6 +32,20 @@ from core.qa_report_generator import QAReportGenerator
 from core import ci_quality_gate
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _env_int(name, default):
+    try:
+        return int((os.environ.get(name) or "").strip() or default)
+    except ValueError:
+        return default
+
+
+# The API kills the subprocess after QA_PIPELINE_TIMEOUT; the crawl may use
+# 60% of it and the AI stage what is left minus a margin for the report.
+PIPELINE_TIMEOUT_SECONDS = _env_int("QA_PIPELINE_TIMEOUT", 1800)
+CRAWL_BUDGET_FRACTION = 0.6
+REPORT_MARGIN_SECONDS = 90
 
 
 # Plain-English explanations for the browser errors users hit most often.
@@ -77,6 +92,9 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
     """Executes the complete autonomous quality engineering pipeline end-to-end."""
     run_id = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
     pipeline_started_at = datetime.now(timezone.utc)
+    pipeline_started_mono = time.monotonic()
+    pipeline_deadline = pipeline_started_mono + PIPELINE_TIMEOUT_SECONDS
+    crawl_deadline = pipeline_started_mono + int(PIPELINE_TIMEOUT_SECONDS * CRAWL_BUDGET_FRACTION)
     base_dir = os.path.abspath(output_dir) if output_dir else ROOT_DIR
     results_dir = os.path.join(base_dir, "results")
     os.makedirs(results_dir, exist_ok=True)
@@ -106,6 +124,7 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
         username=username,
         password=password,
         progress_cb=sm.update_progress,
+        deadline=crawl_deadline,
     )
     discovery_result = await discovery_engine.execute_discovery()
     crawl_file = discovery_result.get("output_file")
@@ -116,6 +135,8 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
         sm.transition_to(PipelineStage.FAILED, detailed_msg)
         print(f"ERROR: Autonomous Discovery produced no pages. {detailed_msg}")
         return None
+    if discovery_result.get("partial"):
+        print("[DISCOVERY] Crawl stopped at the time budget; continuing with the pages reached so far.")
 
     # 2. MODELING STAGE
     sm.transition_to(PipelineStage.MODELING, "Building persistent Application Knowledge Model...")
@@ -136,18 +157,23 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
     orchestrator.log_decision("TestGenerationAgent", "GENERATING", f"Generated {len(generated_test_cases)} multi-category test cases", {"test_cases_count": len(generated_test_cases)})
 
     # 5. EXECUTING & ASSERTING STAGE
-    sm.transition_to(PipelineStage.EXECUTING, "Executing test cases with self-healing executor...")
-    executor = SelfHealingExecutor(generator.output_file, results_dir, run_id)
+    sm.transition_to(PipelineStage.EXECUTING, "Verifying test cases against crawl evidence...")
+    executor = SelfHealingExecutor(generator.output_file, results_dir, run_id, crawl_file=crawl_file)
     execution_results = await executor.execute_suite()
-    orchestrator.log_decision("ExecutionAgent", "EXECUTING", f"Executed {len(execution_results)} test cases", {"executed_count": len(execution_results)})
+    verified = sum(1 for r in execution_results if str(r.status.value).upper() in ("PASS", "FAIL"))
+    orchestrator.log_decision(
+        "ExecutionAgent", "EXECUTING",
+        f"Verified {verified} of {len(execution_results)} test cases against crawl evidence",
+        {"executed_count": verified, "total_count": len(execution_results)},
+    )
 
     # 6. VERIFYING & TRIAGING STAGE
     sm.transition_to(PipelineStage.VERIFYING, "Verifying assertions, API schemas, and performance/accessibility...")
     raw_findings_dict = generate_qa_findings(crawl_file=crawl_file, results_dir=results_dir, run_id=run_id)
-    raw_findings = raw_findings_dict.get("findings", []) if raw_findings_dict else []
+    raw_candidates = raw_findings_dict.get("root_cause_candidates", []) if raw_findings_dict else []
 
-    # SHA256 Defect Verification & Deduplication
-    defect_engine = DefectVerificationEngine(raw_findings, results_dir, run_id)
+    # SHA256 Defect Verification & Deduplication (on device-agnostic root causes)
+    defect_engine = DefectVerificationEngine(raw_candidates, results_dir, run_id, target=url)
     deduplicated_defects = defect_engine.process_and_deduplicate()
 
     # API Testing & Perf/A11y Auditing
@@ -161,8 +187,25 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
     sm.transition_to(PipelineStage.TRIAGING, "Triaging deduplicated defect findings...")
     sm.transition_to(PipelineStage.REGRESSION, "Detecting regressions against historical memory...")
     baseline_file = kwargs.get("baseline_file")
-    regression_engine = RegressionMemoryEngine([d.model_dump() for d in deduplicated_defects], baseline_file, results_dir, run_id)
+    regression_engine = RegressionMemoryEngine(
+        [d.model_dump() for d in deduplicated_defects], baseline_file, results_dir, run_id, target=url
+    )
     regression_engine.analyze_regression()
+
+    # Join fingerprints and regression status back onto the candidates the
+    # AI stage and the final report read, then persist the findings file.
+    if raw_findings_dict and raw_candidates:
+        for candidate in raw_candidates:
+            fp = defect_engine.fingerprints_by_id.get(str(candidate.get("id")))
+            if fp:
+                candidate["fingerprint"] = fp
+                candidate["regression_status"] = regression_engine.status_by_fingerprint.get(fp, "new")
+        try:
+            persisted = {k: v for k, v in raw_findings_dict.items() if k != "output_file"}
+            with open(raw_findings_dict["output_file"], "w", encoding="utf-8") as f:
+                json.dump(persisted, f, indent=2, ensure_ascii=False)
+        except Exception as join_err:
+            print(f"[REGRESSION] Could not persist fingerprints onto findings: {join_err}")
 
     # Learning Engine Pattern Extraction
     learning_engine = HistoricalLearningEngine(app_manager.app_id, results_dir)
@@ -177,6 +220,11 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
     model = kwargs.get("model_name")
     ep = kwargs.get("endpoint")
 
+    # Never let the AI stage run past the point where the report could not
+    # be written before the API's timeout.
+    ai_budget = int(pipeline_deadline - time.monotonic() - REPORT_MARGIN_SECONDS)
+    ai_budget = max(30, min(ai_budget, _env_int("QA_AI_BUDGET_SECONDS", 480)))
+
     gemini_result = await generate_report(
         findings_file=findings_file,
         results_dir=results_dir,
@@ -186,6 +234,7 @@ async def run_pipeline(url, max_pages=30, auth_token=None, run_id=None, output_d
         provider_id=provider,
         model_name=model,
         endpoint=ep,
+        budget_seconds=ai_budget,
     )
     if not gemini_result:
         sm.transition_to(PipelineStage.FAILED, "AI report generation failed.")

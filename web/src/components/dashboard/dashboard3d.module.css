@@ -1,17 +1,18 @@
 /* ─────────────────────────────────────────────────────────────
- * Dashboard 3D layout: launch console, run history, AI key manager.
- * Builds on the global .surface-3d / .chip / .icon-well classes.
- * Only transform and opacity animate.
+ * Dashboard layout: launch console, run history, AI key manager.
+ * Every surface, well and control reads the --neu-* tokens from globals.css;
+ * only transform/opacity animate, box-shadow transitions stay <= 200ms and
+ * only on interactive controls.
  * ───────────────────────────────────────────────────────────── */
 
-/* ── Shared form controls ── */
+/* ── Shared form controls: inset wells cut into the surface ── */
 .field {
   width: 100%;
   padding: 10px 14px;
-  border-radius: 12px;
-  background: var(--surface);
-  border: 1px solid rgba(var(--ink-rgb), 0.12);
-  box-shadow: inset 0 1px 2px rgba(var(--ink-rgb), 0.04);
+  border-radius: var(--neu-radius-sm);
+  background-color: var(--neu-well);
+  border: 1px solid var(--neu-hairline);
+  box-shadow: var(--neu-inset-sm);
   color: var(--text-main);
   font-size: 0.92rem;
   transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
@@ -19,16 +20,17 @@
 
 .field::placeholder {
   color: var(--text-subtle);
+  opacity: 1;
 }
 
-.field:hover {
-  border-color: rgba(var(--ink-rgb), 0.2);
+.field:hover:not(:disabled) {
+  border-color: var(--neu-hairline-strong);
 }
 
 .field:focus-visible {
   outline: none;
-  border-color: rgb(var(--accent-rgb));
-  box-shadow: inset 0 1px 2px rgba(var(--ink-rgb), 0.04), 0 0 0 3px rgba(var(--accent-rgb), 0.18);
+  border-color: rgba(var(--accent-rgb), 0.7);
+  box-shadow: var(--neu-inset-sm), 0 0 0 3px rgba(var(--accent-rgb), 0.22);
 }
 
 .fieldGroup {
@@ -59,22 +61,36 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+/* Small flat icon button that sinks into a well while hovered or pressed */
 .iconBtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px;
-  border-radius: 8px;
-  background: none;
-  border: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 9px;
+  background: transparent;
+  border: 1px solid transparent;
   color: var(--text-subtle);
   cursor: pointer;
-  transition: color var(--dur-fast) ease, background-color var(--dur-fast) ease;
+  transition: color var(--dur-fast) ease, box-shadow var(--dur-fast) ease, border-color var(--dur-fast) ease;
 }
 
-.iconBtn:hover:not(:disabled) {
-  color: var(--text-body);
-  background: rgba(var(--ink-rgb), 0.06);
+@media (hover: hover) {
+  .iconBtn:hover:not(:disabled) {
+    color: var(--text-heading);
+    background: var(--neu-well);
+    border-color: var(--neu-hairline);
+    box-shadow: var(--neu-inset-xs);
+  }
+}
+
+.iconBtn:active:not(:disabled) {
+  color: var(--accent-ink);
+  background: var(--neu-gradient-well);
+  border-color: var(--neu-hairline);
+  box-shadow: var(--neu-inset-sm);
 }
 
 .iconBtn:disabled {
@@ -86,56 +102,103 @@
   color: var(--tone-danger-ink);
 }
 
-.iconBtnDanger:hover:not(:disabled) {
-  color: var(--tone-danger-ink);
-  background: rgba(var(--tone-danger-rgb), 0.1);
+@media (hover: hover) {
+  .iconBtnDanger:hover:not(:disabled) {
+    color: var(--tone-danger-ink);
+    background:
+      linear-gradient(rgba(var(--tone-danger-rgb), 0.1), rgba(var(--tone-danger-rgb), 0.1)),
+      var(--neu-well);
+  }
 }
 
 .checkbox {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
-  accent-color: var(--primary);
+  accent-color: rgb(var(--accent-rgb));
   cursor: pointer;
 }
 
+/* Toggle row: an extruded pill that sinks into the surface once checked */
 .checkRow {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 9px 16px 9px 12px;
+  border-radius: var(--neu-radius-pill);
+  background: var(--neu-gradient);
+  border: 1px solid var(--neu-hairline);
+  box-shadow: var(--neu-raised-sm);
   cursor: pointer;
   user-select: none;
+  transition: box-shadow var(--dur-fast) ease, border-color var(--dur-fast) ease, translate var(--dur-fast) var(--ease-out-expo);
+}
+
+@media (hover: hover) {
+  .checkRow:hover {
+    translate: 0 -1px;
+    border-color: rgba(var(--accent-rgb), 0.24);
+    box-shadow: var(--neu-raised);
+  }
+}
+
+.checkRow:has(:checked) {
+  translate: 0 0;
+  background: var(--neu-gradient-well);
+  border-color: rgba(var(--accent-rgb), 0.2);
+  box-shadow: var(--neu-inset-sm);
+}
+
+.checkRow:has(:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.checkRow:has(:focus-visible) .checkbox {
+  outline: none;
 }
 
 .checkText {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.92rem;
-  font-weight: 500;
+  font-size: 0.9rem;
+  font-weight: 600;
   color: var(--text-body);
 }
 
+.checkRow:has(:checked) .checkText {
+  color: var(--accent-ink);
+}
+
+/* Notices: soft tinted wells with saturated ink */
 .notice {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-radius: 12px;
+  border-radius: var(--neu-radius-sm);
+  border: 1px solid rgba(var(--accent-rgb), 0.2);
+  background:
+    linear-gradient(rgba(var(--accent-rgb), 0.1), rgba(var(--accent-rgb), 0.1)),
+    var(--neu-gradient-well);
+  box-shadow: var(--neu-inset-xs);
+  color: var(--accent-ink);
   font-size: 0.86rem;
+  font-weight: 500;
   line-height: 1.45;
 }
 
 .noticeDanger {
-  background: rgba(var(--tone-danger-rgb), 0.08);
-  border: 1px solid rgba(var(--tone-danger-rgb), 0.22);
-  color: var(--tone-danger-ink);
+  --accent-rgb: var(--tone-danger-rgb);
+  --accent-ink: var(--tone-danger-ink);
 }
 
 .noticeSuccess {
-  background: rgba(var(--tone-success-rgb), 0.08);
-  border: 1px solid rgba(var(--tone-success-rgb), 0.22);
-  color: var(--tone-success-ink);
+  --accent-rgb: var(--tone-success-rgb);
+  --accent-ink: var(--tone-success-ink);
 }
 
 .noticeIcon {
@@ -195,22 +258,21 @@
 }
 
 /* ── KPI extras ── */
-.trialTrack {
+.trialMeter {
   display: flex;
-  gap: 4px;
+  flex-direction: column;
+  gap: 5px;
   width: 100%;
 }
 
-.trialStep {
-  flex: 1;
-  height: 6px;
-  border-radius: var(--radius-full);
-  background: rgba(var(--ink-rgb), 0.08);
-}
-
-.trialStepFilled {
-  background: linear-gradient(90deg, rgb(var(--accent-rgb)), var(--accent-ink));
-  box-shadow: 0 4px 10px -4px rgba(var(--accent-rgb), 0.6);
+.trialMeterLabel {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
 }
 
 /* ── Key reminder banner ── */
@@ -271,40 +333,36 @@
   }
 }
 
-.inputGroup {
-  position: relative;
+.urlWell {
   width: 100%;
   min-width: 0;
 }
 
-.inputIcon {
-  position: absolute;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
+.urlWell > svg {
   color: var(--accent-ink);
-  pointer-events: none;
-}
-
-.urlInput {
-  height: 52px;
-  padding: 0 16px 0 48px;
-  font-size: 1rem;
 }
 
 .pagesSelect {
-  height: 52px;
-  padding: 0 16px;
+  width: auto;
+  min-height: 54px;
+  padding: 0 40px 0 16px;
+  border-radius: 16px;
   font-size: 0.95rem;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-body);
   cursor: pointer;
 }
 
+@media (max-width: 768px) {
+  .pagesSelect {
+    width: 100%;
+  }
+}
+
 .launchBtn {
-  height: 52px;
+  min-height: 54px;
   padding: 0 28px;
-  border-radius: 12px;
+  border-radius: 16px;
   font-size: 1rem;
   white-space: nowrap;
 }
@@ -325,25 +383,38 @@
   font-weight: 600;
 }
 
+/* Demo target pills: tiny extruded chips that sink while pressed */
 .quickPill {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 11px;
-  border-radius: var(--radius-full);
-  background: rgba(var(--ink-rgb), 0.03);
-  border: 1px solid rgba(var(--ink-rgb), 0.1);
+  padding: 5px 12px;
+  border-radius: var(--neu-radius-pill);
+  background: var(--neu-gradient);
+  border: 1px solid var(--neu-hairline);
+  box-shadow: var(--neu-raised-xs);
   color: var(--text-muted);
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color var(--dur-fast) ease, border-color var(--dur-fast) ease, color var(--dur-fast) ease;
+  transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease, translate var(--dur-fast) var(--ease-out-expo);
 }
 
-.quickPill:hover {
-  background: rgba(var(--accent-rgb), 0.1);
-  border-color: rgba(var(--accent-rgb), 0.3);
+@media (hover: hover) {
+  .quickPill:hover {
+    translate: 0 -1px;
+    border-color: rgba(var(--accent-rgb), 0.3);
+    color: var(--accent-ink);
+    box-shadow: var(--neu-raised-sm);
+  }
+}
+
+.quickPill:active,
+.quickPill[aria-pressed="true"] {
+  translate: 0 0;
+  background: var(--neu-gradient-well);
   color: var(--accent-ink);
+  box-shadow: var(--neu-inset-xs);
 }
 
 .authFields {
@@ -360,31 +431,23 @@
 }
 
 .passwordWrap .field {
-  padding-right: 42px;
+  padding-right: 44px;
 }
 
 .passwordToggle {
   position: absolute;
-  right: 8px;
+  right: 7px;
 }
 
 /* ── Run history ── */
 .search {
-  position: relative;
+  width: min(280px, 100%);
+  min-height: 40px;
+  padding: 0 12px;
 }
 
-.searchIcon {
-  position: absolute;
-  left: 11px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--text-subtle);
-  pointer-events: none;
-}
-
-.searchInput {
-  width: min(260px, 70vw);
-  padding: 7px 12px 7px 32px;
+.search input {
+  min-height: 38px;
   font-size: 0.84rem;
 }
 
@@ -412,6 +475,14 @@
 
 .rowActions a {
   text-decoration: none;
+}
+
+.pdfIcon {
+  color: var(--tone-danger-ink);
+}
+
+.xlsxIcon {
+  color: var(--tone-success-ink);
 }
 
 /* ── AI key manager ── */
@@ -454,40 +525,20 @@
   gap: 8px;
 }
 
+/* Provider segments compose the global .neu-pressable; this only sets type and layout */
 .providerBtn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  justify-content: flex-start;
   padding: 10px 12px;
-  border-radius: 12px;
-  background: var(--surface);
-  border: 1px solid rgba(var(--ink-rgb), 0.08);
-  box-shadow: var(--shadow-sm);
   color: var(--text-muted);
   font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color var(--dur-fast) ease, background-color var(--dur-fast) ease, color var(--dur-fast) ease, translate var(--dur-base) var(--ease-out-expo);
 }
 
 .providerBtn span {
   white-space: nowrap;
 }
 
-@media (hover: hover) {
-  .providerBtn:hover {
-    border-color: rgba(var(--accent-rgb), 0.3);
-    color: var(--text-heading);
-    translate: 0 -1px;
-  }
-}
-
 .providerBtn[aria-pressed="true"] {
-  border-color: rgba(var(--accent-rgb), 0.55);
-  background: rgba(var(--accent-rgb), 0.08);
-  color: var(--text-heading);
   font-weight: 700;
-  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.3), 0 8px 18px -10px rgba(var(--accent-rgb), 0.55);
 }
 
 .upgradeNotice {
@@ -547,32 +598,33 @@
   color: var(--text-muted);
 }
 
+/* Key cards: small extruded tiles; the default engine carries the accent tint */
 .keyCard {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 14px 16px;
-  border-radius: 14px;
-  background: rgba(var(--ink-rgb), 0.025);
-  border: 1px solid rgba(var(--ink-rgb), 0.07);
-  box-shadow: inset 0 1px 2px rgba(var(--ink-rgb), 0.04);
-  transition: border-color var(--dur-fast) ease, translate var(--dur-base) var(--ease-out-expo);
+  border-radius: 16px;
+  background: var(--neu-gradient);
+  border: 1px solid var(--neu-hairline);
+  box-shadow: var(--neu-raised-sm);
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease, translate var(--dur-base) var(--ease-out-expo);
 }
 
 @media (hover: hover) {
   .keyCard:hover {
     border-color: rgba(var(--accent-rgb), 0.25);
+    box-shadow: var(--neu-raised);
     translate: 0 -2px;
   }
 }
 
 .keyCardDefault {
-  background:
-    radial-gradient(120% 90% at 100% 0%, rgba(var(--accent-rgb), 0.1) 0%, rgba(var(--accent-rgb), 0) 60%),
-    rgba(var(--tone-success-rgb), 0.04);
-  border-color: rgba(var(--accent-rgb), 0.35);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 12px 24px -18px rgba(var(--accent-rgb), 0.6);
+  background-image:
+    radial-gradient(120% 90% at 100% 0%, rgba(var(--accent-rgb), 0.14) 0%, rgba(var(--accent-rgb), 0) 60%),
+    var(--neu-gradient);
+  border-color: rgba(var(--accent-rgb), 0.3);
 }
 
 .keyTop {
@@ -594,12 +646,12 @@
   display: inline-grid;
   place-items: center;
   flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  background: var(--surface);
-  border: 1px solid rgba(var(--ink-rgb), 0.08);
-  box-shadow: var(--shadow-sm);
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--neu-well);
+  border: 1px solid var(--neu-hairline);
+  box-shadow: var(--neu-inset-xs);
 }
 
 .keyName {
@@ -613,15 +665,17 @@
   margin-top: 4px;
 }
 
+/* Masked secret: a recessed groove with its actions at the end */
 .keyMask {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 6px 6px 6px 10px;
-  border-radius: 10px;
-  background: var(--surface);
-  border: 1px solid rgba(var(--ink-rgb), 0.07);
+  padding: 5px 5px 5px 12px;
+  border-radius: var(--neu-radius-sm);
+  background: var(--neu-well);
+  border: 1px solid var(--neu-hairline);
+  box-shadow: var(--neu-inset-sm);
   font-size: 0.78rem;
   color: var(--text-body);
 }
@@ -638,4 +692,24 @@
   align-items: center;
   flex-shrink: 0;
   gap: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .checkRow:hover,
+  .quickPill:hover,
+  .keyCard:hover {
+    translate: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .field,
+  .checkRow,
+  .quickPill,
+  .notice,
+  .keyCard,
+  .keyIcon,
+  .keyMask {
+    border-color: CanvasText;
+  }
 }

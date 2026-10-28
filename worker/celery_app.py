@@ -45,9 +45,14 @@ celery_app.conf.update(
     task_time_limit=int(os.getenv("CELERY_TASK_TIME_LIMIT", 2100)),          # hard limit (seconds)
     task_soft_time_limit=int(os.getenv("CELERY_TASK_SOFT_TIME_LIMIT", 2000)),  # soft limit for graceful shutdown
     worker_prefetch_multiplier=1,      # avoid task hoarding
-    task_acks_late=True,               # ensure tasks are re‑queued on failure
+    # Re-queued if the worker dies mid-run; worker.tasks skips the relaunch
+    # when the scan already finished or produced its report.
+    task_acks_late=True,
     worker_max_tasks_per_child=int(os.getenv("CELERY_MAX_TASKS_PER_CHILD", 10)),       # recycle child to release browser-automation leaks
-    worker_max_memory_per_child=int(os.getenv("CELERY_MAX_MEMORY_PER_CHILD_KB", 400000)), # recycle child above ~400MB RSS
+    # Recycles the worker child only. Chromium runs inside the run_qa.py
+    # subprocess, so the memory ceiling for a scan is the container's
+    # mem_limit (docker-compose), not this setting.
+    worker_max_memory_per_child=int(os.getenv("CELERY_MAX_MEMORY_PER_CHILD_KB", 400000)),
     worker_concurrency=int(os.getenv("WORKER_CONCURRENCY", 1)),  # each scan runs Chromium; 1 fits a 1-2 GB droplet
     task_ignore_result=True,           # scan status lives in the DB; don't keep task payloads in Redis
     task_track_started=False,

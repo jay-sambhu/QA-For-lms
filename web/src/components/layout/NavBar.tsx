@@ -16,7 +16,7 @@ import {
 import { TbDashboard, TbCreditCard } from 'react-icons/tb';
 import { HiSparkles } from 'react-icons/hi2';
 import { useAuth } from '../../context/AuthContext';
-import styles from '../../app/page.module.css';
+import s from './shell3d.module.css';
 
 const tierChipClass = (isAdmin: boolean, plan: string) => {
   if (isAdmin) return 'chip--violet';
@@ -58,23 +58,23 @@ export const NavBar: React.FC = () => {
   const tierChip = tierChipClass(userIsAdmin, userPlan);
 
   return (
-    <header className={`${styles.header} glass-3d`}>
+    <header className={`${s.header} glass-3d`}>
       {/* Brand Logo */}
-      <Link href="/" className={styles.logo} onClick={() => setMobileMenuOpen(false)} aria-label="JASUSS.TECH home">
-        <img src="/logo-icon.png" alt="" width={36} height={36} className={styles.logoMark} />
-        <span className={styles.logoText}>
+      <Link href="/" className={s.logo} onClick={() => setMobileMenuOpen(false)} aria-label="JASUSS.TECH home">
+        <img src="/logo-icon.png" alt="" width={36} height={36} className={s.logoMark} />
+        <span className={s.logoText}>
           <span>JASUSS</span>
-          <span className={styles.logoSub}>.TECH</span>
+          <span className={s.logoSub}>.TECH</span>
         </span>
       </Link>
 
       {/* Desktop Navigation Links */}
-      <nav className={styles.headerRight} aria-label="Main Navigation">
+      <nav className={s.headerRight} aria-label="Main Navigation">
         {navItems.map(({ href, label, Icon, active, admin }) => (
           <Link
             key={href}
             href={href}
-            className={`${styles.navLink} ${active ? styles.navLinkActive : ''} ${admin ? 'tone-violet' : ''}`}
+            className={`${s.navLink} ${active ? s.navLinkActive : ''} ${admin ? 'tone-violet' : ''}`}
             aria-current={active ? 'page' : undefined}
           >
             <Icon size={17} />
@@ -82,19 +82,19 @@ export const NavBar: React.FC = () => {
           </Link>
         ))}
 
-        <div className={styles.headerActions}>
-          <span className={`chip chip--success chip--live ${styles.headerEngine}`}>Engine online</span>
+        <div className={s.headerActions}>
+          <span className={`chip chip--success chip--live ${s.headerEngine}`}>Engine online</span>
 
           {session ? (
             <>
               {/* Quick direct dashboard navigation pill */}
               {userIsAdmin ? (
-                <Link href="/admin" className={`${styles.navQuickLink} tone-violet`}>
+                <Link href="/admin" className={`btn btn-secondary btn-sm tone-violet ${s.navQuick}`}>
                   <RiShieldUserFill size={15} />
                   <span>Admin Console</span>
                 </Link>
               ) : (
-                <Link href="/dashboard" className={styles.navQuickLink}>
+                <Link href="/dashboard" className={`btn btn-secondary btn-sm tone-primary ${s.navQuick}`}>
                   <TbDashboard size={15} />
                   <span>My Dashboard</span>
                 </Link>
@@ -103,11 +103,11 @@ export const NavBar: React.FC = () => {
               <button
                 type="button"
                 onClick={openProfileModal}
-                className={styles.userBadge}
+                className={s.userBadge}
                 title="Click to view Account & Settings"
                 aria-label="Open account and settings"
               >
-                <span className={`${styles.userAvatar} ${userIsAdmin ? styles.userAvatarAdmin : ''}`} aria-hidden="true">
+                <span className={`${s.userAvatar} ${userIsAdmin ? s.userAvatarAdmin : ''}`} aria-hidden="true">
                   {avatarChar ?? <RiUser3Line size={14} />}
                 </span>
                 <span className={`chip chip--sm ${tierChip}`}>{tierLabel}</span>
@@ -129,16 +129,16 @@ export const NavBar: React.FC = () => {
       </nav>
 
       {/* Mobile & Tablet Controls (Right aligned on <= 900px) */}
-      <div className={styles.mobileHeaderControls}>
+      <div className={s.mobileHeaderControls}>
         {session ? (
           <button
             type="button"
             onClick={openProfileModal}
-            className={styles.userBadge}
+            className={s.userBadge}
             title="Profile"
             aria-label="Open account and settings"
           >
-            <span className={`${styles.userAvatar} ${styles.userAvatarSm} ${userIsAdmin ? styles.userAvatarAdmin : ''}`} aria-hidden="true">
+            <span className={`${s.userAvatar} ${s.userAvatarSm} ${userIsAdmin ? s.userAvatarAdmin : ''}`} aria-hidden="true">
               {avatarChar ?? <RiUser3Line size={13} />}
             </span>
             <span className={`chip chip--sm ${tierChip}`}>{tierLabel}</span>
@@ -153,7 +153,7 @@ export const NavBar: React.FC = () => {
         <button
           type="button"
           onClick={() => setMobileMenuOpen((prev) => !prev)}
-          className={styles.mobileMenuToggle}
+          className={s.mobileMenuToggle}
           aria-label={mobileMenuOpen ? 'Close Navigation Menu' : 'Open Navigation Menu'}
           aria-expanded={mobileMenuOpen}
           aria-controls="mobile-nav-drawer"
@@ -164,14 +164,14 @@ export const NavBar: React.FC = () => {
 
       {/* Mobile & Tablet Dropdown Drawer */}
       {mobileMenuOpen && (
-        <div id="mobile-nav-drawer" className={styles.mobileNavDrawer}>
-          <nav className={styles.mobileNavList} aria-label="Mobile Navigation">
+        <div id="mobile-nav-drawer" className={s.mobileNavDrawer}>
+          <nav className={s.mobileNavList} aria-label="Mobile Navigation">
             {navItems.map(({ href, mobileLabel, Icon, active, admin }) => (
               <Link
                 key={href}
                 href={href}
                 onClick={() => setMobileMenuOpen(false)}
-                className={`${styles.mobileNavLink} ${active ? styles.mobileNavLinkActive : ''} ${admin ? 'tone-violet' : ''}`}
+                className={`${s.mobileNavLink} ${active ? s.mobileNavLinkActive : ''} ${admin ? 'tone-violet' : ''}`}
                 aria-current={active ? 'page' : undefined}
               >
                 <Icon size={18} />
@@ -180,8 +180,8 @@ export const NavBar: React.FC = () => {
             ))}
           </nav>
 
-          <div className={styles.mobileNavFooter}>
-            <div className={styles.mobileNavStatus}>
+          <div className={s.mobileNavFooter}>
+            <div className={s.mobileNavStatus}>
               <span className="chip chip--success chip--live">Nexus Engine Online · 99.9%</span>
             </div>
 
@@ -205,14 +205,14 @@ export const NavBar: React.FC = () => {
                     setMobileMenuOpen(false);
                     signOut();
                   }}
-                  className={`btn btn-secondary ${styles.profileLogoutBtn}`}
+                  className={`btn btn-secondary ${s.logoutBtn}`}
                 >
                   <RiLogoutBoxRLine size={16} />
                   <span>Log Out</span>
                 </button>
               </>
             ) : (
-              <div className={styles.mobileNavAuthGrid}>
+              <div className={s.mobileNavAuthGrid}>
                 <button
                   type="button"
                   onClick={() => {

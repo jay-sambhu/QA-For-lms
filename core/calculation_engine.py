@@ -189,6 +189,17 @@ class CalculationEngine:
         return "P3"
 
     @classmethod
+    def priority_from_severity(cls, raw_sev: Optional[str]) -> str:
+        """Deterministic priority for a finding that carries none."""
+        return {
+            "critical": "P0",
+            "high": "P1",
+            "medium": "P2",
+            "low": "P3",
+            "info": "P4",
+        }[cls.normalize_severity(raw_sev)]
+
+    @classmethod
     def normalize_classification(cls, raw_cls: Optional[str]) -> str:
         """Normalize classification string with safe fallback."""
         if not raw_cls:
@@ -375,7 +386,9 @@ class CalculationEngine:
                 m.passed += 1
             elif status in ("failed", "fail", "failure"):
                 m.failed += 1
-            elif status in ("manual_review", "skipped", "skip"):
+            elif status in ("manual_review", "skipped", "skip", "needs_review", "inconclusive", "not_executed"):
+                # Anything the executor could not verify automatically is a
+                # skip, never a pass and never an error.
                 m.skipped += 1
             elif status in ("blocked", "block"):
                 m.blocked += 1
@@ -431,7 +444,7 @@ class CalculationEngine:
             cand = f.get("candidate") or {}
             triage = cand.get("triage") or {}
             raw_pri = f.get("priority") or triage.get("priority") or cand.get("priority")
-            pri = cls.normalize_priority(raw_pri)
+            pri = cls.normalize_priority(raw_pri) if raw_pri else cls.priority_from_severity(f.get("severity"))
             m.by_priority[pri] = m.by_priority.get(pri, 0) + 1
 
             # 3. Classification
@@ -470,10 +483,28 @@ class CalculationEngine:
         """
         m = CrawlMetrics()
         if crawl_data:
+            pages = crawl_data.get("pages") or []
             m.pages_crawled = crawl_data.get("pages_crawled", 0) or 0
-            m.pages_discovered = crawl_data.get("pages_discovered", m.pages_crawled) or 0
-            m.pages_failed = crawl_data.get("pages_failed", 0) or 0
+            m.pages_discovered = max(
+                crawl_data.get("pages_discovered", 0) or 0,
+                m.pages_crawled,
+            )
+            pages_failed = crawl_data.get("pages_failed")
+            if pages_failed is None:
+                attempted = {p.get("actual_url") or str(p.get("url", "")).rsplit(" [", 1)[0] for p in pages}
+                succeeded = {
+                    p.get("actual_url") or str(p.get("url", "")).rsplit(" [", 1)[0]
+                    for p in pages if not p.get("error")
+                }
+                pages_failed = len(attempted - succeeded)
+            m.pages_failed = pages_failed or 0
             m.max_pages = max_pages if max_pages is not None else (crawl_data.get("max_pages", 0) or 0)
+
+            devices_tested = crawl_data.get("devices_tested")
+            if not devices_tested:
+                devices_tested = len({p.get("device") for p in pages if p.get("device")})
+            if devices_tested:
+                m.devices_tested = int(devices_tested)
         elif max_pages is not None:
             m.max_pages = max_pages
 
@@ -519,19 +550,77 @@ class CalculationEngine:
         m.pass_rate = cls.calculate_rate(m.passed, m.interactions_attempted)
         return m
 
+    # Base deduction of the first finding in each severity bucket and the
+    # most the bucket can ever cost. Later findings in the same bucket count
+    # less (diminishing returns), so seven high findings cannot zero a site.
+    SEVERITY_BASE_DEDUCTION = {"critical": 25.0, "high": 15.0, "medium": 5.0, "low": 1.0}
+    SEVERITY_CAP = {"critical": 40.0, "high": 30.0, "medium": 15.0, "low": 5.0}
+
+    # How much of a finding counts, by how sure the triage is that it is a
+    # real bug. Expected behaviour and informational notes cost nothing.
+    CLASSIFICATION_WEIGHT = {
+        "confirmed_bug": 1.0,
+        "high_confidence_candidate": 0.7,
+        "needs_manual_review": 0.4,
+        "expected_behavior": 0.0,
+        "informational": 0.0,
+        "duplicate": 0.0,
+        "ignored": 0.0,
+    }
+    THIRD_PARTY_WEIGHT = 0.3
+
+    @classmethod
+    def finding_weight(cls, finding: Dict[str, Any]) -> float:
+        """Weight of one finding in the quality score (0.0 - 1.0)."""
+        cand = finding.get("candidate") or {}
+        triage = cand.get("triage") or {}
+        raw_cls = finding.get("classification") or triage.get("classification") or cand.get("classification")
+        if raw_cls is None:
+            # Deterministic findings (e.g. auth findings from the crawler)
+            # that carry no classification are treated as confirmed.
+            classification = "confirmed_bug"
+        else:
+            classification = cls.normalize_classification(raw_cls)
+        weight = cls.CLASSIFICATION_WEIGHT.get(classification, 0.0)
+
+        first_party = finding.get("first_party")
+        if first_party is None:
+            first_party = cand.get("first_party")
+        if first_party is False:
+            weight *= cls.THIRD_PARTY_WEIGHT
+        return max(0.0, min(1.0, weight))
+
+    @classmethod
+    def severity_deduction(cls, severity: str, weighted_count: float) -> float:
+        """Deduction for a severity bucket holding `weighted_count` findings.
+
+        deduction = cap * (1 - (1 - base/cap) ** n): the first finding costs
+        `base`, each further one less, saturating at `cap`."""
+        base = cls.SEVERITY_BASE_DEDUCTION.get(severity, 0.0)
+        cap = cls.SEVERITY_CAP.get(severity, 0.0)
+        if base <= 0 or cap <= 0 or weighted_count <= 0:
+            return 0.0
+        return cap * (1.0 - (1.0 - base / cap) ** weighted_count)
+
     @classmethod
     def calculate_quality_score(
         cls,
         finding_metrics: FindingMetrics,
         test_case_metrics: TestCaseMetrics,
+        findings: Optional[List[Dict[str, Any]]] = None,
     ) -> QualityScore:
         """
         Calculate deterministic QA Health Score from 0 to 100 and letter grade.
-        
-        Formula:
-        Score = 100 - (25 * Critical) - (15 * High) - (5 * Medium) - (1 * Low) - (0.3 * FailRate)
-        Clamped to [0, 100].
-        
+
+        Each finding contributes its classification weight (confirmed 1.0,
+        high-confidence 0.7, manual review 0.4, expected/informational 0)
+        times 0.3 when it is third-party, to its severity bucket. Each bucket
+        deducts with diminishing returns and a cap (critical 25 -> 40,
+        high 15 -> 30, medium 5 -> 15, low 1 -> 5), so the score is bounded
+        and a handful of unconfirmed candidates cannot fail a healthy site.
+        Test-case pass/fail rates are not part of the score until the
+        executor verifies cases for real.
+
         Grade Boundaries:
         - 90 - 100: "A" ("Excellent")
         - 80 - 89:  "B" ("Good")
@@ -541,20 +630,17 @@ class CalculationEngine:
         """
         score = 100.0
 
-        # Finding severity deductions
-        crit_count = finding_metrics.by_severity.get("critical", 0)
-        high_count = finding_metrics.by_severity.get("high", 0)
-        med_count = finding_metrics.by_severity.get("medium", 0)
-        low_count = finding_metrics.by_severity.get("low", 0)
+        weighted: Dict[str, float] = {sev: 0.0 for sev in cls.SEVERITY_LEVELS}
+        if findings:
+            for f in cls.deduplicate_findings(findings):
+                sev = cls.normalize_severity(f.get("severity"))
+                weighted[sev] = weighted.get(sev, 0.0) + cls.finding_weight(f)
+        else:
+            for sev in cls.SEVERITY_LEVELS:
+                weighted[sev] = float(finding_metrics.by_severity.get(sev, 0) or 0)
 
-        score -= crit_count * 25.0
-        score -= high_count * 15.0
-        score -= med_count * 5.0
-        score -= low_count * 1.0
-
-        # Test case failure rate deduction
-        if test_case_metrics.total > 0:
-            score -= (test_case_metrics.fail_rate * 0.3)
+        for sev in ("critical", "high", "medium", "low"):
+            score -= cls.severity_deduction(sev, weighted.get(sev, 0.0))
 
         # Strict clamping between 0 and 100
         final_score = int(max(0.0, min(100.0, round(score))))
@@ -621,6 +707,7 @@ class CalculationEngine:
         quality_score = cls.calculate_quality_score(
             finding_metrics=finding_metrics,
             test_case_metrics=tc_metrics,
+            findings=findings,
         )
 
         return CanonicalQAMetrics(

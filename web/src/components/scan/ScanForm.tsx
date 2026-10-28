@@ -19,16 +19,24 @@ import {
   TbKey,
   TbLoader2,
 } from 'react-icons/tb';
+import { deriveTrialState, type TrialState, type TrialStatus } from '../dashboard/trial';
 import d from '../dashboard/dashboard3d.module.css';
 
-export type TrialStatus = {
-  enabled: boolean;
-  total: number;
-  used: number;
-  remaining: number;
-  has_own_key: boolean;
-  daily_available: boolean;
-};
+export type { TrialStatus, TrialState } from '../dashboard/trial';
+
+const DEMO_TARGETS = [
+  { label: 'example.com', url: 'https://example.com' },
+  { label: 'Hacker News', url: 'https://news.ycombinator.com' },
+  { label: 'HTTPBin Demo', url: 'https://httpbin.org/status/200' },
+] as const;
+
+const PAGE_OPTIONS = [
+  { value: '1', label: '1 page (Quick)' },
+  { value: '5', label: '5 pages' },
+  { value: '10', label: '10 pages (Standard)' },
+  { value: '20', label: '20 pages (Deep)' },
+  { value: '50', label: '50 pages (Full)' },
+] as const;
 
 interface ScanFormProps {
   onSubmit: (data: {
@@ -42,6 +50,8 @@ interface ScanFormProps {
   trial?: TrialStatus | null;
   /** Whether the user has connected their own AI key (null while checking) */
   hasApiKey?: boolean | null;
+  /** Flags derived once by the parent; derived locally when omitted */
+  trialState?: TrialState;
   /** Opens the key setup (profile modal or the key manager) */
   onConfigureKey?: () => void;
 }
@@ -52,6 +62,7 @@ export const ScanForm: React.FC<ScanFormProps> = ({
   error,
   trial,
   hasApiKey,
+  trialState,
   onConfigureKey,
 }) => {
   const [url, setUrl] = useState('');
@@ -86,9 +97,7 @@ export const ScanForm: React.FC<ScanFormProps> = ({
     onSubmit(payload);
   };
 
-  const trialActive = hasApiKey === false && !!trial?.enabled && trial.remaining > 0;
-  const trialExhausted = hasApiKey === false && !!trial?.enabled && trial.remaining <= 0;
-  const keyMissing = hasApiKey === false && !trial?.enabled;
+  const { trialActive, trialExhausted, keyMissing } = trialState ?? deriveTrialState(trial, hasApiKey);
 
   return (
     <form onSubmit={handleSubmit} className={d.console} id="scan-launcher">
@@ -125,18 +134,17 @@ export const ScanForm: React.FC<ScanFormProps> = ({
       </div>
 
       <div className={d.inputRow}>
-        <div className={d.inputGroup}>
-          <RiGlobalLine className={d.inputIcon} size={20} />
+        <label className={`neu-input neu-input--lg tone-primary ${d.urlWell}`}>
+          <RiGlobalLine size={20} aria-hidden="true" />
           <input
             type="url"
             placeholder="https://example.com or enter your target web application URL"
-            className={`${d.field} ${d.urlInput}`}
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             aria-label="Target URL"
             required
           />
-        </div>
+        </label>
 
         <select
           id="max-pages"
@@ -146,11 +154,11 @@ export const ScanForm: React.FC<ScanFormProps> = ({
           title="Maximum Pages to Crawl"
           aria-label="Maximum pages to crawl"
         >
-          <option value="1">1 page (Quick)</option>
-          <option value="5">5 pages</option>
-          <option value="10">10 pages (Standard)</option>
-          <option value="20">20 pages (Deep)</option>
-          <option value="50">50 pages (Full)</option>
+          {PAGE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
         </select>
 
         <button type="submit" className={`btn btn-primary ${d.launchBtn}`} disabled={loading}>
@@ -164,19 +172,21 @@ export const ScanForm: React.FC<ScanFormProps> = ({
         <span className={d.quickLabel}>
           <TbSparkles size={14} /> Instant demo targets:
         </span>
-        <button type="button" onClick={() => setUrl('https://example.com')} className={d.quickPill}>
-          <TbWorldWww size={13} /> example.com
-        </button>
-        <button type="button" onClick={() => setUrl('https://news.ycombinator.com')} className={d.quickPill}>
-          <TbWorldWww size={13} /> Hacker News
-        </button>
-        <button type="button" onClick={() => setUrl('https://httpbin.org/status/200')} className={d.quickPill}>
-          <TbWorldWww size={13} /> HTTPBin Demo
-        </button>
+        {DEMO_TARGETS.map((t) => (
+          <button
+            key={t.url}
+            type="button"
+            onClick={() => setUrl(t.url)}
+            className={d.quickPill}
+            aria-pressed={url === t.url}
+          >
+            <TbWorldWww size={13} /> {t.label}
+          </button>
+        ))}
       </div>
 
       {/* Authenticated Website Toggle */}
-      <div>
+      <div className="tone-violet">
         <label className={d.checkRow}>
           <input
             type="checkbox"
@@ -185,7 +195,7 @@ export const ScanForm: React.FC<ScanFormProps> = ({
             className={d.checkbox}
           />
           <span className={d.checkText}>
-            <TbShieldLock size={17} color="#9333ea" /> Provide auto-login credentials (optional)
+            <TbShieldLock size={17} /> Provide auto-login credentials (optional)
           </span>
         </label>
       </div>

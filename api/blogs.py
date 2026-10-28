@@ -4,17 +4,23 @@ Handles dynamic blog post retrieval, categorization, and automatic database seed
 """
 
 from fastapi import APIRouter, HTTPException, Query, Depends
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 import json
-import re
+import logging
+
+from sqlalchemy import func
 
 from db import SessionLocal
 from models import BlogPost
+from api.rate_limiter import rate_limit_public
+
+logger = logging.getLogger("ai_qa_agent.blogs")
 
 blogs_router = APIRouter(
     prefix="/api/v1/blogs",
     tags=["Public Blogs"],
+    dependencies=[Depends(rate_limit_public)],
 )
 
 INITIAL_SEED_POSTS = [
@@ -146,13 +152,13 @@ def seed_default_blogs_if_empty():
                     db.add(post)
                 db.commit()
     except Exception as exc:
-        print(f"[BLOG SEED ERROR] Failed to seed initial blog posts: {exc}")
+        logger.error("Failed to seed initial blog posts: %s", exc)
 
 
 @blogs_router.get("")
-async def get_published_blogs(
-    category: Optional[str] = Query(None, description="Filter by category"),
-    search: Optional[str] = Query(None, description="Search in title, excerpt, or tags"),
+def get_published_blogs(
+    category: Optional[str] = Query(None, description="Filter by category", max_length=120),
+    search: Optional[str] = Query(None, description="Search in title, excerpt, or tags", max_length=200),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> Dict[str, Any]:
@@ -188,21 +194,25 @@ async def get_published_blogs(
 
 
 @blogs_router.get("/categories")
-async def get_blog_categories() -> Dict[str, Any]:
-    """Retrieve distinct categories and count of published posts per category."""
+def get_blog_categories() -> Dict[str, Any]:
+    """Distinct categories with the count of published posts in each."""
     with SessionLocal() as db:
-        posts = db.query(BlogPost).filter(BlogPost.status == "published").all()
+        rows = (
+            db.query(BlogPost.category, func.count(BlogPost.id))
+            .filter(BlogPost.status == "published")
+            .group_by(BlogPost.category)
+            .all()
+        )
         counts: Dict[str, int] = {}
-        for p in posts:
-            c = p.category or "General"
-            counts[c] = counts.get(c, 0) + 1
-
+        for category, count in rows:
+            name = category or "General"
+            counts[name] = counts.get(name, 0) + int(count)
         category_list = [{"name": cat, "count": cnt} for cat, cnt in sorted(counts.items())]
         return {"categories": category_list, "total": len(category_list)}
 
 
 @blogs_router.get("/{slug}")
-async def get_blog_by_slug(slug: str) -> Dict[str, Any]:
+def get_blog_by_slug(slug: str) -> Dict[str, Any]:
     """Retrieve a single published blog post by unique slug."""
     clean_slug = slug.strip().lower()
     with SessionLocal() as db:

@@ -352,7 +352,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeysUpdated }) =
                       key={p.id}
                       type="button"
                       onClick={() => handleProviderSelect(p.id)}
-                      className={d.providerBtn}
+                      className={`neu-pressable ${d.providerBtn}`}
                       aria-pressed={isSelected}
                     >
                       {renderProviderIcon(p.id, 16)}

@@ -10,12 +10,23 @@ disable them for local development.
 
 import ipaddress
 import os
+import re
 import socket
-from typing import Optional
+import threading
+from typing import Dict, Optional
 from urllib.parse import urlparse
 
 BLOCKED_HOSTS = {"169.254.169.254", "metadata.google.internal", "metadata.google"}
 BLOCKED_SUFFIXES = ("localhost", "local", "internal", "intranet")
+
+# Hostnames that are not a dotted name but still parse as an IPv4 address in
+# Chromium: a bare decimal (2130706433), a hex literal (0x7f000001) or dotted
+# segments with hex/octal parts (0x7f.0.0.1, 0177.0.0.1). ipaddress rejects
+# these so they would otherwise slip past the private-range check.
+_NUMERIC_SEGMENT = re.compile(r"^(?:0x[0-9a-f]+|\d+)$")
+
+_RESOLVE_LOCK = threading.Lock()
+_RESOLVE_CACHE: Dict[str, Optional[str]] = {}
 
 
 def local_targets_allowed() -> bool:
@@ -39,8 +50,25 @@ def _ip_is_private(ip_str: str) -> bool:
     )
 
 
+def _is_numeric_encoding(host: str) -> bool:
+    """True for IP literals written in a form ipaddress does not parse."""
+    segments = host.split(".")
+    if not all(_NUMERIC_SEGMENT.match(seg) for seg in segments if seg != ""):
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return False
+    except ValueError:
+        return True
+
+
 def is_blocked_host(host: Optional[str]) -> bool:
-    """Cheap check on a literal hostname / IP; no DNS lookup."""
+    """Cheap check on a literal hostname / IP; no DNS lookup.
+
+    Single-label hostnames (``api``, ``redis``, ``db``) are blocked: on the
+    public internet they never resolve, inside a compose network they are the
+    other containers.
+    """
     host = (host or "").lower().strip("[]").rstrip(".")
     if not host:
         return True
@@ -48,7 +76,46 @@ def is_blocked_host(host: Optional[str]) -> bool:
         return True
     if any(host == s or host.endswith("." + s) for s in BLOCKED_SUFFIXES):
         return True
-    return _ip_is_private(host)
+    if _ip_is_private(host):
+        return True
+    if _is_numeric_encoding(host):
+        return True
+    if ":" not in host and "." not in host:
+        return True
+    return False
+
+
+def resolve_private_reason(host: Optional[str]) -> Optional[str]:
+    """
+    Return a reason string if ``host`` is a blocked literal or resolves (DNS)
+    to a private / reserved address, else None. Results are memoised for the
+    life of the process so a crawl pays one lookup per distinct host; DNS
+    failures are not treated as blocked, the request simply fails to load.
+    """
+    host = (host or "").lower().strip("[]").rstrip(".")
+    if is_blocked_host(host):
+        return f"{host or 'empty host'} is a private or reserved address"
+    with _RESOLVE_LOCK:
+        if host in _RESOLVE_CACHE:
+            return _RESOLVE_CACHE[host]
+    reason = None
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except (socket.gaierror, UnicodeError, OSError):
+        infos = []
+    for info in infos:
+        ip = info[4][0]
+        if _ip_is_private(ip):
+            reason = f"{host} resolves to private address {ip}"
+            break
+    with _RESOLVE_LOCK:
+        _RESOLVE_CACHE[host] = reason
+    return reason
+
+
+def clear_resolve_cache() -> None:
+    with _RESOLVE_LOCK:
+        _RESOLVE_CACHE.clear()
 
 
 def url_targets_private_network(url: str) -> Optional[str]:
@@ -58,14 +125,4 @@ def url_targets_private_network(url: str) -> Optional[str]:
     blocked: the crawl will simply fail to load the page.
     """
     host = (urlparse(url).hostname or "").lower()
-    if is_blocked_host(host):
-        return f"{host or url!r} is a private or reserved address"
-    try:
-        infos = socket.getaddrinfo(host, None)
-    except (socket.gaierror, UnicodeError, OSError):
-        return None
-    for info in infos:
-        ip = info[4][0]
-        if _ip_is_private(ip):
-            return f"{host} resolves to private address {ip}"
-    return None
+    return resolve_private_reason(host)

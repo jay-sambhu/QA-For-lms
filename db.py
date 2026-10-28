@@ -1,5 +1,4 @@
 import os
-from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 
@@ -34,30 +33,5 @@ else:
 
 engine = create_engine(db_url, **engine_kwargs)
 
-# Scoped session factory for thread‑safe sessions (compatible with FastAPI & Celery workers)
+# Scoped session factory for thread-safe sessions (compatible with FastAPI & Celery workers)
 SessionLocal = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
-
-
-def get_db():
-    """FastAPI dependency that yields a SQLAlchemy session.
-    The session is automatically closed after the request.
-    """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-@contextmanager
-def get_db_session():
-    """Context manager for standalone database operations with auto commit/rollback."""
-    session = SessionLocal()
-    try:
-        yield session
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()

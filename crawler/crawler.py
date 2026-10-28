@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime
 from urllib.parse import urljoin, urlparse
 
@@ -41,6 +42,217 @@ VIEWPORT_ALIASES = {
     "tablet": "iPad (gen 7)",
     "ipad": "iPad (gen 7)",
 }
+
+# A redirect landing on one of these paths means the requested page sits
+# behind a login wall.
+AUTH_PATH_RE = re.compile(r"/(login|log-in|signin|sign-in|sign_in|auth|sso|oauth|account/login|users/sign_in)(/|$|\?)", re.I)
+
+# Buttons whose accessible name suggests a state change on the customer's
+# site. Click exploration (opt-in) never presses these.
+DANGEROUS_CLICK_RE = re.compile(
+    r"log ?out|sign ?out|delete|remove|submit|pay|buy|checkout|send|confirm|unsubscribe|cancel|purchase|order|apply",
+    re.I,
+)
+
+# Maximum full-page capture height in CSS pixels. Chromium rasterises the
+# whole clip in memory (width x height x 4 bytes), so an infinite-scroll page
+# is capped instead of exhausting the worker's memory limit.
+DEFAULT_SCREENSHOT_MAX_HEIGHT = 6000
+
+# JavaScript evaluated in the page for the deterministic responsive and
+# accessibility checks. Only elements that are rendered, visible, not hidden
+# by an overflow-clipping ancestor and not deliberately off-canvas count as
+# "outside the viewport"; otherwise every mobile drawer, carousel slide and
+# collapsed menu on a normal site produced a HIGH finding.
+RESPONSIVE_CHECK_JS = """() => {
+    const docEl = document.documentElement;
+    const docWidth = docEl ? docEl.scrollWidth : 0;
+    const winWidth = window.innerWidth || 1000;
+    const winHeight = window.innerHeight || 800;
+    const overflowPixels = Math.max(0, docWidth - winWidth);
+    const hasHorizontalOverflow = docWidth > (winWidth + 5);
+
+    const isVisible = (el) => {
+        try {
+            if (typeof el.checkVisibility === 'function') {
+                if (!el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) return false;
+            } else {
+                const cs = getComputedStyle(el);
+                if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) return false;
+            }
+        } catch (e) { return false; }
+        if (el.getAttribute('aria-hidden') === 'true' || el.getAttribute('tabindex') === '-1') return false;
+        if (el.closest('[aria-hidden="true"], [hidden], [inert]')) return false;
+        return true;
+    };
+
+    const clippedByAncestor = (el, rect) => {
+        let node = el.parentElement;
+        while (node && node !== document.body && node !== docEl) {
+            let cs;
+            try { cs = getComputedStyle(node); } catch (e) { break; }
+            const ox = cs.overflowX, oy = cs.overflowY;
+            if (ox !== 'visible' || oy !== 'visible' || cs.clipPath !== 'none' || cs.contain.includes('paint')) {
+                const r = node.getBoundingClientRect();
+                if (rect.left >= r.right - 1 || rect.right <= r.left + 1 || rect.top >= r.bottom - 1 || rect.bottom <= r.top + 1) {
+                    return true;
+                }
+                if (ox === 'hidden' || ox === 'clip' || ox === 'auto' || ox === 'scroll') {
+                    if (rect.right > r.right + 1 || rect.left < r.left - 1) return true;
+                }
+            }
+            node = node.parentElement;
+        }
+        return false;
+    };
+
+    let elementsOutside = 0;
+    let formsOutside = 0;
+    let clippedButtons = 0;
+    const samples = [];
+
+    const elements = Array.from(document.querySelectorAll('button, a, input, select, form, [role="button"], img, h1, h2, h3, header, nav'));
+    for (const el of elements) {
+        try {
+            const rect = el.getBoundingClientRect();
+            if (!rect || (rect.width === 0 && rect.height === 0)) continue;
+            if (rect.bottom < 0 || rect.top > Math.max(winHeight * 4, 4000)) continue;
+            const outsideRight = rect.right > (winWidth + 10) && rect.left < winWidth;
+            const outsideLeft = rect.left < -10 && rect.right > 0;
+            if (!outsideRight && !outsideLeft) continue;
+            if (!isVisible(el)) continue;
+            if (clippedByAncestor(el, rect)) continue;
+            const cs = getComputedStyle(el);
+            if (cs.position === 'fixed' && (cs.transform !== 'none' || cs.translate !== 'none')) continue;
+
+            elementsOutside++;
+            const tag = (el.tagName || '').toUpperCase();
+            if (tag === 'FORM' || tag === 'INPUT' || tag === 'SELECT') formsOutside++;
+            if (tag === 'BUTTON' || tag === 'A' || el.getAttribute('role') === 'button') clippedButtons++;
+            if (samples.length < 5) {
+                const text = (el.innerText || el.getAttribute('aria-label') || el.getAttribute('alt') || '').trim().slice(0, 40);
+                samples.push(`${tag.toLowerCase()}${el.id ? '#' + el.id : ''}${text ? ' "' + text + '"' : ''} right=${Math.round(rect.right)}`);
+            }
+        } catch (e) {}
+    }
+
+    const nav = document.querySelector('nav, header, [role="navigation"]');
+    let navVisible = false;
+    if (nav) {
+        try {
+            const rect = nav.getBoundingClientRect();
+            navVisible = rect && rect.width > 0 && rect.height > 0 && rect.top < winHeight && rect.bottom > 0;
+        } catch (e) {}
+    }
+
+    return {
+        horizontal_overflow: hasHorizontalOverflow,
+        overflow_pixels: overflowPixels,
+        elements_outside_viewport: elementsOutside,
+        forms_outside_viewport: formsOutside,
+        clipped_buttons: clippedButtons,
+        navigation_visible: navVisible,
+        viewport_width: winWidth,
+        viewport_height: winHeight,
+        samples: samples
+    };
+}"""
+
+# Cheap, deterministic accessibility counts. Only rules that can be judged
+# from the DOM without heuristics; the perf/a11y engine turns them into
+# violations.
+A11Y_CHECK_JS = """() => {
+    const visible = (el) => {
+        try { return el.getClientRects().length > 0; } catch (e) { return false; }
+    };
+    const imgs = Array.from(document.images || []);
+    const imagesMissingAlt = imgs.filter(i => visible(i) && !i.hasAttribute('alt') && i.getAttribute('role') !== 'presentation').length;
+    const inputs = Array.from(document.querySelectorAll('input:not([type=hidden]):not([type=submit]):not([type=button]):not([type=reset]), select, textarea'));
+    const inputsWithoutLabel = inputs.filter(i => {
+        if (!visible(i)) return false;
+        if (i.getAttribute('aria-label') || i.getAttribute('aria-labelledby') || i.getAttribute('title')) return false;
+        if (i.id && document.querySelector(`label[for="${CSS.escape(i.id)}"]`)) return false;
+        return !i.closest('label');
+    }).length;
+    const buttons = Array.from(document.querySelectorAll('button, [role="button"], a[href]'));
+    const controlsWithoutName = buttons.filter(b => {
+        if (!visible(b)) return false;
+        const name = (b.innerText || '').trim() || b.getAttribute('aria-label') || b.getAttribute('aria-labelledby') || b.getAttribute('title');
+        if (name) return false;
+        const img = b.querySelector('img[alt], svg[aria-label], svg title');
+        return !img;
+    }).length;
+    return {
+        images_missing_alt: imagesMissingAlt,
+        inputs_without_label: inputsWithoutLabel,
+        controls_without_name: controlsWithoutName,
+        has_lang: !!(document.documentElement.getAttribute('lang') || '').trim(),
+        has_title: !!(document.title || '').trim(),
+        h1_count: document.querySelectorAll('h1').length,
+        has_main_landmark: !!document.querySelector('main, [role="main"]'),
+        total_images: imgs.length,
+        total_inputs: inputs.length
+    };
+}"""
+
+# Real navigation timings from the Navigation Timing API. Values are 0 until
+# the corresponding event fires, which the caller turns into null.
+TIMING_JS = """() => {
+    const entries = performance.getEntriesByType ? performance.getEntriesByType('navigation') : [];
+    const n = entries && entries[0];
+    if (!n) return null;
+    const resources = performance.getEntriesByType('resource') || [];
+    let slow = 0;
+    let bytes = 0;
+    for (const r of resources) {
+        if (r.duration > 1000) slow++;
+        bytes += r.transferSize || 0;
+    }
+    return {
+        dom_content_loaded_ms: Math.round(n.domContentLoadedEventEnd || 0),
+        load_event_ms: Math.round(n.loadEventEnd || 0),
+        response_end_ms: Math.round(n.responseEnd || 0),
+        ttfb_ms: Math.round(n.responseStart || 0),
+        transfer_size: n.transferSize || 0,
+        resource_count: resources.length,
+        resource_bytes: bytes,
+        slow_resources: slow
+    };
+}"""
+
+LOGIN_FORM_ERROR_JS = """() => {
+    const visible = (el) => {
+        try {
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+        } catch (e) { return false; }
+    };
+    const scopes = [];
+    for (const f of document.querySelectorAll('form')) {
+        if (f.querySelector("input[type='password'], input[name*='pass' i], input[type='email'], input[name*='user' i]")) {
+            scopes.push(f);
+            if (f.parentElement) scopes.push(f.parentElement);
+        }
+    }
+    if (!scopes.length) return '';
+    for (const scope of scopes) {
+        for (const el of scope.querySelectorAll("[role='alert'], .error, [class*='error' i], [class*='invalid' i], [aria-invalid='true'], .alert-danger")) {
+            const text = (el.innerText || el.textContent || '').trim();
+            if (text && visible(el)) return text.slice(0, 160);
+        }
+    }
+    return '';
+}"""
+
+PASSWORD_VISIBLE_JS = """() => {
+    for (const el of document.querySelectorAll("input[type='password']")) {
+        try {
+            const r = el.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) return true;
+        } catch (e) {}
+    }
+    return false;
+}"""
 
 
 def _chromium_launch_args():
@@ -80,6 +292,30 @@ def _selected_devices(devices_config):
     return selected or devices_config
 
 
+def _env_flag(name, default=False):
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _env_int(name, default):
+    try:
+        return int((os.environ.get(name) or "").strip() or default)
+    except ValueError:
+        return default
+
+
+def default_crawl_budget_seconds():
+    """Wall-clock budget for the crawl: 60% of the pipeline timeout so the
+    detector, AI triage and report stages still fit before the API kills the
+    subprocess."""
+    explicit = _env_int("QA_CRAWL_BUDGET_SECONDS", 0)
+    if explicit > 0:
+        return explicit
+    return int(_env_int("QA_PIPELINE_TIMEOUT", 1800) * 0.6)
+
+
 async def _maybe_await(value):
     if inspect.isawaitable(value):
         return await value
@@ -90,7 +326,8 @@ class WebsiteCrawler:
 
     def __init__(self, start_url, max_pages=30, auth_token=None,
                  output_dir=None, run_id=None, progress_cb=None,
-                 login_url=None, username=None, password=None):
+                 login_url=None, username=None, password=None,
+                 deadline=None, explore_clicks=None):
         self.start_url = self.normalize_url(start_url)
         self.progress_cb = progress_cb
 
@@ -109,6 +346,12 @@ class WebsiteCrawler:
         self.auth_test_cases = []
         self.auth_findings = []
 
+        # time.monotonic() value after which no new page is started. None
+        # means "use the default budget" (see default_crawl_budget_seconds).
+        self.deadline = deadline
+        self.partial = False
+        self.explore_clicks = _env_flag("QA_EXPLORE_CLICKS", False) if explore_clicks is None else bool(explore_clicks)
+
         self.domain = parsed.netloc
         # Compare on the registrable-ish host, ignoring a leading "www.",
         # so apex and www are treated as the same site.
@@ -116,7 +359,11 @@ class WebsiteCrawler:
 
         self.visited = set()
         self.queue = [self.start_url]
+        # Mirror of self.queue for O(1) membership checks.
+        self.queued = {self.start_url}
+        self.discovered_links = set()
         self.pages = []
+        self._private_hosts = {}
 
         # Every run gets its own screenshot sub-directory, otherwise reruns
         # overwrite earlier images and older reports end up pointing at the
@@ -127,6 +374,11 @@ class WebsiteCrawler:
         self.base_dir = base
         self.results_dir = os.path.join(base, "results")
         self.screenshot_dir = os.path.join(base, "screenshots", self.run_id)
+        self.output_file = os.path.join(self.results_dir, f"crawl_{self.run_id}.json")
+
+        self.screenshot_lossless = _env_flag("QA_SCREENSHOT_LOSSLESS", False)
+        self.screenshot_quality = max(30, min(95, _env_int("QA_SCREENSHOT_QUALITY", 70)))
+        self.screenshot_max_height = max(1000, _env_int("QA_SCREENSHOT_MAX_HEIGHT", DEFAULT_SCREENSHOT_MAX_HEIGHT))
 
         os.makedirs(self.screenshot_dir, exist_ok=True)
         os.makedirs(self.results_dir, exist_ok=True)
@@ -223,16 +475,40 @@ class WebsiteCrawler:
         else:
             return f"{scheme}://{netloc}{path}"
 
+    async def _host_is_private(self, host):
+        """Resolve `host` (once per run) and tell whether it maps to a private
+        address. Literal checks run inline; DNS runs in a thread so the route
+        handler never blocks the event loop."""
+        from security.url_guard import is_blocked_host, resolve_private_reason
+
+        key = (host or "").lower()
+        if is_blocked_host(key):
+            return True
+        cached = self._private_hosts.get(key)
+        if cached is not None:
+            return cached
+        try:
+            reason = await asyncio.to_thread(resolve_private_reason, key)
+        except Exception:
+            reason = None
+        self._private_hosts[key] = bool(reason)
+        if reason:
+            logger.warning("Blocked host during crawl: %s", reason)
+        return bool(reason)
+
     def _build_route_handler(self, block_private: bool):
-        """Route handler: same-site-only auth header + private network block."""
-        from security.url_guard import is_blocked_host
+        """Route handler: same-site-only auth header + private network block.
+
+        Every browser-initiated request (navigations, redirects, subresources)
+        passes through here, so a target that 302s to an internal address or a
+        DNS name pointing at 10.x is aborted before Chromium connects."""
 
         async def _handler(route, request=None):
             req = request or route.request
             req_url = req.url
             parsed = urlparse(req_url)
             if parsed.scheme in FETCHABLE_SCHEMES:
-                if block_private and is_blocked_host(parsed.hostname):
+                if block_private and await self._host_is_private(parsed.hostname):
                     logger.warning("Blocked request to private address: %s", req_url)
                     await route.abort("blockedbyclient")
                     return
@@ -254,21 +530,32 @@ class WebsiteCrawler:
             and self._base_host(url) == self.base_host
         )
 
+    def is_auth_wall(self, requested_url, final_url):
+        """A navigation that ended on another site or on a login path is an
+        authentication wall, not the requested page."""
+        if not final_url or final_url == requested_url:
+            return False
+        if not self.is_internal_url(final_url):
+            return True
+        return bool(AUTH_PATH_RE.search(urlparse(final_url).path or ""))
+
     async def perform_login(self, page, dev_name: str, auto_detect: bool = False) -> dict:
         """
         Executes automated form login if login_url is provided, or if auto_detect is True.
         Returns a dict with {'success': bool, 'error': Optional[str], 'status': str}.
+
+        Success is judged by a state change (password field gone, URL moved
+        away from the login page, new cookies) and failure by an error shown
+        inside the submitted form; a stray ".error" wrapper elsewhere on the
+        page no longer counts as a rejected login.
         """
-        # In auto-detect mode no navigation happens here, so `res` was
-        # unbound and the final status check raised UnboundLocalError.
-        res = None
         if not auto_detect:
             if not self.login_url:
                 return {"success": True, "status": "no_auth"}
 
             print(f"[{dev_name}] Performing automated login at: {self.login_url}")
             try:
-                res = await page.goto(self.login_url, wait_until="domcontentloaded", timeout=20000)
+                await page.goto(self.login_url, wait_until="domcontentloaded", timeout=20000)
                 await _safe_wait_load_state(page, "networkidle", timeout=3000)
             except Exception as e:
                 return {"success": False, "error": f"Failed to load login page: {str(e)}", "status": "errored"}
@@ -347,38 +634,300 @@ class WebsiteCrawler:
             except Exception:
                 continue
 
+        pre_url = self.normalize_url(getattr(page, "url", "") or "")
+        cookies_before = await self._cookie_count(page)
+
+        post_status = None
         try:
+            submit_action = None
             if submit_btn:
-                await submit_btn.click()
+                submit_action = submit_btn.click()
             elif password_input:
-                await password_input.press("Enter")
+                submit_action = password_input.press("Enter")
             elif username_input:
-                await username_input.press("Enter")
+                submit_action = username_input.press("Enter")
+            if submit_action is not None:
+                post_status = await self._submit_and_capture_post(page, submit_action)
             await _safe_wait_load_state(page, "networkidle", timeout=3000)
         except Exception as e:
             return {"success": False, "error": f"Failed submitting login form: {str(e)}", "status": "errored"}
 
-        # Validate outcome
-        has_error = False
+        # Validate outcome by state change rather than by any ".error" node
+        form_error = ""
+        password_visible = True
         try:
-            error_el = await page.query_selector(
-                "[class*='error' i], [role='alert'], :has-text('Invalid credentials'), :has-text('Invalid username'), :has-text('Incorrect password'), :has-text('Login failed')"
-            )
-            if error_el and await error_el.is_visible():
-                has_error = True
+            form_error = await page.evaluate(LOGIN_FORM_ERROR_JS) or ""
         except Exception:
-            pass
+            form_error = ""
+        try:
+            password_visible = bool(await page.evaluate(PASSWORD_VISIBLE_JS))
+        except Exception:
+            password_visible = True
 
-        if has_error or (res and res.status in (401, 403)):
-            return {"success": False, "error": "Invalid credentials or login rejected by server", "status": "errored"}
+        post_url = self.normalize_url(getattr(page, "url", "") or "")
+        url_changed = bool(post_url) and post_url != pre_url
+        cookies_after = await self._cookie_count(page)
+        cookies_grew = cookies_after > cookies_before
 
-        return {"success": True, "status": "passed"}
+        if post_status is not None and post_status >= 400:
+            return {"success": False, "error": f"Login request was rejected with HTTP {post_status}", "status": "errored"}
+        if form_error and password_visible:
+            return {"success": False, "error": f"Login form reported an error: {form_error}", "status": "errored"}
+        if not password_visible or url_changed or cookies_grew:
+            return {"success": True, "status": "passed"}
+        return {
+            "success": False,
+            "error": "No session change after submitting the login form (password field still shown, URL unchanged).",
+            "status": "errored",
+        }
+
+    @staticmethod
+    async def _cookie_count(page):
+        try:
+            context = getattr(page, "context", None)
+            if context is None:
+                return 0
+            cookies = await _maybe_await(context.cookies())
+            return len(cookies or [])
+        except Exception:
+            return 0
+
+    @staticmethod
+    async def _submit_and_capture_post(page, submit_action):
+        """Run the submit action; return the status of the POST it triggered,
+        or None when the login is not a plain POST (JS/XHR login flows)."""
+        if not hasattr(page, "expect_response"):
+            await submit_action
+            return None
+        submitted = False
+        try:
+            async with page.expect_response(
+                lambda r: r.request.method == "POST", timeout=5000
+            ) as response_info:
+                await submit_action
+                submitted = True
+            response = await response_info.value
+            return response.status
+        except Exception:
+            # Once the click/Enter went through, any error here is the
+            # response wait (JS logins never POST a document), not the submit.
+            if submitted:
+                return None
+            raise
+
+    def _mark_partial(self, reason):
+        if not self.partial:
+            self.partial = True
+            print(f"[CRAWL] Stopping early: {reason}")
+
+    def _time_left(self):
+        if self.deadline is None:
+            return float("inf")
+        return self.deadline - time.monotonic()
+
+    def _screenshot_path(self, dev_name):
+        safe_dev_name = dev_name.replace(" ", "_")
+        ext = "png" if self.screenshot_lossless else "jpg"
+        return os.path.join(
+            self.screenshot_dir,
+            f"{len(self.visited):03d}_{safe_dev_name}_page.{ext}"
+        )
+
+    async def _capture_screenshot(self, page, dev_name, responsive_checks, viewport=None):
+        """Capture a height-capped, JPEG-compressed page screenshot."""
+        screenshot_path = self._screenshot_path(dev_name)
+        viewport = viewport or {}
+        viewport_w = int(responsive_checks.get("viewport_width") or viewport.get("width") or 0) or None
+        viewport_h = int(responsive_checks.get("viewport_height") or viewport.get("height") or 0) or 800
+
+        doc_height = 0
+        try:
+            doc_height = int(await page.evaluate(
+                "() => Math.max(document.documentElement ? document.documentElement.scrollHeight : 0, document.body ? document.body.scrollHeight : 0)"
+            ) or 0)
+        except Exception:
+            doc_height = 0
+
+        kwargs = {
+            "path": screenshot_path,
+            "timeout": 10000,
+            # scale="css": one pixel per CSS pixel. A 3x DPR full-page
+            # iPhone capture is otherwise a ~100 MB bitmap.
+            "scale": "css",
+        }
+        if self.screenshot_lossless:
+            kwargs["type"] = "png"
+        else:
+            kwargs["type"] = "jpeg"
+            kwargs["quality"] = self.screenshot_quality
+
+        capture_h = min(max(doc_height, viewport_h), self.screenshot_max_height)
+        if viewport_w and capture_h:
+            kwargs["full_page"] = True
+            kwargs["clip"] = {"x": 0, "y": 0, "width": viewport_w, "height": capture_h}
+        else:
+            kwargs["full_page"] = True
+
+        try:
+            await page.screenshot(**kwargs)
+            return os.path.relpath(screenshot_path, self.base_dir), doc_height
+        except Exception as ss_err:
+            logger.warning(
+                f"Full page screenshot failed on {dev_name} ({ss_err}); attempting standard viewport capture"
+            )
+            kwargs.pop("clip", None)
+            kwargs["full_page"] = False
+            kwargs["timeout"] = 5000
+            try:
+                await page.screenshot(**kwargs)
+                return os.path.relpath(screenshot_path, self.base_dir), doc_height
+            except Exception:
+                return None, doc_height
+
+    async def _extract_links(self, page, url):
+        """Collect same-site links in one round trip and queue the new ones."""
+        internal_links = []
+        try:
+            hrefs = await page.eval_on_selector_all(
+                "a[href]", "els => els.map(a => a.getAttribute('href'))"
+            )
+        except Exception:
+            hrefs = []
+            try:
+                for link in await page.locator("a").all():
+                    hrefs.append(await link.get_attribute("href"))
+            except Exception:
+                pass
+
+        seen_here = set()
+        for href in hrefs or []:
+            if not href or not isinstance(href, str):
+                continue
+            href = href.strip()
+            if not href or href.startswith("#"):
+                continue
+
+            absolute_url = self.normalize_url(urljoin(url, href))
+            if not absolute_url or absolute_url in seen_here:
+                continue
+            seen_here.add(absolute_url)
+
+            if self.is_internal_url(absolute_url):
+                internal_links.append(absolute_url)
+                self.discovered_links.add(absolute_url)
+                self._enqueue(absolute_url)
+        return internal_links
+
+    def _enqueue(self, absolute_url):
+        if (
+            absolute_url not in self.visited
+            and absolute_url not in self.queued
+            and len(self.visited) + len(self.queue) < self.max_pages
+        ):
+            self.queue.append(absolute_url)
+            self.queued.add(absolute_url)
+            return True
+        return False
+
+    async def _explore_clicks(self, page, url):
+        """Opt-in: press up to 8 safe, non-form buttons to surface SPA routes.
+
+        Never presses submit controls, buttons inside a form, or anything
+        whose accessible name looks like a state change (log out, delete,
+        pay ...). After a click that navigated away, the discovered URL is
+        queued and the page is restored to `url`."""
+        discovered = []
+        try:
+            buttons = await page.locator("button:not([type='submit']), [role='button']").all()
+        except Exception:
+            return discovered
+
+        clicked = 0
+        for btn in buttons:
+            if clicked >= 8:
+                break
+            try:
+                if not await btn.is_visible():
+                    continue
+                info = await btn.evaluate(
+                    "el => ({text: ((el.innerText || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.title || '')).trim(), inForm: !!el.closest('form')})"
+                )
+                if not isinstance(info, dict) or info.get("inForm"):
+                    continue
+                if DANGEROUS_CLICK_RE.search(info.get("text") or ""):
+                    continue
+
+                clicked += 1
+                await btn.click(timeout=1500)
+                await _safe_wait_load_state(page, "domcontentloaded", timeout=1000)
+
+                curr_url = self.normalize_url(page.url)
+                if curr_url != url:
+                    if self.is_internal_url(curr_url):
+                        discovered.append(curr_url)
+                        self.discovered_links.add(curr_url)
+                        self._enqueue(curr_url)
+                    try:
+                        await page.goto(url, wait_until="domcontentloaded", timeout=10000)
+                        await _safe_wait_load_state(page, "networkidle", timeout=2000)
+                    except Exception:
+                        break
+            except Exception:
+                continue
+        return discovered
+
+    def _build_result(self, monitor, devices_config, complete):
+        successful_pages = [p for p in self.pages if not p.get("error")]
+        # self.pages holds one record per URL per device; report unique pages so a
+        # one-page site crawled in 3 viewports isn't shown as "3 pages".
+        unique_pages = {p.get("actual_url") or p.get("url", "").rsplit(" [", 1)[0] for p in successful_pages}
+        attempted_urls = {p.get("actual_url") or p.get("url", "").rsplit(" [", 1)[0] for p in self.pages}
+        auth_wall_urls = {p.get("actual_url") for p in successful_pages if p.get("auth_wall")}
+
+        return {
+            "target": self.start_url,
+            "run_id": self.run_id,
+            "pages_crawled": len(unique_pages),
+            "page_views_crawled": len(successful_pages),
+            "pages_attempted": len(self.pages),
+            "pages_failed": len(attempted_urls - unique_pages),
+            "page_views_failed": len(self.pages) - len(successful_pages),
+            "pages_discovered": len(self.visited | self.queued | self.discovered_links),
+            "max_pages": self.max_pages,
+            "devices_tested": len(devices_config),
+            "devices": list(devices_config.keys()),
+            "partial": bool(self.partial),
+            "complete": bool(complete),
+            "auth_wall_pages": len(auth_wall_urls),
+            "auth_credentials_supplied": bool(self.password or self.auth_token),
+            "explore_clicks": bool(self.explore_clicks),
+            "pages": self.pages,
+            "http_errors": monitor.http_errors,
+            "network_failures": monitor.network_failures,
+            "console_errors": monitor.console_errors,
+            "api_calls": monitor.api_calls,
+            "auth_test_cases": self.auth_test_cases,
+            "auth_findings": self.auth_findings,
+        }
+
+    def _write_result(self, result):
+        """Write crawl_<run>.json atomically so a kill mid-crawl leaves the
+        last complete snapshot, never a truncated file."""
+        tmp_path = f"{self.output_file}.tmp"
+        with open(tmp_path, "w", encoding="utf-8") as file:
+            json.dump(result, file, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, self.output_file)
 
     async def crawl(self):
 
         # Created up front so the summary below always has a monitor to read,
         # regardless of where the event listeners are attached.
         monitor = NetworkMonitor()
+
+        if self.deadline is None:
+            self.deadline = time.monotonic() + default_crawl_budget_seconds()
+
+        devices_config = {}
 
         async with async_playwright() as p:
 
@@ -504,7 +1053,7 @@ class WebsiteCrawler:
                                     "expected_result": "User authenticated successfully and session initialized.",
                                     "actual_result": "User logged in.",
                                 })
-                
+
                 # Dictionary to track if a device has successfully auto-logged in
                 auto_logged_in_devices = {}
 
@@ -512,7 +1061,12 @@ class WebsiteCrawler:
 
                 while self.queue and len(self.visited) < self.max_pages:
 
+                    if self._time_left() <= 0:
+                        self._mark_partial("crawl time budget exhausted")
+                        break
+
                     url = self.queue.pop(0)
+                    self.queued.discard(url)
 
                     url = self.normalize_url(url)
 
@@ -528,7 +1082,7 @@ class WebsiteCrawler:
                     )
                     print(url)
                     print("=" * 70)
-                    
+
                     # Navigate Desktop first to extract internal links
                     for dev_idx, (dev_name, page) in enumerate(pages.items()):
                         if self.progress_cb:
@@ -553,18 +1107,27 @@ class WebsiteCrawler:
                                     f"Crawling page {len(self.visited)}/{max_p} · [{dev_name}]"
                                 )
 
+                        if dev_idx > 0 and self._time_left() <= 0:
+                            self._mark_partial("crawl time budget exhausted")
+                            break
+
+                        page_started = time.monotonic()
                         try:
                             # Use f"{url} [{dev_name}]" as the canonical page ID for this device
                             page_id = f"{url} [{dev_name}]"
                             print(f"[{dev_name}] Navigating...")
+                            # The desktop pass warms the server cache; the
+                            # other viewports fetch the same page, so give them
+                            # less time before falling back.
+                            goto_timeout = 25000 if dev_idx == 0 else 15000
                             try:
                                 response = await page.goto(
                                     url,
                                     wait_until="domcontentloaded",
-                                    timeout=25000
+                                    timeout=goto_timeout
                                 )
                             except Exception as nav_err:
-                                if "timeout" in str(nav_err).lower():
+                                if "timeout" in str(nav_err).lower() and self._time_left() > 20:
                                     print(f"[{dev_name}] DOMContentLoaded timeout on {url}, attempting commit fallback...")
                                     response = await page.goto(
                                         url,
@@ -586,153 +1149,79 @@ class WebsiteCrawler:
 
                             status = response.status if response else None
                             title = await page.title()
-                            
+
+                            final_url = self.normalize_url(getattr(page, "url", "") or url) or url
+                            redirected = final_url != url
+                            auth_wall = self.is_auth_wall(url, final_url)
+                            if auth_wall:
+                                print(f"[{dev_name}] {url} redirected to a login/external page: {final_url}")
+
                             # Execute deterministic responsive checks in page JS
-                            responsive_checks = {"horizontal_overflow": False, "overflow_pixels": 0, "elements_outside_viewport": 0, "forms_outside_viewport": 0, "clipped_buttons": 0, "navigation_visible": True, "viewport_width": 1920, "viewport_height": 1080}
+                            dev_viewport = (devices_config.get(dev_name) or {}).get("viewport") or {}
+                            responsive_checks = {
+                                "horizontal_overflow": False, "overflow_pixels": 0, "elements_outside_viewport": 0,
+                                "forms_outside_viewport": 0, "clipped_buttons": 0, "navigation_visible": True,
+                                "viewport_width": int(dev_viewport.get("width") or 1920),
+                                "viewport_height": int(dev_viewport.get("height") or 1080),
+                                "checked": False,
+                            }
                             try:
-                                responsive_checks = await page.evaluate("""() => {
-                                    const docWidth = document.documentElement ? document.documentElement.scrollWidth : 0;
-                                    const winWidth = window.innerWidth || 1000;
-                                    const winHeight = window.innerHeight || 800;
-                                    const overflowPixels = Math.max(0, docWidth - winWidth);
-                                    const hasHorizontalOverflow = docWidth > (winWidth + 5);
-
-                                    let elementsOutside = 0;
-                                    let formsOutside = 0;
-                                    let clippedButtons = 0;
-
-                                    const elements = Array.from(document.querySelectorAll('button, a, input, select, form, [role="button"], img, h1, h2, h3, header, nav'));
-                                    for (const el of elements) {
-                                        try {
-                                            const rect = el.getBoundingClientRect();
-                                            if (!rect || (rect.width === 0 && rect.height === 0)) continue;
-                                            
-                                            if (rect.right > (winWidth + 10) || rect.left < -10) {
-                                                elementsOutside++;
-                                                const tag = (el.tagName || '').toUpperCase();
-                                                if (tag === 'FORM' || tag === 'INPUT' || tag === 'SELECT') {
-                                                    formsOutside++;
-                                                }
-                                                if (tag === 'BUTTON' || tag === 'A' || el.getAttribute('role') === 'button') {
-                                                    clippedButtons++;
-                                                }
-                                            }
-                                        } catch (e) {}
-                                    }
-
-                                    const nav = document.querySelector('nav, header, [role="navigation"]');
-                                    let navVisible = false;
-                                    if (nav) {
-                                        try {
-                                            const rect = nav.getBoundingClientRect();
-                                            navVisible = rect && rect.width > 0 && rect.height > 0 && rect.top < winHeight && rect.bottom > 0;
-                                        } catch (e) {}
-                                    }
-
-                                    return {
-                                        horizontal_overflow: hasHorizontalOverflow,
-                                        overflow_pixels: overflowPixels,
-                                        elements_outside_viewport: elementsOutside,
-                                        forms_outside_viewport: formsOutside,
-                                        clipped_buttons: clippedButtons,
-                                        navigation_visible: navVisible,
-                                        viewport_width: winWidth,
-                                        viewport_height: winHeight
-                                    };
-                                }""")
+                                evaluated = await page.evaluate(RESPONSIVE_CHECK_JS)
+                                if isinstance(evaluated, dict):
+                                    responsive_checks = dict(evaluated, checked=True)
                             except Exception as ev_err:
                                 print(f"Responsive check warning on {dev_name}: {ev_err}")
 
-                            internal_links = []
-                            
-                            internal_links = []
-                            
-                            # Extract links & discover interactive controls on Desktop Chrome
-                            if dev_name == "Desktop Chrome":
-                                links = await page.locator("a").all()
-                                for link in links:
-                                    href = await link.get_attribute("href")
-                                    if not href:
-                                        continue
+                            timings = None
+                            try:
+                                raw_timing = await page.evaluate(TIMING_JS)
+                                if isinstance(raw_timing, dict):
+                                    timings = {
+                                        key: (value if not (isinstance(value, (int, float)) and value <= 0 and key.endswith("_ms")) else None)
+                                        for key, value in raw_timing.items()
+                                    }
+                            except Exception:
+                                timings = None
 
-                                    absolute_url = urljoin(url, href)
-                                    absolute_url = self.normalize_url(absolute_url)
-
-                                    if self.is_internal_url(absolute_url):
-                                        internal_links.append(absolute_url)
-                                        if (
-                                            absolute_url not in self.visited
-                                            and absolute_url not in self.queue
-                                            and len(self.visited) + len(self.queue) < self.max_pages
-                                        ):
-                                            self.queue.append(absolute_url)
-
-                                # Discover & click interactive buttons (SPA tabs, lazy loaders, modals)
+                            a11y_checks = None
+                            if dev_idx == 0:
                                 try:
-                                    interactive_btns = await page.locator("button, [role='button'], input[type='submit']").all()
-                                    for btn in interactive_btns[:8]:
-                                        if await btn.is_visible():
-                                            # Safely trigger click to uncover dynamic client-side SPA state transitions
-                                            try:
-                                                await btn.click(timeout=1500)
-                                                await _safe_wait_load_state(page, "domcontentloaded", timeout=1000)
-                                                
-                                                # Check if click changed URL or added new internal links
-                                                curr_url = self.normalize_url(page.url)
-                                                if self.is_internal_url(curr_url) and curr_url not in self.visited and curr_url not in self.queue:
-                                                    self.queue.append(curr_url)
-                                                    internal_links.append(curr_url)
-                                            except Exception:
-                                                pass
+                                    a11y_checks = await page.evaluate(A11Y_CHECK_JS)
                                 except Exception:
-                                    pass
+                                    a11y_checks = None
 
-                            safe_dev_name = dev_name.replace(" ", "_")
-                            screenshot_path = os.path.join(
-                                self.screenshot_dir,
-                                f"{len(self.visited):03d}_{safe_dev_name}_page.png"
+                            # Screenshot and checks are captured BEFORE any
+                            # interaction so the record describes the page as
+                            # it loaded, not a modal or route a click opened.
+                            rel_screenshot, doc_height = await self._capture_screenshot(
+                                page, dev_name, responsive_checks, viewport=dev_viewport
                             )
 
-                            rel_screenshot = None
-                            try:
-                                # scale="css": one pixel per CSS pixel. A 3x
-                                # DPR full-page iPhone capture is otherwise a
-                                # ~100 MB bitmap and a multi-MB PNG.
-                                await page.screenshot(
-                                    path=screenshot_path,
-                                    full_page=True,
-                                    timeout=10000,
-                                    scale="css",
-                                )
-                                rel_screenshot = os.path.relpath(
-                                    screenshot_path, self.base_dir
-                                )
-                            except Exception as ss_err:
-                                logger.warning(
-                                    f"Full page screenshot failed on {dev_name} ({ss_err}); attempting standard viewport capture"
-                                )
-                                try:
-                                    await page.screenshot(
-                                        path=screenshot_path,
-                                        full_page=False,
-                                        timeout=5000,
-                                        scale="css",
-                                    )
-                                    rel_screenshot = os.path.relpath(
-                                        screenshot_path, self.base_dir
-                                    )
-                                except Exception:
-                                    rel_screenshot = None
+                            internal_links = []
+
+                            # Extract links & (optionally) explore interactive controls on Desktop Chrome
+                            if dev_idx == 0 and not auth_wall:
+                                internal_links = await self._extract_links(page, url)
+
+                                if self.explore_clicks and self._time_left() > 30:
+                                    internal_links.extend(await self._explore_clicks(page, url))
 
                             page_data = {
                                 "url": page_id,
                                 "actual_url": url,
+                                "final_url": final_url,
+                                "redirected": redirected,
+                                "auth_wall": auth_wall,
                                 "device": dev_name,
                                 "title": title,
                                 "status": status,
                                 "links": len(internal_links),
                                 "screenshot": rel_screenshot,
+                                "document_height": doc_height,
                                 "responsive_checks": responsive_checks,
+                                "timings": timings,
+                                "a11y_checks": a11y_checks,
+                                "render_ms": int((time.monotonic() - page_started) * 1000),
                                 "timestamp": datetime.now().isoformat(),
                             }
 
@@ -759,8 +1248,19 @@ class WebsiteCrawler:
                                 "links": 0,
                                 "screenshot": None,
                                 "error": str(error),
+                                "render_ms": int((time.monotonic() - page_started) * 1000),
                                 "timestamp": datetime.now().isoformat(),
                             })
+
+                    # Persist after every URL so a kill mid-crawl still leaves
+                    # usable data for the detector and report stages.
+                    try:
+                        self._write_result(self._build_result(monitor, devices_config, complete=False))
+                    except Exception as write_err:
+                        logger.debug("incremental crawl write failed: %s", write_err)
+
+                if self.queue and len(self.visited) < self.max_pages and not self.partial:
+                    self._mark_partial("crawl loop ended with pages still queued")
             finally:
                 # Close everything even if one close fails, so no Chromium
                 # renderer outlives the crawl.
@@ -774,56 +1274,26 @@ class WebsiteCrawler:
                 except Exception as close_err:
                     logger.debug("browser.close failed: %s", close_err)
 
-        successful_pages = [p for p in self.pages if not p.get("error")]
-        # self.pages holds one record per URL per device; report unique pages so a
-        # one-page site crawled in 3 viewports isn't shown as "3 pages".
-        unique_pages = {p.get("url", "").rsplit(" [", 1)[0] for p in successful_pages}
-
-        result = {
-            "target": self.start_url,
-            "run_id": self.run_id,
-            "pages_crawled": len(unique_pages),
-            "page_views_crawled": len(successful_pages),
-            "pages_attempted": len(self.pages),
-            "pages": self.pages,
-            "http_errors": monitor.http_errors,
-            "network_failures": monitor.network_failures,
-            "console_errors": monitor.console_errors,
-            "auth_test_cases": self.auth_test_cases,
-            "auth_findings": self.auth_findings,
-        }
-
-        output_file = os.path.join(
-            self.results_dir,
-            f"crawl_{self.run_id}.json"
-        )
-
-        with open(
-            output_file,
-            "w",
-            encoding="utf-8"
-        ) as file:
-
-            json.dump(
-                result,
-                file,
-                indent=2,
-                ensure_ascii=False
-            )
-
+        result = self._build_result(monitor, devices_config, complete=not self.partial)
+        self._write_result(result)
+        output_file = self.output_file
         result["output_file"] = output_file
+
+        successful_pages = result["page_views_crawled"]
 
         print()
         print("=" * 70)
-        print("CRAWL COMPLETE")
+        print("CRAWL COMPLETE" if not self.partial else "CRAWL STOPPED EARLY (partial results)")
         print("=" * 70)
 
-        print(f"Pages: {len(unique_pages)} ({len(successful_pages)} page views across devices)")
-        if len(self.pages) != len(successful_pages):
+        print(f"Pages: {result['pages_crawled']} ({successful_pages} page views across {result['devices_tested']} device(s))")
+        if result["page_views_failed"]:
             print(
                 f"Pages failed: "
-                f"{len(self.pages) - len(successful_pages)}"
+                f"{result['pages_failed']} ({result['page_views_failed']} page views)"
             )
+        if result["auth_wall_pages"]:
+            print(f"Pages behind a login wall: {result['auth_wall_pages']}")
         print(
             f"HTTP errors: "
             f"{len(monitor.http_errors)}"
@@ -836,6 +1306,7 @@ class WebsiteCrawler:
             f"Console errors: "
             f"{len(monitor.console_errors)}"
         )
+        print(f"API calls observed: {len(monitor.api_calls)}")
         print(f"Result: {output_file}")
 
         return result

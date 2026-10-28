@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { RiGlobalLine, RiStopCircleFill, RiCheckDoubleFill, RiTerminalBoxLine } from 'react-icons/ri';
 import {
   TbWorldSearch,
@@ -14,6 +14,7 @@ import {
   TbAward,
   TbClock,
   TbBroadcast,
+  TbLoader2,
 } from 'react-icons/tb';
 import { DeviceDeck } from './DeviceDeck';
 import { ProgressPayload } from '../../types/qa';
@@ -27,6 +28,10 @@ interface ScanMonitorProps {
   logFeed: string[];
   maxPages?: number;
   onStop: () => void;
+  /** True while the cancel request is in flight */
+  stopping?: boolean;
+  /** Inline notice (errors from stop/cancel) rendered under the header */
+  notice?: React.ReactNode;
 }
 
 const PIPELINE = [
@@ -61,7 +66,16 @@ export const ScanMonitor: React.FC<ScanMonitorProps> = ({
   logFeed,
   maxPages = 10,
   onStop,
+  stopping = false,
+  notice,
 }) => {
+  const [confirmStop, setConfirmStop] = useState(false);
+
+  useEffect(() => {
+    if (!stopping) return;
+    setConfirmStop(false);
+  }, [stopping]);
+
   const formattedTime = useMemo(() => {
     const mins = Math.floor(elapsedSeconds / 60);
     const secs = elapsedSeconds % 60;
@@ -114,6 +128,7 @@ export const ScanMonitor: React.FC<ScanMonitorProps> = ({
     ? `Page ${progress.page_current} of ${progress.page_total || maxPages}`
     : PHASES[currentStageIndex];
   const allDone = pipelineIndex >= PIPELINE.length;
+  const currentMessage = progress?.message || 'Inspecting DOM tree and verifying response status...';
 
   return (
     <div className={s.monitor}>
@@ -130,38 +145,67 @@ export const ScanMonitor: React.FC<ScanMonitorProps> = ({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onStop}
-          className="btn btn-danger btn-sm"
-          title="Stop and cancel the active scan"
-        >
-          <RiStopCircleFill size={16} />
-          <span>Stop Scan</span>
-        </button>
+        {confirmStop ? (
+          <div
+            className={cx('neu-inset neu-inset--sm tone-danger', s.confirm)}
+            role="alertdialog"
+            aria-labelledby="stop-scan-title"
+            aria-describedby="stop-scan-desc"
+          >
+            <div className={s.confirmCopy}>
+              <strong id="stop-scan-title">Stop this scan?</strong>
+              <span id="stop-scan-desc">Progress so far is discarded and the run cannot be resumed.</span>
+            </div>
+            <div className={s.confirmActions}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setConfirmStop(false)} autoFocus>
+                Keep running
+              </button>
+              <button type="button" className="btn btn-danger btn-sm" onClick={onStop} disabled={stopping}>
+                {stopping ? <TbLoader2 size={15} className="pulse" /> : <RiStopCircleFill size={15} />}
+                <span>Stop scan</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirmStop(true)}
+            className="btn btn-danger btn-sm"
+            title="Stop and cancel the active scan"
+            disabled={stopping}
+          >
+            {stopping ? <TbLoader2 size={16} className="pulse" /> : <RiStopCircleFill size={16} />}
+            <span>{stopping ? 'Stopping…' : 'Stop Scan'}</span>
+          </button>
+        )}
       </div>
 
-      <div className={s.readout}>
+      {notice}
+
+      <div className={cx('neu-inset', s.readout)}>
         <span className={cx('stat-number stat-number--accent', s.readoutPct)}>{percent}%</span>
         <div className={s.readoutMeta}>
           <span className="chip chip--info chip--live">{stageLabel}</span>
           <span className={s.readoutNumbers}>{pageLabel}</span>
-          <span className={cx('chip chip--neutral', s.mono, s.readoutElapsed)}>
+          <span className={cx('chip chip--raised', s.mono, s.readoutElapsed)}>
             <TbClock size={13} /> {formattedTime}
           </span>
         </div>
         <div
-          className={s.progressTrack}
+          className={cx('neu-track neu-track--lg', s.progressTrack)}
           role="progressbar"
           aria-label="Scan progress"
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={percent}
         >
-          <span className={s.progressFill} style={{ ['--p' as string]: percent / 100 } as React.CSSProperties} />
+          <span
+            className={cx('neu-track__fill', s.progressFill)}
+            style={{ ['--p-scale' as string]: percent / 100 } as React.CSSProperties}
+          />
         </div>
         <p className={s.currentMessage} aria-live="polite">
-          {progress?.message || 'Inspecting DOM tree and verifying response status...'}
+          {currentMessage}
         </p>
       </div>
 
@@ -185,7 +229,6 @@ export const ScanMonitor: React.FC<ScanMonitorProps> = ({
                   className={cx(s.pipeBlock, isDone && s.pipeDone, isActive && s.pipeActive)}
                   aria-current={isActive ? 'step' : undefined}
                 >
-                  <span className={s.pipeSide} aria-hidden="true" />
                   <span className={s.pipeFace}>
                     <span className={s.pipeIcon} aria-hidden="true">
                       {isDone ? <RiCheckDoubleFill size={16} /> : st.icon}
@@ -205,7 +248,7 @@ export const ScanMonitor: React.FC<ScanMonitorProps> = ({
 
       <DeviceDeck activeDeviceName={activeDeviceName} activeUrl={progress?.active_url} defaultUrl={url} />
 
-      <div className={cx('surface-inset', s.terminal)}>
+      <div className={cx('neu-inset', s.terminal)}>
         <div className={s.terminalHead}>
           <span className="section-eyebrow">
             <RiTerminalBoxLine size={14} /> Live diagnostic telemetry
@@ -223,9 +266,7 @@ export const ScanMonitor: React.FC<ScanMonitorProps> = ({
           ))}
           <div className={s.terminalLine}>
             <span className={s.terminalPrompt}>&gt;</span>
-            <span className={s.terminalLive}>
-              {progress?.message || 'Inspecting DOM tree and verifying response status...'}
-            </span>
+            <span className={s.terminalLive}>{currentMessage}</span>
           </div>
         </div>
       </div>

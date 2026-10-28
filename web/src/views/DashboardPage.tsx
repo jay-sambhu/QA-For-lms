@@ -25,8 +25,10 @@ import {
 } from 'react-icons/tb';
 import { useAuth } from '../context/AuthContext';
 import { downloadScanReport, type ServerReportFormat } from '../utils/download';
-import { ScanForm, type TrialStatus } from '../components/scan/ScanForm';
+import { ScanForm } from '../components/scan/ScanForm';
 import { ApiKeyManager } from '../components/dashboard/ApiKeyManager';
+import { deriveTrialState, normalizeTrial, type TrialStatus } from '../components/dashboard/trial';
+import { isActiveScan, scanStatusChip, scanStatusLabel } from '../components/dashboard/scanStatus';
 import {
   Surface3D,
   StatTile3D,
@@ -38,38 +40,7 @@ import d from '../components/dashboard/dashboard3d.module.css';
 
 type StatusFilter = 'all' | 'completed' | 'running' | 'failed';
 
-const normalizeTrial = (data: any): TrialStatus | null => {
-  if (!data || typeof data !== 'object' || typeof data.remaining !== 'number') return null;
-  return {
-    enabled: !!data.enabled,
-    total: Number(data.total) || 0,
-    used: Number(data.used) || 0,
-    remaining: Math.max(0, Number(data.remaining) || 0),
-    has_own_key: !!data.has_own_key,
-    daily_available: data.daily_available !== false,
-  };
-};
-
-const statusChip = (status: string) => {
-  switch (status) {
-    case 'completed':
-      return 'chip chip--success chip--dot';
-    case 'running':
-    case 'pending':
-    case 'queued':
-      return 'chip chip--info chip--live';
-    case 'failed':
-    case 'error':
-      return 'chip chip--danger chip--dot';
-    case 'cancelled':
-      return 'chip chip--neutral';
-    case 'timeout':
-    case 'stalled':
-      return 'chip chip--warning chip--dot';
-    default:
-      return 'chip chip--neutral';
-  }
-};
+const HISTORY_POLL_MS = 12_000;
 
 const enterDelay = (step: number) => ({ ['--enter-delay' as string]: `${step * 60}ms` }) as React.CSSProperties;
 
@@ -117,8 +88,10 @@ export const DashboardPage: React.FC = () => {
     }
   }, [session?.access_token]);
 
-  const checkApiKey = useCallback(async () => {
-    if (!session?.access_token) return;
+  // Resolves to true when the response already carried the trial allowance,
+  // so the separate /user/trial request is only made when it is missing.
+  const checkApiKey = useCallback(async (): Promise<boolean> => {
+    if (!session?.access_token) return true;
     try {
       const res = await fetch('/api/v1/user/api-keys', {
         headers: { Authorization: `Bearer ${session.access_token}` },
@@ -127,57 +100,70 @@ export const DashboardPage: React.FC = () => {
         const data = await res.json();
         setHasApiKey(data.count > 0);
         setApiKeysCount(data.count || 0);
-        if (data.trial) setTrial(normalizeTrial(data.trial));
-      } else {
-        const legacyRes = await fetch('/api/v1/user/api-key', {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-        if (legacyRes.ok) {
-          const lData = await legacyRes.json();
-          setHasApiKey(!!lData.has_key);
-          setApiKeysCount(lData.has_key ? 1 : 0);
+        const parsed = normalizeTrial(data.trial);
+        if (parsed) {
+          setTrial(parsed);
+          return true;
         }
+        return false;
       }
+      const legacyRes = await fetch('/api/v1/user/api-key', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (legacyRes.ok) {
+        const lData = await legacyRes.json();
+        setHasApiKey(!!lData.has_key);
+        setApiKeysCount(lData.has_key ? 1 : 0);
+      }
+      return false;
     } catch {
-      // Ignore background network errors
+      return false;
     }
   }, [session?.access_token]);
 
-  const fetchScanHistory = useCallback(async () => {
-    if (!session?.access_token) return;
-    setLoadingHistory(true);
-    try {
-      // One retry: a transient backend/auth hiccup must not leave the
-      // dashboard claiming the user has never run a scan.
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        const res = await fetch('/api/v1/scans', {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setRecentScans(data.scans || []);
-          break;
+  const fetchScanHistory = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!session?.access_token) return;
+      if (!opts?.silent) setLoadingHistory(true);
+      try {
+        // One retry: a transient backend/auth hiccup must not leave the
+        // dashboard claiming the user has never run a scan.
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          const res = await fetch('/api/v1/scans', {
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setRecentScans(data.scans || []);
+            break;
+          }
+          if (attempt === 1 && res.status !== 401 && !opts?.silent) {
+            await new Promise((r) => setTimeout(r, 1500));
+            continue;
+          }
+          console.error('Failed to load scans: HTTP', res.status);
+          if (opts?.silent) break;
         }
-        if (attempt === 1 && res.status !== 401) {
-          await new Promise((r) => setTimeout(r, 1500));
-          continue;
-        }
-        console.error('Failed to load scans: HTTP', res.status);
+      } catch (e) {
+        console.error('Failed to load scans:', e);
+      } finally {
+        if (!opts?.silent) setLoadingHistory(false);
       }
-    } catch (e) {
-      console.error('Failed to load scans:', e);
-    } finally {
-      setLoadingHistory(false);
-    }
-  }, [session?.access_token]);
+    },
+    [session?.access_token]
+  );
+
+  const refreshKeysAndTrial = useCallback(async () => {
+    const hadTrial = await checkApiKey();
+    if (!hadTrial) await fetchTrial();
+  }, [checkApiKey, fetchTrial]);
 
   // Depend on the token (via the callbacks), not the session object: Supabase emits a new
   // session object on tab refocus/token refresh, which used to trigger redundant refetches.
   useEffect(() => {
     fetchScanHistory();
-    checkApiKey();
-    fetchTrial();
-  }, [fetchScanHistory, checkApiKey, fetchTrial]);
+    refreshKeysAndTrial();
+  }, [fetchScanHistory, refreshKeysAndTrial]);
 
   const scrollToAiManager = () => {
     const el = document.getElementById('ai-models-manager');
@@ -261,7 +247,7 @@ export const DashboardPage: React.FC = () => {
         !searchQuery || s.url?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus =
         statusFilter === 'all' ||
-        (statusFilter === 'running' && (s.status === 'running' || s.status === 'pending')) ||
+        (statusFilter === 'running' && isActiveScan(s.status)) ||
         s.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
@@ -277,13 +263,44 @@ export const DashboardPage: React.FC = () => {
   // Calculated KPI metrics
   const totalScansCount = recentScans.length;
   const completedCount = recentScans.filter((s) => s.status === 'completed').length;
-  const runningCount = recentScans.filter((s) => s.status === 'running' || s.status === 'pending').length;
-  const failedCount = recentScans.filter((s) => s.status === 'failed' || s.status === 'error').length;
+  const runningCount = recentScans.filter((s) => isActiveScan(s.status)).length;
+  const failedCount = recentScans.filter((s) => s.status === 'failed').length;
   const successRate = totalScansCount > 0 ? Math.round((completedCount / totalScansCount) * 100) : 100;
 
-  const trialActive = hasApiKey === false && !!trial?.enabled && trial.remaining > 0;
-  const trialExhausted = hasApiKey === false && !!trial?.enabled && trial.remaining <= 0;
-  const keyMissing = hasApiKey === false && !trial?.enabled;
+  // Keep running rows and the KPI tiles fresh: poll while a scan is active and the tab is
+  // visible, and refetch once whenever the tab becomes visible again.
+  useEffect(() => {
+    if (!session?.access_token) return;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const stop = () => {
+      if (timer) clearInterval(timer);
+      timer = null;
+    };
+    const start = () => {
+      if (timer || runningCount === 0 || document.visibilityState !== 'visible') return;
+      timer = setInterval(() => fetchScanHistory({ silent: true }), HISTORY_POLL_MS);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchScanHistory({ silent: true });
+        start();
+      } else {
+        stop();
+      }
+    };
+
+    start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [session?.access_token, runningCount, fetchScanHistory]);
+
+  const trialState = deriveTrialState(trial, hasApiKey);
+  const { trialActive, trialExhausted, keyMissing } = trialState;
+  const trialPct = trial && trial.total > 0 ? Math.round((trial.remaining / trial.total) * 100) : 0;
 
   const aiTile = (() => {
     if (hasApiKey === null) {
@@ -354,7 +371,7 @@ export const DashboardPage: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={fetchScanHistory}
+                onClick={() => fetchScanHistory()}
                 className="btn btn-secondary"
                 disabled={loadingHistory}
               >
@@ -403,11 +420,15 @@ export const DashboardPage: React.FC = () => {
             onClick={scrollToAiManager}
             actionLabel={`AI engine: ${aiTile.value}. ${aiTile.hint}`}
           >
-            {trialActive && trial && trial.total > 0 && trial.total <= 10 && (
-              <div className={d.trialTrack} aria-hidden="true">
-                {Array.from({ length: trial.total }, (_, i) => (
-                  <span key={i} className={`${d.trialStep} ${i < trial.remaining ? d.trialStepFilled : ''}`} />
-                ))}
+            {trialActive && trial && trial.total > 0 && (
+              <div className={d.trialMeter} aria-hidden="true">
+                <span className={d.trialMeterLabel}>
+                  <span>Trial scans</span>
+                  <span>
+                    {trial.remaining}/{trial.total}
+                  </span>
+                </span>
+                <div className="neu-track neu-track--sm" style={{ ['--p' as string]: `${trialPct}%` } as React.CSSProperties} />
               </div>
             )}
           </StatTile3D>
@@ -464,6 +485,7 @@ export const DashboardPage: React.FC = () => {
           error={error}
           trial={trial}
           hasApiKey={hasApiKey}
+          trialState={trialState}
           onConfigureKey={scrollToAiManager}
         />
       </Surface3D>
@@ -482,23 +504,27 @@ export const DashboardPage: React.FC = () => {
                 <span className={d.panelCount}>
                   {filteredScans.length} of {recentScans.length} scans
                 </span>
+                {runningCount > 0 && (
+                  <span className="chip chip--sm chip--info chip--live">
+                    {runningCount} live · auto-refreshing
+                  </span>
+                )}
               </div>
             </div>
           </div>
 
           {/* Search & Filter Controls */}
           <div className={d.panelTools}>
-            <div className={d.search}>
-              <RiSearchLine size={14} className={d.searchIcon} />
+            <label className={`neu-input ${d.search}`}>
+              <RiSearchLine size={14} aria-hidden="true" />
               <input
                 type="text"
                 placeholder="Filter by target URL..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className={`${d.field} ${d.searchInput}`}
                 aria-label="Filter runs by target URL"
               />
-            </div>
+            </label>
 
             <SegmentedTabs3D
               size="sm"
@@ -529,7 +555,7 @@ export const DashboardPage: React.FC = () => {
             <tbody>
               {filteredScans.map((s) => {
                 const isCompleted = s.status === 'completed';
-                const isRunning = s.status === 'running' || s.status === 'pending';
+                const isRunning = isActiveScan(s.status);
 
                 return (
                   <tr key={s.id}>
@@ -537,9 +563,7 @@ export const DashboardPage: React.FC = () => {
                       <div className={d.urlCell} title={s.url}>{s.url}</div>
                     </td>
                     <td>
-                      <span className={statusChip(String(s.status || 'unknown'))}>
-                        {String(s.status || 'unknown')}
-                      </span>
+                      <span className={scanStatusChip(s.status)}>{scanStatusLabel(s.status)}</span>
                     </td>
                     <td>
                       {s.is_authenticated ? (
@@ -575,7 +599,7 @@ export const DashboardPage: React.FC = () => {
                               {downloadingScanId === `${s.id}-pdf` ? (
                                 <TbLoader2 size={13} className="pulse" />
                               ) : (
-                                <FaRegFilePdf size={13} color="#e11d48" />
+                                <FaRegFilePdf size={13} className={d.pdfIcon} />
                               )}
                               <span>PDF</span>
                             </button>
@@ -589,7 +613,7 @@ export const DashboardPage: React.FC = () => {
                               {downloadingScanId === `${s.id}-xlsx` ? (
                                 <TbLoader2 size={13} className="pulse" />
                               ) : (
-                                <RiFileExcel2Line size={13} color="#059669" />
+                                <RiFileExcel2Line size={13} className={d.xlsxIcon} />
                               )}
                               <span>Excel</span>
                             </button>
@@ -636,7 +660,7 @@ export const DashboardPage: React.FC = () => {
       {/* Dedicated Multi-AI Provider & Model Integration Hub */}
       {session && (
         <div className="enter-3d" style={enterDelay(6)}>
-          <ApiKeyManager onKeysUpdated={checkApiKey} />
+          <ApiKeyManager onKeysUpdated={refreshKeysAndTrial} />
         </div>
       )}
     </div>

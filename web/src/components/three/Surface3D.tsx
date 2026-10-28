@@ -23,6 +23,8 @@ export type Surface3DProps = React.HTMLAttributes<HTMLElement> & {
   ring?: boolean;
   /** Inner padding: none 0, sm 16px, md 24px (default), lg 32px */
   pad?: 'none' | 'sm' | 'md' | 'lg';
+  /** raised (default) extrudes from the page, inset is a recessed well, flat is hairline only */
+  variant?: 'raised' | 'inset' | 'flat';
   ref?: React.Ref<HTMLElement>;
 };
 
@@ -33,7 +35,13 @@ const PAD_CLASS = {
   lg: 'surface-3d--pad-lg',
 } as const;
 
-/** White card with layered depth; the building block for every panel. */
+const VARIANT_CLASS = {
+  raised: '',
+  inset: 'surface-3d--inset',
+  flat: 'surface-3d--flat',
+} as const;
+
+/** Soft card extruded from the page; the building block for every panel. */
 export function Surface3D({
   as: Tag = 'div',
   tilt = false,
@@ -43,6 +51,7 @@ export function Surface3D({
   interactive = false,
   ring = false,
   pad = 'md',
+  variant = 'raised',
   className,
   style,
   children,
@@ -70,6 +79,7 @@ export function Surface3D({
         interactive && 'surface-3d--interactive',
         ring && 'gradient-ring',
         PAD_CLASS[pad],
+        VARIANT_CLASS[variant],
         a.className,
         tilt && t.className,
         className,

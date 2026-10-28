@@ -12,10 +12,11 @@
   overflow: hidden;
   perspective: 900px;
   perspective-origin: 50% 0%;
+  background-color: var(--neu-bg);
   background-image:
-    radial-gradient(ellipse 70% 45% at 50% -10%, rgba(99, 102, 241, 0.14), transparent 70%),
-    radial-gradient(ellipse 45% 35% at 95% 30%, rgba(14, 165, 233, 0.10), transparent 60%),
-    radial-gradient(ellipse 45% 35% at 0% 70%, rgba(236, 72, 153, 0.07), transparent 60%);
+    radial-gradient(ellipse 70% 45% at 50% -10%, rgba(99, 102, 241, 0.09), transparent 70%),
+    radial-gradient(ellipse 45% 35% at 95% 30%, rgba(14, 165, 233, 0.06), transparent 60%),
+    radial-gradient(ellipse 45% 35% at 0% 70%, rgba(236, 72, 153, 0.045), transparent 60%);
 }
 
 .floor {
@@ -26,8 +27,8 @@
   height: 90%;
   transform: rotateX(72deg);
   transform-origin: 50% 100%;
-  mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent 75%);
-  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent 75%);
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent 70%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent 70%);
 }
 
 /* The grid scrolls toward the viewer by translating one cell, so it never repaints */
@@ -36,8 +37,8 @@
   position: absolute;
   inset: -64px 0 0 0;
   background-image:
-    linear-gradient(rgba(79, 70, 229, 0.13) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(79, 70, 229, 0.13) 1px, transparent 1px);
+    linear-gradient(rgba(79, 70, 229, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(79, 70, 229, 0.07) 1px, transparent 1px);
   background-size: 64px 64px;
   animation: floorDrift 18s linear infinite;
 }
@@ -50,14 +51,14 @@
 .orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(60px);
-  opacity: 0.55;
+  filter: blur(70px);
+  opacity: 0.38;
   animation: orbFloat 16s ease-in-out infinite alternate;
 }
 
-.orbA { width: 420px; height: 420px; top: -120px; left: 8%; background: rgba(129, 140, 248, 0.35); }
-.orbB { width: 360px; height: 360px; top: 30%; right: -80px; background: rgba(56, 189, 248, 0.28); animation-delay: -6s; }
-.orbC { width: 300px; height: 300px; bottom: 5%; left: -60px; background: rgba(244, 114, 182, 0.18); animation-delay: -11s; }
+.orbA { width: 420px; height: 420px; top: -120px; left: 8%; background: rgba(129, 140, 248, 0.3); }
+.orbB { width: 360px; height: 360px; top: 30%; right: -80px; background: rgba(56, 189, 248, 0.22); animation-delay: -6s; }
+.orbC { width: 300px; height: 300px; bottom: 5%; left: -60px; background: rgba(244, 114, 182, 0.14); animation-delay: -11s; }
 
 @keyframes orbFloat {
   from { transform: translate3d(0, 0, 0) scale(1); }
@@ -74,7 +75,7 @@
   position: relative;
   transition:
     transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
-    box-shadow 0.45s ease,
+    box-shadow 0.2s ease,
     translate 0.28s cubic-bezier(0.16, 1, 0.3, 1),
     border-color 0.28s ease;
 }
@@ -95,10 +96,10 @@
   will-change: transform;
   transition:
     transform 0.08s linear,
-    box-shadow 0.3s ease,
+    box-shadow 0.2s ease,
     translate 0.28s cubic-bezier(0.16, 1, 0.3, 1),
     border-color 0.28s ease;
-  box-shadow: var(--tilt-shadow, var(--shadow-3d));
+  box-shadow: var(--tilt-shadow, var(--neu-raised-lg));
 }
 
 .glare {
@@ -106,9 +107,9 @@
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  background: radial-gradient(circle at var(--gx) var(--gy), rgba(255, 255, 255, 0.55), transparent 55%);
+  background: radial-gradient(circle at var(--gx) var(--gy), rgba(255, 255, 255, 0.7), transparent 55%);
   opacity: 0;
-  transition: opacity 0.3s ease;
+  transition: opacity 0.2s ease;
   mix-blend-mode: soft-light;
 }
 
@@ -158,9 +159,9 @@
   background:
     linear-gradient(rgba(79, 70, 229, 0.14) 1px, transparent 1px) 0 0 / 36px 36px,
     linear-gradient(90deg, rgba(79, 70, 229, 0.14) 1px, transparent 1px) 0 0 / 36px 36px,
-    linear-gradient(135deg, #ffffff 0%, #eef2ff 100%);
-  border: 1px solid rgba(79, 70, 229, 0.18);
-  box-shadow: 0 60px 80px -40px rgba(79, 70, 229, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.8) inset;
+    linear-gradient(135deg, var(--neu-surface-hi) 0%, #e6e9f7 100%);
+  border: 1px solid rgba(79, 70, 229, 0.16);
+  box-shadow: var(--neu-raised-lg), 0 60px 80px -40px rgba(79, 70, 229, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.8) inset;
   transform-style: preserve-3d;
 }
 
@@ -231,7 +232,7 @@
   position: absolute;
   inset: 0;
   border-radius: 10px;
-  background: linear-gradient(135deg, #ffffff, #e0e7ff);
+  background: linear-gradient(135deg, var(--neu-surface-hi), #dfe4fb);
   border: 1px solid rgba(79, 70, 229, 0.35);
   transform: translateZ(var(--h, 24px));
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9) inset;
@@ -350,10 +351,10 @@
 
 .device {
   position: absolute;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: var(--neu-gradient);
+  border: 1px solid var(--neu-hairline);
   border-radius: 14px;
-  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.04), 0 24px 48px -18px rgba(15, 23, 42, 0.28);
+  box-shadow: var(--neu-raised-sm), 0 24px 48px -18px rgba(15, 23, 42, 0.18);
   padding: 10px;
   display: flex;
   flex-direction: column;
@@ -412,9 +413,9 @@
   gap: 10px;
   padding: 10px 14px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  box-shadow: 0 24px 48px -18px rgba(79, 70, 229, 0.4);
+  background: var(--neu-gradient);
+  border: 1px solid var(--neu-hairline);
+  box-shadow: var(--neu-raised-sm), 0 24px 48px -18px rgba(79, 70, 229, 0.35);
   animation: deviceBob 7s ease-in-out infinite;
   animation-delay: -2s;
 }

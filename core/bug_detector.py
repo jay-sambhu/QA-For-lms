@@ -19,6 +19,44 @@ from urllib.parse import urlparse
 from collections import defaultdict
 
 
+DEVICE_SUFFIX_RE = re.compile(r'\s\[([^\[\]]+)\]$')
+
+# Console text produced by a React/Next.js server-client markup mismatch.
+# These are real defects but they are not crashes, and the minified text
+# tells the reader nothing without the decoded message.
+HYDRATION_ERROR_RE = re.compile(
+    r'Minified React error #(418|419|421|422|423|424|425)\b'
+    r'|Hydration failed'
+    r'|did not match.*server'
+    r'|Text content does not match'
+    r'|There was an error while hydrating',
+    re.I,
+)
+
+# Low-value assets whose absence is cosmetic (browser-requested icons and
+# manifests), used to soften 404 severity.
+LOW_VALUE_PATH_RE = re.compile(r'/(favicon[^/]*\.(ico|png|svg)|apple-touch-icon[^/]*|site\.webmanifest|manifest\.json|browserconfig\.xml|robots\.txt)$', re.I)
+
+ASSET_RESOURCE_TYPES = {'image', 'font', 'stylesheet', 'script', 'media', 'texttrack', 'manifest'}
+DOCUMENT_RESOURCE_TYPES = {'document', 'xhr', 'fetch', 'websocket', 'eventsource', 'other', ''}
+
+# Viewport widths at or above this are desktop layouts, where a visible
+# element poking past the right edge is almost always an intentional
+# off-canvas control rather than a responsive defect.
+DESKTOP_MIN_WIDTH = 1280
+
+
+def strip_device_suffix(page_id):
+    """'https://site/path [iPhone 13]' -> 'https://site/path'."""
+    return DEVICE_SUFFIX_RE.sub('', page_id or '')
+
+
+def device_of(page_id):
+    """'https://site/path [iPhone 13]' -> 'iPhone 13' (or '')."""
+    match = DEVICE_SUFFIX_RE.search(page_id or '')
+    return match.group(1) if match else ''
+
+
 def normalize_host(value):
     """
     Reduce a URL or bare host to a comparable hostname.
@@ -190,19 +228,36 @@ class QAFindingClassifier:
             for ignorable in self.IGNORABLE_FAILURES
         )
 
+    def _find_page(self, page_url):
+        """Locate a crawl page record by page id ('url [Device]') or by bare URL.
+
+        A bare URL matches the first successful render of that URL (desktop
+        first, since the crawler visits it first)."""
+        pages = self.crawl_result.get('pages', [])
+        for page in pages:
+            if page.get('url') == page_url:
+                return page
+        bare = strip_device_suffix(page_url)
+        for page in pages:
+            if page.get('error'):
+                continue
+            if page.get('actual_url') == bare or strip_device_suffix(page.get('url', '')) == bare:
+                return page
+        return None
+
     def get_page_title(self, page_url):
         """Get the page title from crawl pages."""
-        for page in self.crawl_result.get('pages', []):
-            if page.get('url') == page_url:
-                return page.get('title') or ''
-        return ''
+        page = self._find_page(page_url)
+        return (page.get('title') or '') if page else ''
 
     def get_page_screenshot(self, page_url):
         """Get the page screenshot from crawl pages."""
-        for page in self.crawl_result.get('pages', []):
-            if page.get('url') == page_url:
-                return page.get('screenshot') or ''
-        return ''
+        page = self._find_page(page_url)
+        return (page.get('screenshot') or '') if page else ''
+
+    def _devices_for(self, page_url):
+        device = device_of(page_url)
+        return [device] if device else []
 
     def find_matching_console_errors(self, http_error):
         """Find console errors on the same page that reference the same status."""
@@ -292,24 +347,21 @@ class QAFindingClassifier:
 
             # Determine confidence and severity based on first-party status
             is_first_party_request = self.is_first_party(url)
-            is_third_party_request = self.is_third_party(url)
+            resource_type = (errors[0].get('resource_type') or '').lower()
 
-            # Adjust severity for third-party
-            severity = classification['severity']
-            if is_third_party_request:
-                # Deprioritize third-party errors (except 5xx which are always high)
-                if numeric_status is not None and numeric_status < 500:
-                    severity = 'info'
+            severity = self._http_severity(
+                classification['severity'], numeric_status, url,
+                resource_type, is_first_party_request,
+            )
 
-            # Determine confidence
+            # Only a first-party failure can be verified against the site
+            # under test; an unknown host returning 4xx is circumstantial.
             if numeric_status is None:
                 confidence = 'low'
-            elif numeric_status >= 500:
+            elif not is_first_party_request:
+                confidence = 'medium' if numeric_status >= 500 else 'low'
+            elif numeric_status >= 500 or numeric_status == 404:
                 confidence = 'high'
-            elif numeric_status == 404:
-                confidence = 'high'
-            elif numeric_status in (401, 403):
-                confidence = 'medium'
             else:
                 confidence = 'medium'
             
@@ -336,6 +388,7 @@ class QAFindingClassifier:
                 'severity': severity,
                 'confidence': confidence,
                 'page': page,
+                'actual_url': strip_device_suffix(page),
                 'url': url,
                 'status': status,
                 'method': method,
@@ -351,9 +404,33 @@ class QAFindingClassifier:
                 'screenshot': screenshot,
                 'first_party': is_first_party_request,
                 'deduplicated_count': len(errors),
+                'affected_devices': self._devices_for(page),
             }
-            
+
             self.findings.append(finding)
+
+    @staticmethod
+    def _http_severity(base_severity, status, url, resource_type, is_first_party):
+        """Severity of an HTTP error from who served it and what it was.
+
+        A first-party page or API failing is the site's bug; a missing icon
+        or a broken request to an unknown third-party host is noise that
+        should not cost score points."""
+        if status is None:
+            return 'info'
+        if not is_first_party:
+            return 'low' if status >= 500 else 'info'
+
+        is_asset = resource_type in ASSET_RESOURCE_TYPES
+        if status >= 500:
+            return 'medium' if is_asset else 'high'
+        if status == 404:
+            if LOW_VALUE_PATH_RE.search(urlparse(url or '').path or ''):
+                return 'low'
+            return 'medium' if is_asset else 'high'
+        if is_asset and base_severity in ('high', 'medium'):
+            return 'low'
+        return base_severity
 
     def _generate_http_description(self, status, url, is_first_party):
         """Generate a descriptive message for an HTTP error."""
@@ -364,7 +441,11 @@ class QAFindingClassifier:
         segments = {segment.lower() for segment in parsed.path.split('/') if segment}
         is_api = bool(segments & {'api', 'apis', 'graphql', 'rest', 'v1', 'v2', 'v3'})
         resource_type = 'API' if is_api else 'Resource'
-        
+        if not is_first_party:
+            resource_type = f'Third-party {resource_type.lower()}'
+
+        if not isinstance(status, int):
+            return f"{resource_type} returned an unknown HTTP status"
         if status >= 500:
             return f"{resource_type} returned {status} server error"
         elif status == 404:
@@ -409,13 +490,16 @@ class QAFindingClassifier:
             if self._is_expected_auth_error(text):
                 continue
             
-            # Create a deduplication key based on error pattern
-            key = (page, self._error_pattern(text))
+            # One group per URL + message: the same error on three device
+            # renders is one defect observed on three devices, not three
+            # pages.
+            key = (strip_device_suffix(page), self._error_pattern(text))
             error_groups[key].append(console_error)
-        
+
         # Process each unique error group
-        for (page, pattern), errors in error_groups.items():
+        for (bare_page, pattern), errors in error_groups.items():
             error_text = errors[0].get('text', '')
+            page = errors[0].get('page', '')
 
             classification = self._classify_console_error(error_text)
 
@@ -425,12 +509,19 @@ class QAFindingClassifier:
             page_title = self.get_page_title(page)
             screenshot = self.get_page_screenshot(page)
 
+            devices = []
+            for err in errors:
+                dev = device_of(err.get('page', ''))
+                if dev and dev not in devices:
+                    devices.append(dev)
+
             finding = {
                 'id': self.generate_finding_id(),
                 'type': 'console_error',
                 'severity': classification['severity'],
                 'confidence': classification['confidence'],
                 'page': page,
+                'actual_url': bare_page,
                 'url': '',
                 'error_text': error_text,
                 'error_category': classification['category'],
@@ -447,6 +538,7 @@ class QAFindingClassifier:
                 'screenshot': screenshot,
                 'first_party': True,
                 'deduplicated_count': len(errors),
+                'affected_devices': devices,
             }
 
             self.findings.append(finding)
@@ -490,7 +582,24 @@ class QAFindingClassifier:
     def _classify_console_error(self, error_text):
         """Classify a console error message."""
         text_lower = error_text.lower()
-        
+
+        # React hydration mismatch: a real defect, but not a crash, and the
+        # minified text needs decoding for the reader.
+        hydration = HYDRATION_ERROR_RE.search(error_text or '')
+        if hydration:
+            code = hydration.group(1)
+            link = f'https://react.dev/errors/{code}' if code else 'https://react.dev/link/hydration-mismatch'
+            return {
+                'ignore': False,
+                'severity': 'medium',
+                'confidence': 'high',
+                'category': 'hydration_mismatch',
+                'description': (
+                    'Server/client markup mismatch (React hydration error). The HTML rendered on the server '
+                    f'differs from what React rendered in the browser, so React re-renders the page client-side. See {link}'
+                ),
+            }
+
         # Runtime errors
         if any(err in text_lower for err in ['typeerror', 'referenceerror', 'syntaxerror']):
             return {
@@ -583,8 +692,10 @@ class QAFindingClassifier:
                 # A first-party request that never completed is more likely to
                 # break the page than a failed request to an unknown host.
                 'severity': 'medium' if is_first_party_request else 'low',
-                'confidence': 'high',
+                'confidence': 'high' if is_first_party_request else 'medium',
                 'page': page,
+                'actual_url': strip_device_suffix(page),
+                'affected_devices': self._devices_for(page),
                 'url': url,
                 'method': method,
                 'resource_type': failures[0].get('resource_type', ''),
@@ -647,53 +758,82 @@ class QAFindingClassifier:
             self.findings.append(finding)
 
     def classify_responsive_issues(self):
-        """Classify responsive and layout issues across devices."""
+        """Classify responsive and layout issues across devices.
+
+        Only a real horizontal overflow (the document is wider than the
+        viewport by more than 15px) is a medium/high defect. Visible
+        controls poking past the edge without overflow are low, and on a
+        desktop-width viewport they are ignored: at 1280px+ such elements
+        are off-canvas drawers, carousels or sticky menus, not layout bugs.
+        """
         for page_data in self.crawl_result.get('pages', []):
-            if page_data.get('error'):
+            if page_data.get('error') or page_data.get('auth_wall'):
                 continue
-                
+
             responsive = page_data.get('responsive_checks') or {}
-            if not responsive:
+            if not responsive or responsive.get('checked') is False:
                 continue
 
-            has_overflow = responsive.get('horizontal_overflow', False)
-            elements_outside = responsive.get('elements_outside_viewport', 0)
-            forms_outside = responsive.get('forms_outside_viewport', 0)
-            clipped_buttons = responsive.get('clipped_buttons', 0)
-            overflow_pixels = responsive.get('overflow_pixels', 0)
+            has_overflow = bool(responsive.get('horizontal_overflow', False))
+            elements_outside = responsive.get('elements_outside_viewport', 0) or 0
+            forms_outside = responsive.get('forms_outside_viewport', 0) or 0
+            clipped_buttons = responsive.get('clipped_buttons', 0) or 0
+            overflow_pixels = responsive.get('overflow_pixels', 0) or 0
+            viewport_width = responsive.get('viewport_width', 0) or 0
 
-            if not has_overflow and elements_outside == 0 and forms_outside == 0 and clipped_buttons == 0:
+            real_overflow = has_overflow and overflow_pixels > 15
+            clipped_controls = forms_outside > 0 or clipped_buttons > 0
+
+            if not real_overflow and elements_outside == 0 and not clipped_controls:
+                continue
+            if not real_overflow and viewport_width >= DESKTOP_MIN_WIDTH:
                 continue
 
-            # Determine severity
-            if forms_outside > 0 or clipped_buttons > 0:
+            dev_name = page_data.get('device', 'Unknown Device')
+
+            if real_overflow and clipped_controls:
                 severity = 'high'
-                desc = f"Critical layout issue on {page_data.get('device')}: {forms_outside} form(s) or {clipped_buttons} button(s) clipped outside viewport."
-            elif has_overflow:
+                desc = (
+                    f"Page is {overflow_pixels}px wider than the {viewport_width}px viewport on {dev_name}, "
+                    f"and {forms_outside} form field(s) / {clipped_buttons} button(s) sit outside it."
+                )
+            elif real_overflow:
                 severity = 'medium'
-                desc = f"Horizontal page overflow on {page_data.get('device')}: scrollWidth exceeds viewport by {overflow_pixels}px ({elements_outside} elements outside bounds)."
+                desc = (
+                    f"Page is {overflow_pixels}px wider than the {viewport_width}px viewport on {dev_name} "
+                    f"({elements_outside} element(s) extend past the edge), so users must scroll sideways."
+                )
             else:
                 severity = 'low'
-                desc = f"Minor layout boundary issue on {page_data.get('device')}: {elements_outside} element(s) extend past viewport."
+                desc = (
+                    f"{elements_outside} visible element(s) ({clipped_buttons} button(s), {forms_outside} field(s)) "
+                    f"extend past the {viewport_width}px viewport on {dev_name} without causing page overflow."
+                )
 
-            actual_url = page_data.get('actual_url') or page_data.get('url', '').split(' ')[0]
-            dev_name = page_data.get('device', 'Unknown Device')
+            samples = responsive.get('samples') or []
+            if samples:
+                desc += ' Examples: ' + '; '.join(str(s) for s in samples[:3]) + '.'
+
+            actual_url = page_data.get('actual_url') or strip_device_suffix(page_data.get('url', ''))
             page_id = page_data.get('url', actual_url)
 
-            issue_type = 'overflow' if has_overflow else 'clipped_element'
+            issue_type = 'overflow' if real_overflow else 'clipped_element'
 
             finding = {
                 'id': self.generate_finding_id(),
                 'type': 'responsive_issue',
                 'severity': severity,
-                'confidence': 'high',
+                'confidence': 'high' if real_overflow else 'medium',
                 'page': page_id,
                 'actual_url': actual_url,
                 'device': dev_name,
                 'url': actual_url,
                 'title': f"Responsive layout issue on {dev_name}",
                 'description': desc,
-                'root_cause_key': f"responsive_issue|{actual_url}|{issue_type}",
+                'issue_type': issue_type,
+                # One layout pattern across the site is one finding; pages and
+                # devices are collected on the candidate.
+                'root_cause_key': f"responsive_issue|{self.target_domain}|{issue_type}",
                 'evidence': {
                     'http_errors': [],
                     'console_errors': [],
@@ -707,6 +847,75 @@ class QAFindingClassifier:
             }
 
             self.findings.append(finding)
+
+    def classify_auth_walls(self):
+        """One finding for every requested page that redirected to a login
+        page or off-site. Informational without credentials (expected),
+        medium when credentials were supplied and still did not grant access."""
+        walled = {}
+        for page_data in self.crawl_result.get('pages', []):
+            if page_data.get('error') or not page_data.get('auth_wall'):
+                continue
+            actual_url = page_data.get('actual_url') or strip_device_suffix(page_data.get('url', ''))
+            entry = walled.setdefault(actual_url, {
+                'page': page_data.get('url', actual_url),
+                'final_url': page_data.get('final_url', ''),
+                'screenshot': page_data.get('screenshot') or '',
+                'devices': [],
+            })
+            dev = page_data.get('device')
+            if dev and dev not in entry['devices']:
+                entry['devices'].append(dev)
+
+        if not walled:
+            return
+
+        credentials = bool(self.crawl_result.get('auth_credentials_supplied'))
+        severity = 'medium' if credentials else 'info'
+        count = len(walled)
+        first_url, first = next(iter(walled.items()))
+        destination = first.get('final_url') or ''
+        devices = sorted({d for entry in walled.values() for d in entry['devices']})
+
+        if credentials:
+            description = (
+                f"{count} page(s) redirected to a login page even though login credentials were supplied, "
+                f"so they were not tested. Example: {first_url} -> {destination}. Check that the credentials "
+                "are valid for these areas and that the session cookie is accepted on every route."
+            )
+        else:
+            description = (
+                f"{count} page(s) require authentication and redirected to a login page "
+                f"(example: {first_url} -> {destination}). Supply login credentials to include them in the scan."
+            )
+
+        self.findings.append({
+            'id': self.generate_finding_id(),
+            'type': 'auth_wall',
+            'severity': severity,
+            'confidence': 'high',
+            'page': first['page'],
+            'actual_url': first_url,
+            'url': first_url,
+            'final_url': destination,
+            'title': 'Pages behind a login wall',
+            'description': description,
+            'root_cause_key': f"auth_wall|{self.target_domain}",
+            'evidence': {
+                'http_errors': [],
+                'console_errors': [],
+                'network_failures': [],
+                'auth_walls': [
+                    {'page': url, 'redirected_to': entry['final_url'], 'devices': entry['devices']}
+                    for url, entry in walled.items()
+                ],
+            },
+            'screenshot': first.get('screenshot') or '',
+            'first_party': True,
+            'deduplicated_count': count,
+            'affected_devices': devices,
+            'affected_urls': list(walled.keys()),
+        })
 
     def group_findings_by_root_cause(self):
         """
@@ -756,17 +965,25 @@ class QAFindingClassifier:
         all_network_failures = []
         occurrences = 0
 
-        affected_devices = set()
+        affected_devices = []
+        page_views = set()
         for finding in findings_in_group:
-            page = finding.get('page') or ''
+            page_id = finding.get('page') or ''
+            # Pages are URLs, not device renders: the same URL seen on three
+            # viewports is one affected page observed on three devices.
+            page = finding.get('actual_url') or strip_device_suffix(page_id)
             if page and page not in page_screenshots:
                 page_screenshots[page] = finding.get('screenshot') or ''
+            elif page and not page_screenshots.get(page) and finding.get('screenshot'):
+                page_screenshots[page] = finding.get('screenshot')
+            for extra in finding.get('affected_urls', []) or []:
+                page_screenshots.setdefault(extra, '')
+            if page_id:
+                page_views.add(page_id)
 
-            dev = finding.get('device')
-            if dev:
-                affected_devices.add(dev)
-            for d in finding.get('affected_devices', []):
-                affected_devices.add(d)
+            for d in [finding.get('device')] + list(finding.get('affected_devices', []) or []) + self._devices_for(page_id):
+                if d and d not in affected_devices:
+                    affected_devices.append(d)
 
             evidence = finding.get('evidence', {})
             all_http_errors.extend(evidence.get('http_errors', []))
@@ -779,15 +996,22 @@ class QAFindingClassifier:
 
         affected_pages = list(page_screenshots.keys())
         page_count = len(affected_pages)
+        affected_devices = sorted(affected_devices)
+
+        severity = template.get('severity')
+        if finding_type == 'responsive_issue':
+            # The group spans pages and devices; its severity is the worst seen.
+            rank = {'critical': 4, 'high': 3, 'medium': 2, 'low': 1, 'info': 0}
+            severity = max((f.get('severity') or 'info' for f in findings_in_group), key=lambda s: rank.get(s, 0))
 
         title, description = self._candidate_narrative(
-            finding_type, template, occurrences, page_count
+            finding_type, template, occurrences, page_count, affected_devices, findings_in_group
         )
 
         return {
             'id': self.generate_candidate_id(),
             'type': finding_type,
-            'severity': template.get('severity'),
+            'severity': severity,
             'confidence': template.get('confidence'),
             'root_cause_key': root_cause_key,
             'url': template.get('url'),
@@ -796,12 +1020,15 @@ class QAFindingClassifier:
             'resource_type': template.get('resource_type'),
             'error_text': template.get('error_text'),
             'error_category': template.get('error_category'),
+            'issue_type': template.get('issue_type'),
             'title': title,
             'description': description,
             'occurrences': occurrences,
             'affected_pages': affected_pages,
             'affected_page_count': page_count,
-            'affected_devices': sorted(list(affected_devices)),
+            'affected_page_views': len(page_views),
+            'affected_devices': affected_devices,
+            'page_titles': [t for t in {self.get_page_title(p) for p in affected_pages} if t][:5],
             # Paths only, for consumers that just want to attach images.
             'screenshots': [path for path in page_screenshots.values() if path],
             # Explicit page->screenshot pairing for consumers that need both.
@@ -817,24 +1044,73 @@ class QAFindingClassifier:
             'first_party': template.get('first_party'),
         }
 
-    def _candidate_narrative(self, finding_type, template, occurrences, page_count):
+    @staticmethod
+    def _scope_suffix(page_count, devices):
+        """' (2 pages, 3 devices)' style suffix for titles; URLs never go in
+        titles, they live in the url/affected_pages fields."""
+        bits = []
+        if page_count:
+            bits.append(f"{page_count} page{'s' if page_count != 1 else ''}")
+        if devices:
+            bits.append(f"{len(devices)} device{'s' if len(devices) != 1 else ''}")
+        return f" ({', '.join(bits)})" if bits else ''
+
+    @staticmethod
+    def _console_title(category, error_text):
+        titles = {
+            'hydration_mismatch': 'React hydration mismatch',
+            'javascript_exception': 'JavaScript runtime error',
+            'uncaught_exception': 'Uncaught JavaScript exception',
+            'application_api_error': 'Application API request failed',
+            'cors_error': 'Cross-origin (CORS) request blocked',
+            'console_message': 'Console error message',
+        }
+        base = titles.get(category)
+        if base:
+            return base
+        snippet = (error_text or '').strip().split('\n')[0]
+        return snippet[:60] if snippet else 'Console error'
+
+    def _candidate_narrative(self, finding_type, template, occurrences, page_count,
+                             devices=None, findings_in_group=None):
         """Return a (title, description) pair for a root-cause candidate."""
         parts = []
+        devices = devices or []
+        findings_in_group = findings_in_group or [template]
+        scope = self._scope_suffix(page_count, devices)
+        device_list = ', '.join(devices)
 
         if finding_type == 'http_error':
             endpoint = (template.get('url') or '').split('?')[0]
             status = template.get('status')
+            path = urlparse(endpoint).path or '/'
+            kind = 'API' if (template.get('resource_type') or '') in ('xhr', 'fetch') else (
+                'page' if (template.get('resource_type') or '') == 'document' else
+                (template.get('resource_type') or 'resource')
+            )
+            party = '' if template.get('first_party') else 'Third-party '
 
-            if page_count > 1:
-                title = f'Repeated HTTP {status} response from {endpoint}'
-                parts.append(
-                    f"The {(template.get('resource_type') or 'API').lower()} returned "
-                    f"HTTP {status} across {page_count} crawled pages "
-                    f"({occurrences} requests)."
-                )
+            if status is None:
+                title = f'{party}{kind} request failed{scope}'.strip()
+            elif status >= 500:
+                title = f'{party}{kind} returns HTTP {status}{scope}'.strip()
+            elif status == 404:
+                title = f'{party}{kind} not found (404){scope}'.strip()
             else:
-                title = template.get('description') or f'HTTP {status} error'
-                parts.append(template.get('description') or '')
+                title = f'{party}{kind} returns HTTP {status}{scope}'.strip()
+            title = title[0].upper() + title[1:]
+
+            parts.append(f"{template.get('description') or f'HTTP {status} error'} at {path}.")
+            if page_count > 1:
+                parts.append(
+                    f"Observed on {page_count} crawled pages ({occurrences} requests)."
+                )
+            elif occurrences > 1:
+                parts.append(f"{occurrences} requests failed on this page.")
+            if device_list:
+                parts.append(f"Devices: {device_list}.")
+            if not template.get('first_party'):
+                parts.append('The failing host is not part of the site under test, so this is usually outside your control.')
 
             if status == 401:
                 parts.append(
@@ -847,23 +1123,29 @@ class QAFindingClassifier:
 
         elif finding_type == 'console_error':
             snippet = (template.get('error_text') or '').strip()
-            if len(snippet) > 120:
-                snippet = f'{snippet[:117]}...'
+            if len(snippet) > 160:
+                snippet = f'{snippet[:157]}...'
 
             base = template.get('description') or 'Console error'
-            title = f'{base} on {page_count} page(s)' if page_count > 1 else base
-            parts.append(base + '.')
+            title = self._console_title(template.get('error_category'), template.get('error_text')) + scope
+            parts.append(base.rstrip('.') + '.')
             if snippet:
                 parts.append(f'Message: {snippet}')
             if page_count > 1:
                 parts.append(
                     f'Observed on {page_count} crawled pages ({occurrences} occurrences).'
                 )
+            elif len(devices) > 1:
+                parts.append(f'Reproduced on every viewport tested ({device_list}).')
 
         elif finding_type == 'network_failure':
             endpoint = (template.get('url') or '').split('?')[0]
-            title = f'Request to {endpoint} failed to complete'
-            parts.append(template.get('description') or 'Network failure.')
+            path = urlparse(endpoint).path or '/'
+            reason = (template.get('description') or 'Network failure.').replace('Network failure: ', '')
+            party = '' if template.get('first_party') else 'Third-party '
+            title = f"{party}request failed to complete ({reason}){scope}"
+            title = title[0].upper() + title[1:]
+            parts.append(f"The request to {path} did not complete: {reason}.")
             if page_count > 1:
                 parts.append(
                     f'Observed on {page_count} crawled pages ({occurrences} occurrences).'
@@ -874,19 +1156,29 @@ class QAFindingClassifier:
             element_text = template.get('interactive_metadata', {}).get('element_text', 'element')
             title = f"Failed {action} on '{element_text}'"
             parts.append(template.get('description') or 'Interaction failed.')
-            
+
             if page_count > 1:
                 parts.append(f'Observed on {page_count} pages ({occurrences} occurrences).')
 
         elif finding_type == 'responsive_issue':
-            actual_url = template.get('actual_url') or (template.get('url') or '').split(' ')[0]
-            title = f"Responsive layout overflow on {actual_url}"
-            parts.append(template.get('description') or 'Responsive layout issue detected.')
+            issue_type = template.get('issue_type') or 'overflow'
+            if issue_type == 'overflow':
+                title = f"Horizontal overflow on {device_list or 'small screens'} ({page_count} page{'s' if page_count != 1 else ''})"
+                parts.append('The page is wider than the viewport, so users must scroll sideways to see all content.')
+            else:
+                title = f"Interactive elements clipped outside viewport ({page_count} page{'s' if page_count != 1 else ''})"
+                parts.append('Visible buttons or fields extend past the edge of the screen without causing page overflow.')
+            worst = max(findings_in_group, key=lambda f: ((f.get('evidence') or {}).get('responsive_checks') or {}).get('overflow_pixels', 0) or 0)
+            parts.append(worst.get('description') or template.get('description') or '')
             if page_count > 1:
-                parts.append(f'Observed across {page_count} device/page instances.')
+                parts.append(f'Observed on {page_count} pages.')
+
+        elif finding_type == 'auth_wall':
+            title = template.get('title') or 'Pages behind a login wall'
+            parts.append(template.get('description') or '')
 
         else:
-            title = template.get('description') or 'Finding'
+            title = template.get('title') or template.get('description') or 'Finding'
             parts.append(template.get('description') or '')
 
         description = ' '.join(part for part in parts if part).strip()
@@ -899,6 +1191,7 @@ class QAFindingClassifier:
         self.classify_network_failures()
         self.classify_interaction_errors()
         self.classify_responsive_issues()
+        self.classify_auth_walls()
         self.group_findings_by_root_cause()
         return self.findings
 
@@ -915,6 +1208,8 @@ class QAFindingClassifier:
         http_page_findings = sum(1 for f in self.findings if f.get('type') == 'http_error')
         console_page_findings = sum(1 for f in self.findings if f.get('type') == 'console_error')
         network_page_findings = sum(1 for f in self.findings if f.get('type') == 'network_failure')
+        responsive_page_findings = sum(1 for f in self.findings if f.get('type') == 'responsive_issue')
+        auth_wall_findings = sum(1 for f in self.findings if f.get('type') == 'auth_wall')
 
         # Root-cause candidate counts
         total_candidates = len(self.root_cause_candidates)
@@ -935,6 +1230,8 @@ class QAFindingClassifier:
                 'http_error': http_page_findings,
                 'console_error': console_page_findings,
                 'network_failure': network_page_findings,
+                'responsive_issue': responsive_page_findings,
+                'auth_wall': auth_wall_findings,
             },
             'root_cause_candidates': total_candidates,
             'severity_distribution': {

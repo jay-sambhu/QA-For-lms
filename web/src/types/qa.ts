@@ -38,12 +38,34 @@ export type QAFinding = Finding;
 export type TestCase = NonNullable<QAReport['test_cases']>[number];
 export type CrossDeviceMetrics = NonNullable<QAReport['report_metadata']['cross_device_metrics']>;
 
+export interface QualityScore {
+  score: number;
+  grade: string;
+  summary: string;
+}
+
+export interface DeviceBreakdown {
+  desktop: number;
+  iphone: number;
+  ipad: number;
+}
+
+export interface RegressionSummary {
+  new: number;
+  fixed: number;
+  unchanged: number;
+  worsened: number;
+  improved: number;
+}
+
 export interface QAReport {
   report_metadata: {
     generated_at: string;
     source_report?: string;
     target: string;
     pages_crawled: number;
+    crawl_partial?: boolean;
+    auth_wall_pages?: number;
     ai_analysis_failures?: number;
     ai_analysis_degraded?: boolean;
     interactive_metrics?: {
@@ -52,23 +74,17 @@ export interface QAReport {
       passed: number;
       failed: number;
       manual_review: number;
-    };
+    } | null;
     cross_device_metrics?: {
       devices_tested: number;
       pages_tested?: number;
       pages_crawled?: number;
+      pages_discovered?: number;
+      pages_failed?: number;
       responsive_findings: number;
-      device_breakdown: {
-        desktop: number;
-        iphone: number;
-        ipad: number;
-      };
+      device_breakdown: DeviceBreakdown;
     };
-    quality_score?: {
-      score: number;
-      grade: string;
-      summary: string;
-    };
+    quality_score?: QualityScore;
   };
   summary: {
     total_candidates: number;
@@ -78,13 +94,12 @@ export interface QAReport {
     informational: number;
     ignored: number;
     analysis_failures?: number;
+    regression_summary?: Partial<RegressionSummary>;
   };
   qa_metrics?: {
-    quality_score?: number | {
-      score: number;
-      grade: string;
-      summary: string;
-    };
+    target?: string;
+    generated_at?: string;
+    quality_score?: number | QualityScore;
     letter_grade?: string;
     verdict?: string;
     duration_seconds?: number;
@@ -95,8 +110,13 @@ export interface QAReport {
       skipped?: number;
       blocked?: number;
       errored?: number;
+      executed?: number;
       pass_rate?: number;
       fail_rate?: number;
+      skip_rate?: number;
+      block_rate?: number;
+      errored_rate?: number;
+      duration_ms?: number;
     };
     findings?: {
       total?: number;
@@ -124,10 +144,15 @@ export interface QAReport {
     crawl?: {
       pages_crawled: number;
       pages_attempted?: number;
+      pages_discovered?: number;
+      pages_failed?: number;
+      max_pages?: number;
       http_errors?: number;
       network_failures?: number;
       console_errors?: number;
       devices_tested?: number;
+      responsive_findings?: number;
+      device_breakdown?: DeviceBreakdown;
     };
     duration?: {
       duration_seconds?: number;
@@ -142,7 +167,7 @@ export interface QAReport {
     informational: number;
     duplicate: number;
     priority: { P0: number; P1: number; P2: number; P3: number; P4: number };
-    regression_summary: { new: number; fixed: number; unchanged: number; worsened: number; improved: number };
+    regression_summary: RegressionSummary;
   };
   severity: Record<Severity, number>;
   findings: Finding[];
@@ -168,6 +193,14 @@ export interface QAReport {
     failed: number;
     blocked: number;
     manual_review: number;
+    skipped?: number;
+    errored?: number;
+    pass_rate?: number;
+    fail_rate?: number;
+    skip_rate?: number;
+    block_rate?: number;
+    errored_rate?: number;
+    duration_ms?: number;
   };
 }
 
@@ -182,3 +215,17 @@ export interface ProgressPayload {
 }
 
 export type ScanStatus = 'pending' | 'running' | 'completed' | 'failed' | 'error' | 'cancelled' | '';
+
+/** Body of GET /api/v1/scans/{id}. */
+export interface ScanStatusResponse {
+  id: string;
+  user_id?: string;
+  url?: string;
+  status: ScanStatus;
+  is_authenticated?: boolean;
+  created_at?: string | null;
+  completed_at?: string | null;
+  progress?: ProgressPayload | null;
+  results?: QAReport | null;
+  has_cloud_report?: boolean;
+}
