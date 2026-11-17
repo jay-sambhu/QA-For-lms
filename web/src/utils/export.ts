@@ -173,13 +173,13 @@ export const extractCanonicalExportData = (results: QAReport | null | undefined,
   const durationSeconds = qa.duration_seconds ?? qa.duration?.duration_seconds ?? 0;
 
   // Test Case Metrics
-  const tcTotal = tcm?.total ?? results.test_cases?.length ?? 0;
-  const tcPassed = tcm?.passed ?? 0;
-  const tcFailed = tcm?.failed ?? 0;
-  const tcSkipped = tcm?.skipped ?? (tcm && 'manual_review' in tcm ? tcm.manual_review : undefined) ?? 0;
-  const tcBlocked = tcm?.blocked ?? 0;
-  const tcErrored = tcm?.errored ?? 0;
-  const tcExecuted = tcm?.executed ?? tcPassed + tcFailed + tcErrored;
+  const tcTotal: number = Number(tcm?.total ?? results.test_cases?.length ?? 0);
+  const tcPassed: number = Number(tcm?.passed ?? 0);
+  const tcFailed: number = Number(tcm?.failed ?? 0);
+  const tcSkipped: number = Number(tcm?.skipped ?? (tcm as any)?.manual_review ?? 0);
+  const tcBlocked: number = Number(tcm?.blocked ?? 0);
+  const tcErrored: number = Number(tcm?.errored ?? 0);
+  const tcExecuted: number = Number(tcm?.executed ?? tcPassed + tcFailed + tcErrored);
 
   // Findings Metrics
   const bySev: Record<string, number | undefined> = findingsMetrics.by_severity ?? severity;
@@ -269,13 +269,15 @@ const testCaseStatus = (t: TestCase) => (t.status || t.execution_policy || 'skip
  * Generates and triggers a PDF download for the QA scan.
  */
 const downloadPDF = async (results: QAReport, scanId: string | null = '') => {
-  const [{ default: JsPDF }, { default: autoTable }] = await Promise.all([
+  const [jspdfModule, autotableModule] = await Promise.all([
     import('jspdf'),
     import('jspdf-autotable'),
   ]);
 
   const data = extractCanonicalExportData(results, scanId);
-  const doc: jsPDF = new JsPDF('p', 'mm', 'a4'); // A4 Portrait (210 x 297 mm)
+  const JsPdfConstructor = (jspdfModule as any).jsPDF || (jspdfModule as any).default;
+  const autoTable = (autotableModule as any).default || (autotableModule as any).autoTable;
+  const doc: jsPDF = new JsPdfConstructor('p', 'mm', 'a4'); // A4 Portrait (210 x 297 mm)
 
   const formattedDate = new Date(data.generatedAt).toLocaleString();
   const tableEnd = (fallback: number) => (doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : fallback);
@@ -533,7 +535,8 @@ const downloadPDF = async (results: QAReport, scanId: string | null = '') => {
  * Generates and triggers an Excel (.xlsx) workbook download for the QA scan.
  */
 const downloadExcel = async (results: QAReport, scanId: string | null = '') => {
-  const XLSX = await import('xlsx');
+  const xlsxModule = await import('xlsx');
+  const XLSX = (xlsxModule as any).default || xlsxModule;
 
   const data = extractCanonicalExportData(results, scanId);
   const tc = data.testCasesSummary;

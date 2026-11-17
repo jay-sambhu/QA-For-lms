@@ -288,7 +288,7 @@ def _admin_by_identity(user: Any) -> bool:
     Supabase, not writable by the browser) or the confirmed ADMIN_EMAILS list.
     user_metadata is never trusted."""
     app_meta = getattr(user, "app_metadata", None)
-    if isinstance(app_meta, dict) and app_meta.get("role") == "admin":
+    if isinstance(app_meta, dict) and app_meta.get("role") in ("admin", "superuser"):
         return True
     email = str(getattr(user, "email", "") or "").lower()
     return bool(email) and email in ADMIN_EMAILS and email_confirmed(user)
@@ -296,7 +296,7 @@ def _admin_by_identity(user: Any) -> bool:
 
 def resolve_is_admin(user: Any, db=None) -> bool:
     """The single admin rule: identity provider role, confirmed allow-listed
-    email, or role='admin' on the users row."""
+    email, or role in ('admin', 'superuser') on the users row."""
     if user is None:
         return False
     if _admin_by_identity(user):
@@ -313,7 +313,7 @@ def resolve_is_admin(user: Any, db=None) -> bool:
     except Exception as error:
         logger.error("Could not read role for user %s: %s", user_id, error)
         return False
-    return bool(row and row[0] == "admin")
+    return bool(row and row[0] in ("admin", "superuser"))
 
 
 def _placeholder_email(user_id: str) -> str:

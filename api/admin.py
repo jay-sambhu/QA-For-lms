@@ -136,10 +136,10 @@ def list_admin_users(limit: int = _PAGE, offset: int = _OFFSET) -> Dict[str, Any
 
 @admin_router.patch("/users/{user_id}/role")
 def update_user_role(user_id: str, payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Elevate or demote user role between 'user' and 'admin'."""
+    """Elevate or demote user role between 'user', 'admin', and 'superuser'."""
     new_role = payload.get("role")
-    if new_role not in ["user", "admin"]:
-        raise HTTPException(status_code=400, detail="Invalid role. Must be 'user' or 'admin'.")
+    if new_role not in ["user", "admin", "superuser"]:
+        raise HTTPException(status_code=400, detail="Invalid role. Must be 'user', 'admin', or 'superuser'.")
     with SessionLocal() as db:
         user = db.query(User).filter(User.id == user_id).first()
         if not user:

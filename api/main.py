@@ -225,15 +225,18 @@ else:
 # Plans, quotas and the free trial
 # ---------------------------------------------------------------------------
 
-def _get_plan_max_pages(plan_tier: str) -> int:
+def _get_plan_max_pages(plan_tier: str, is_admin: bool = False) -> int:
     """Get max_pages limit from billing PLANS config for the given plan tier.
 
     Falls back to 10 (free-tier default) if the tier is unknown.
+    If the caller is an admin or superuser, allow at least 50 pages.
     The result is also capped by MAX_PAGES_LIMIT as an absolute safety ceiling.
     """
     from billing.gateways import PLANS
     plan = PLANS.get(plan_tier, PLANS.get("free", {}))
     plan_limit = plan.get("max_pages", 10)
+    if is_admin:
+        plan_limit = max(plan_limit, 50)
     return min(plan_limit, MAX_PAGES_LIMIT)
 
 
@@ -754,11 +757,11 @@ def create_scan(
     if needs_trial and not trial_enabled():
         raise HTTPException(status_code=400, detail=_NO_KEY_DETAIL)
 
-    plan_max_pages = _get_plan_max_pages(user_plan)
+    plan_max_pages = _get_plan_max_pages(user_plan, is_admin=is_admin)
     if request.max_pages > plan_max_pages:
         logger.info(
-            "Plan cap applied: user %s (%s tier) requested %d pages, capped to %d",
-            user_id_val, user_plan, request.max_pages, plan_max_pages,
+            "Plan cap applied: user %s (%s tier, admin=%s) requested %d pages, capped to %d",
+            user_id_val, user_plan, is_admin, request.max_pages, plan_max_pages,
         )
         request.max_pages = plan_max_pages
 

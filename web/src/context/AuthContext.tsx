@@ -73,7 +73,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // acting on the default 'user' role while /api/v1/auth/me is still in flight.
   const [roleLoaded, setRoleLoaded] = useState(false);
 
-  const isAdmin = userRole === 'admin' || userProfile?.is_admin === true;
+  const isAdmin = userRole === 'admin' || userRole === 'superuser' || userProfile?.is_admin === true;
 
   // Always read the latest session inside async callbacks (avoids stale closures
   // from the mount-time effect and the onAuthStateChange subscription).
