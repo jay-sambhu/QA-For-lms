@@ -17,6 +17,7 @@ from security.redactor import SecretRedactor  # noqa: F401 — re-exported for b
 
 
 from core.calculation_engine import CalculationEngine
+from core.schemas.test_case import normalize_test_case_dict
 
 
 class QAReportGenerator:
@@ -121,6 +122,7 @@ class QAReportGenerator:
                             if tc.get("id") == res.get("test_id"):
                                 tc["status"] = res.get("status")
                                 tc["actual_result"] = res.get("actual_result")
+                                tc["exact_result"] = res.get("exact_result") or res.get("actual_result")
                                 tc["evidence"] = res.get("evidence")
                                 tc["duration_ms"] = res.get("duration_ms", 0)
             except Exception:
@@ -143,6 +145,10 @@ class QAReportGenerator:
                     if tc.get("id") != "TC-AUTH-001" and tc.get("status") not in ("passed", "failed", "errored"):
                         tc["status"] = "blocked"
                         tc["actual_result"] = "Blocked due to authentication failure."
+                        tc["exact_result"] = "Blocked due to prerequisite authentication failure."
+
+        # Normalize all test cases with issue_level, description, expected_result, exact_result
+        test_cases = [normalize_test_case_dict(tc) for tc in test_cases]
 
         # Run Authoritative Calculation Engine
         # The pipeline (run_qa.py) sets start_time/end_time on the generator;
@@ -558,13 +564,18 @@ class QAReportGenerator:
                 "### Test Cases\n"
             ])
             for tc in json_report.get("test_cases", []):
-                md.append(f"**{tc['id']}** - {tc['title']} ({str(tc.get('status') or 'skipped').upper()})")
-                page = tc.get('source_page') or self._test_case_page(tc)
+                norm_tc = normalize_test_case_dict(tc)
+                level = (norm_tc.get("issue_level") or "medium").upper()
+                md.append(f"**{norm_tc['id']}** - {norm_tc['title']} ({str(norm_tc.get('status') or 'skipped').upper()}) [Issue Level: {level}]")
+                if norm_tc.get("description"):
+                    md.append(f"- **Description:** {norm_tc['description']}")
+                page = norm_tc.get('source_page') or self._test_case_page(norm_tc)
                 md.append(f"- **Page:** {page or 'Unknown'}")
-                expected = tc.get('expected_result') or tc.get('expected_behavior') or ''
-                md.append(f"- **Expected:** {expected}")
-                if tc.get('actual_result'):
-                    md.append(f"- **Actual:** {tc['actual_result']}")
+                expected = norm_tc.get('expected_result') or norm_tc.get('expected_behavior') or ''
+                md.append(f"- **Expected Result:** {expected}")
+                exact = norm_tc.get('exact_result') or norm_tc.get('actual_result')
+                if exact:
+                    md.append(f"- **Exact Result:** {exact}")
                 md.append("")
 
         return "\n".join(md)

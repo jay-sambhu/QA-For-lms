@@ -537,6 +537,31 @@ def generate_pdf_from_json(json_path: str, output_path: str):
         ))
     if not findings:
         story.append(Paragraph("No defects detected. Target web application verified successfully.", styles["Normal"]))
+
+    test_cases = data.get("test_cases", []) or []
+    if test_cases:
+        story.append(Spacer(1, 12))
+        story.append(Paragraph(f"<b>Test Cases ({len(test_cases)})</b>", styles["Heading2"]))
+        for tc in test_cases:
+            if not isinstance(tc, dict):
+                continue
+            tc_id = _esc(str(tc.get("id", "")))
+            title = _esc(str(tc.get("title", "")))
+            level = _esc(str(tc.get("issue_level", "medium")).upper())
+            status = _esc(str(tc.get("status", "skipped")).upper())
+            desc = _esc(str(tc.get("description", "")))
+            exp = _esc(str(tc.get("expected_result", "")))
+            exact = _esc(str(tc.get("exact_result") or tc.get("actual_result", "")))
+
+            story.append(Paragraph(f"<b>{tc_id}: {title}</b> ({status}) — Level: {level}", styles["Heading3"] if "Heading3" in styles else styles["Normal"]))
+            if desc:
+                story.append(Paragraph(f"<i>Description:</i> {desc}", styles["Normal"]))
+            if exp:
+                story.append(Paragraph(f"<b>Expected:</b> {exp}", styles["Normal"]))
+            if exact:
+                story.append(Paragraph(f"<b>Exact Result:</b> {exact}", styles["Normal"]))
+            story.append(Spacer(1, 4))
+
     doc.build(story)
 
 
@@ -580,6 +605,26 @@ def generate_xlsx_from_json(json_path: str, output_path: str):
             _cell(f.get("classification", "")),
             _cell(f.get("url", "")),
         ])
+
+    test_cases = data.get("test_cases", []) or []
+    if test_cases:
+        ws_tc = wb.create_sheet(title="Test Cases")
+        ws_tc.append(["ID", "Title", "Issue Level", "Priority", "Status", "Description", "Expected Result", "Exact Result", "Source Page"])
+        for tc in test_cases:
+            if not isinstance(tc, dict):
+                continue
+            ws_tc.append([
+                _cell(tc.get("id", "")),
+                _cell(tc.get("title", "")),
+                _cell(tc.get("issue_level", "medium")),
+                _cell(tc.get("priority", "P2")),
+                _cell(tc.get("status", "skipped")),
+                _cell(tc.get("description", "")),
+                _cell(tc.get("expected_result", "")),
+                _cell(tc.get("exact_result") or tc.get("actual_result", "")),
+                _cell(tc.get("source_page", "")),
+            ])
+
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     wb.save(output_path)
 

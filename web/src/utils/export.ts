@@ -423,27 +423,27 @@ const downloadPDF = async (results: QAReport, scanId: string | null = '') => {
 
     const testCasesRows = data.testCases.map((t) => [
       t.id || 'TC',
+      (t.issue_level || (t.priority === 'P0' ? 'critical' : t.priority === 'P1' ? 'high' : t.priority === 'P2' ? 'medium' : 'low')).toUpperCase(),
       testCaseStatus(t),
-      t.title || 'Untitled Test',
-      t.duration_ms ? `${t.duration_ms}ms` : '0ms',
+      `${t.title || 'Untitled Test'}${t.description ? `\n${t.description}` : ''}`,
       t.expected_result || 'Expected pass',
-      t.actual_result || 'N/A',
+      t.exact_result || t.actual_result || 'N/A',
     ]);
 
     autoTable(doc, {
       startY: currentY,
-      head: [['ID', 'Status', 'Test Case Title', 'Duration', 'Expected Result', 'Actual Result']],
+      head: [['ID', 'Level', 'Status', 'Test Case & Description', 'Expected Result', 'Exact Result']],
       body: testCasesRows,
       theme: 'grid',
       headStyles: { fillColor: [16, 185, 129], textColor: 255, fontStyle: 'bold', fontSize: 8.5 },
       bodyStyles: { fontSize: 7.5, cellPadding: 2 },
       columnStyles: {
-        0: { cellWidth: 20 },
-        1: { cellWidth: 20 },
-        2: { cellWidth: 45 },
-        3: { cellWidth: 18 },
-        4: { cellWidth: 40 },
-        5: { cellWidth: 39 },
+        0: { cellWidth: 16 },
+        1: { cellWidth: 16 },
+        2: { cellWidth: 16 },
+        3: { cellWidth: 50 },
+        4: { cellWidth: 42 },
+        5: { cellWidth: 42 },
       },
       margin: { left: 14, right: 14 },
     });
@@ -597,21 +597,47 @@ const downloadExcel = async (results: QAReport, scanId: string | null = '') => {
 
   // 2. Test Cases Sheet
   if (data.testCases.length > 0) {
-    const tcHeaders = ['Test Case ID', 'Status', 'Title', 'Category', 'Priority', 'Source Page', 'Duration (ms)', 'Expected Result', 'Actual Result'];
+    const tcHeaders = [
+      'Test Case ID',
+      'Status',
+      'Issue Level',
+      'Title',
+      'Description',
+      'Category',
+      'Priority',
+      'Source Page',
+      'Duration (ms)',
+      'Expected Result',
+      'Exact Result',
+    ];
     const tcRows = data.testCases.map((t) => [
       t.id || '',
       testCaseStatus(t),
+      (t.issue_level || (t.priority === 'P0' ? 'critical' : t.priority === 'P1' ? 'high' : t.priority === 'P2' ? 'medium' : 'low')).toUpperCase(),
       t.title || '',
+      t.description || t.objective || '',
       t.category || '',
       t.priority || '',
       t.source_page || '',
       t.duration_ms || 0,
       t.expected_result || '',
-      t.actual_result || '',
+      t.exact_result || t.actual_result || '',
     ]);
 
     const tcWs = XLSX.utils.aoa_to_sheet([tcHeaders, ...tcRows]);
-    tcWs['!cols'] = [{ wch: 15 }, { wch: 12 }, { wch: 40 }, { wch: 15 }, { wch: 10 }, { wch: 30 }, { wch: 14 }, { wch: 30 }, { wch: 30 }];
+    tcWs['!cols'] = [
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 35 },
+      { wch: 40 },
+      { wch: 15 },
+      { wch: 10 },
+      { wch: 30 },
+      { wch: 14 },
+      { wch: 35 },
+      { wch: 35 },
+    ];
     XLSX.utils.book_append_sheet(wb, tcWs, 'Test Cases');
   }
 
@@ -742,12 +768,16 @@ export const generateMarkdownReport = (data: CanonicalExportData): string => {
 
   if (data.testCases.length > 0) {
     lines.push('## 5. Automated Test Cases Detail\n');
-    lines.push('| ID | Status | Title | Duration | Expected Result | Actual Result |');
-    lines.push('| :--- | :--- | :--- | :--- | :--- | :--- |');
+    lines.push('| ID | Level | Status | Title & Description | Expected Result | Exact Result | Duration |');
+    lines.push('| :--- | :--- | :--- | :--- | :--- | :--- | :--- |');
     data.testCases.forEach((t) => {
       const dur = t.duration_ms ? `${t.duration_ms}ms` : '0ms';
+      const level = (t.issue_level || (t.priority === 'P0' ? 'critical' : t.priority === 'P1' ? 'high' : t.priority === 'P2' ? 'medium' : 'low')).toUpperCase();
+      const descPart = t.description || t.objective;
+      const titleDesc = descPart ? `**${mdCell(t.title, 'Untitled')}**<br>${mdCell(descPart, '')}` : mdCell(t.title, 'Untitled');
+      const exact = t.exact_result || t.actual_result || 'N/A';
       lines.push(
-        `| \`${t.id || 'TC'}\` | **${testCaseStatus(t)}** | ${mdCell(t.title, 'Untitled')} | ${dur} | ${mdCell(t.expected_result, 'Pass')} | ${mdCell(t.actual_result, 'N/A')} |`
+        `| \`${t.id || 'TC'}\` | **${level}** | **${testCaseStatus(t)}** | ${titleDesc} | ${mdCell(t.expected_result, 'Pass')} | ${mdCell(exact, 'N/A')} | ${dur} |`
       );
     });
     lines.push('');

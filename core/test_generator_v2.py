@@ -32,9 +32,12 @@ class AutonomousTestGenerator:
                 id=f"TC-{counter:03d}",
                 title=f"Verify Route Accessibility: {route}",
                 objective=f"Ensure user can navigate to {route} and page loads correctly",
+                description=f"Navigate to {route} and verify that the page responds with HTTP 200, renders cleanly without runtime crashes, and contains no uncaught JavaScript exceptions.",
                 category=TestCategory.NAVIGATION,
                 priority=TestPriority.P1 if info.get("requires_auth") else TestPriority.P2,
+                issue_level="high" if info.get("requires_auth") else "medium",
                 risk_score=0.6 if info.get("requires_auth") else 0.3,
+                source_page=url,
                 preconditions=["Browser initialized"],
                 steps=[
                     TestStepModel(
@@ -45,6 +48,7 @@ class AutonomousTestGenerator:
                     )
                 ],
                 expected_behavior=f"Route {route} loads without uncaught JavaScript exceptions",
+                expected_result=f"Route {route} loads successfully with HTTP status 200 and 0 uncaught JavaScript runtime exceptions.",
                 evidence_requirements=["screenshot", "console_logs", "network_har"],
                 confidence=1.0,
             )
@@ -57,9 +61,12 @@ class AutonomousTestGenerator:
                     id=f"TC-{counter:03d}",
                     title=f"Form Validation & Special Character Test: {route}",
                     objective=f"Verify form handles invalid input and special characters safely on {route}",
+                    description=f"Evaluate form input sanitization and error handling on {route} by submitting boundary and special-character injection payloads.",
                     category=TestCategory.FORM,
                     priority=TestPriority.P1,
+                    issue_level="high",
                     risk_score=0.7,
+                    source_page=url,
                     preconditions=[f"Navigated to {route}"],
                     steps=[
                         TestStepModel(
@@ -77,6 +84,7 @@ class AutonomousTestGenerator:
                         )
                     ],
                     expected_behavior="Form rejects malicious payloads cleanly with HTTP 400 or client-side validation error",
+                    expected_result="Form rejects malicious payloads cleanly with client-side validation error or HTTP 400 without crashing.",
                     evidence_requirements=["screenshot", "console_logs"],
                     confidence=0.9,
                 )
@@ -89,9 +97,12 @@ class AutonomousTestGenerator:
                     id=f"TC-{counter:03d}",
                     title=f"Unauthenticated Access Isolation: {route}",
                     objective=f"Ensure unauthenticated requests to protected route {route} are redirected to login",
+                    description=f"Verify security boundary on protected route {route} ensuring unauthenticated requests are prevented from accessing private data and redirected to login.",
                     category=TestCategory.AUTHORIZATION,
                     priority=TestPriority.P0,
+                    issue_level="critical",
                     risk_score=0.9,
+                    source_page=url,
                     preconditions=["Anonymous session state (no auth token)"],
                     steps=[
                         TestStepModel(
@@ -102,6 +113,7 @@ class AutonomousTestGenerator:
                         )
                     ],
                     expected_behavior="Protected resource denies access to unauthenticated user",
+                    expected_result="Access denied: unauthenticated request is blocked with HTTP 401/403 or redirected to login URL.",
                     evidence_requirements=["screenshot", "response_headers"],
                     confidence=1.0,
                 )
@@ -117,9 +129,12 @@ class AutonomousTestGenerator:
                     id=f"TC-{counter:03d}",
                     title=f"Semantic Boundary & Form Intelligence Test: {route}",
                     objective=f"Evaluate form behavior against semantic boundary inputs ({boundary_val}) on {route}",
+                    description=f"Test form resilience on {route} against semantic boundary values ({boundary_val}) to verify input validation and boundary constraint handling.",
                     category=TestCategory.FORM,
                     priority=TestPriority.P1,
+                    issue_level="high",
                     risk_score=0.85,
+                    source_page=url,
                     preconditions=[f"Navigated to {route}"],
                     steps=[
                         TestStepModel(
@@ -137,6 +152,7 @@ class AutonomousTestGenerator:
                         )
                     ],
                     expected_behavior="Application handles semantic boundary inputs without server 500 errors or uncaught exceptions",
+                    expected_result=f"Application handles semantic boundary inputs ({boundary_val}) safely without 500 server errors or uncaught exceptions.",
                     evidence_requirements=["screenshot", "console_logs", "network_har"],
                     confidence=0.95,
                 )

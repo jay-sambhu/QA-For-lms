@@ -957,6 +957,14 @@ def get_scan_status(scan_id: UUID, user=Depends(require_user)):
                 except Exception:
                     pass
 
+        if response.get("results") and isinstance(response["results"], dict):
+            # Normalize test cases so that description, issue_level, expected_result, actual_result, exact_result are always populated
+            if "test_cases" in response["results"] and isinstance(response["results"]["test_cases"], list):
+                from core.schemas.test_case import normalize_test_case_dict
+                response["results"]["test_cases"] = [
+                    normalize_test_case_dict(tc) for tc in response["results"]["test_cases"]
+                ]
+
     return response
 
 

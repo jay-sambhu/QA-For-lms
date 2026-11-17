@@ -1023,11 +1023,14 @@ class WebsiteCrawler:
                                     "title": "Website Authentication & Session Initialization",
                                     "category": "Authentication",
                                     "priority": "P0",
+                                    "issue_level": "critical",
+                                    "description": f"Validate end-to-end authentication and session persistence at {self.login_url}.",
                                     "status": "errored",
                                     "duration_ms": 1500,
                                     "source_page": self.login_url,
-                                    "expected_result": "User authenticated successfully and session initialized.",
+                                    "expected_result": "User credentials are verified, authentication cookies/tokens are stored, and access is granted to protected views.",
                                     "actual_result": auth_res.get("error", "Authentication failed."),
+                                    "exact_result": f"Authentication attempt failed at {self.login_url}: {auth_res.get('error', 'Authentication failed.')}",
                                 })
                                 self.auth_findings.append({
                                     "id": f"AUTH-FAIL-{self.run_id[:6]}",
@@ -1047,11 +1050,14 @@ class WebsiteCrawler:
                                     "title": "Website Authentication & Session Initialization",
                                     "category": "Authentication",
                                     "priority": "P0",
+                                    "issue_level": "critical",
+                                    "description": f"Validate end-to-end authentication and session persistence at {self.login_url}.",
                                     "status": "passed",
                                     "duration_ms": 1500,
                                     "source_page": self.login_url,
-                                    "expected_result": "User authenticated successfully and session initialized.",
-                                    "actual_result": "User logged in.",
+                                    "expected_result": "User credentials are verified, authentication cookies/tokens are stored, and access is granted to protected views.",
+                                    "actual_result": "User authenticated successfully and session initialized.",
+                                    "exact_result": f"User successfully authenticated at {self.login_url}. Active session cookie/storage initialized.",
                                 })
 
                 # Dictionary to track if a device has successfully auto-logged in

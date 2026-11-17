@@ -34,11 +34,14 @@ class AssertionResultModel(BaseModel):
 
 
 class TestExecutionResultModel(BaseModel):
+    __test__ = False
     test_id: str
     status: TestResultStatus
     duration_ms: int = 0
     executed_at: str
     error_message: Optional[str] = None
+    actual_result: Optional[str] = None
+    exact_result: Optional[str] = None
     step_results: List[Dict[str, Any]] = Field(default_factory=list)
     assertions: List[AssertionResultModel] = Field(default_factory=list)
     healing_events: List[HealingRecordModel] = Field(default_factory=list)

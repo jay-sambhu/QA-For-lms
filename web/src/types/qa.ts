@@ -175,14 +175,17 @@ export interface QAReport {
     id: string;
     title?: string;
     description?: string;
+    objective?: string;
+    issue_level?: 'critical' | 'high' | 'medium' | 'low' | string;
     category?: string;
     priority?: string;
     source_page?: string;
-    steps?: string[];
+    steps?: Array<string | { step_index?: number; action?: string; target_selector?: string; value?: string; expected_result?: string }>;
     execution_policy?: string;
     status?: string;
     expected_result?: string;
     actual_result?: string;
+    exact_result?: string;
     evidence?: unknown;
     duration_ms?: number;
   }>;

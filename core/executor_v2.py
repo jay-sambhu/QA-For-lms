@@ -223,6 +223,17 @@ class SelfHealingExecutor:
 
             duration_ms = int((time.time() - start_time) * 1000)
 
+            if final_status == TestResultStatus.PASS:
+                passed_details = [a.message for a in assertions if a.message]
+                exact_result = f"Passed: {'; '.join(passed_details)}" if passed_details else "Observed expected behavior: all assertions satisfied."
+            elif final_status == TestResultStatus.FAIL:
+                failed_details = [a.message for a in assertions if not a.passed]
+                exact_result = f"Failed: {'; '.join(failed_details)}" if failed_details else "Assertion failure observed during test execution."
+            elif final_status == TestResultStatus.BLOCKED:
+                exact_result = "Test execution blocked due to upstream authentication failure."
+            else:
+                exact_result = skip_reason or NOT_EXECUTED_REASON
+
             res = TestExecutionResultModel(
                 test_id=tc.id,
                 status=final_status,
@@ -231,6 +242,8 @@ class SelfHealingExecutor:
                 error_message=skip_reason or (
                     "; ".join(a.message for a in assertions if not a.passed) or None
                 ),
+                actual_result=exact_result,
+                exact_result=exact_result,
                 step_results=step_results,
                 assertions=assertions,
                 healing_events=[],
