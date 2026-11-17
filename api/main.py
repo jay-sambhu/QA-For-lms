@@ -879,13 +879,16 @@ def get_scan_status(scan_id: UUID, user=Depends(require_user)):
     """Scan status, pipeline progress and (when completed) the report payload."""
     scan = get_scan(str(scan_id))
     user_id_val = _user_id(user)
-    if not scan or str(scan.get("user_id")) != user_id_val:
+    with SessionLocal() as db:
+        is_admin = resolve_is_admin(user, db)
+    if not scan or (str(scan.get("user_id")) != user_id_val and not is_admin):
         raise HTTPException(status_code=404, detail="Scan not found")
 
     response = _public_scan(scan)
-    user_dir = os.path.join(ROOT_DIR, "user_data", user_id_val)
+    target_user_id = str(scan.get("user_id"))
+    user_dir = os.path.join(ROOT_DIR, "user_data", target_user_id)
     for progress_path in (
-        progress_file_path(user_id_val, str(scan_id)),
+        progress_file_path(target_user_id, str(scan_id)),
         os.path.join(ROOT_DIR, "results", f"progress_{scan_id}.json"),
     ):
         if os.path.exists(progress_path):
@@ -938,7 +941,7 @@ def get_scan_status(scan_id: UUID, user=Depends(require_user)):
         if not response.get("results"):
             try:
                 from core.supabase_storage import get_scan_report_file
-                cloud_bytes = get_scan_report_file(user_id_val, str(scan_id), "json")
+                cloud_bytes = get_scan_report_file(target_user_id, str(scan_id), "json")
                 if cloud_bytes:
                     data = json.loads(cloud_bytes.decode("utf-8"))
                     response["has_cloud_report"] = True
@@ -949,7 +952,7 @@ def get_scan_status(scan_id: UUID, user=Depends(require_user)):
                 try:
                     from core.supabase_storage import get_supabase_client, BUCKET_NAME
                     sb = get_supabase_client()
-                    if sb and sb.storage.from_(BUCKET_NAME).list(f"{user_id_val}/{scan_id}"):
+                    if sb and sb.storage.from_(BUCKET_NAME).list(f"{target_user_id}/{scan_id}"):
                         response["has_cloud_report"] = True
                 except Exception:
                     pass
@@ -980,17 +983,19 @@ def cancel_scan(scan_id: UUID, user=Depends(require_user)):
     user_id_val = _user_id(user)
     sid = str(scan_id)
     with SessionLocal() as db:
+        is_admin = resolve_is_admin(user, db)
         scan = db.query(Scan).filter(Scan.id == sid).first()
-        if not scan or str(scan.user_id) != user_id_val:
+        if not scan or (str(scan.user_id) != user_id_val and not is_admin):
             raise HTTPException(status_code=404, detail="Scan not found")
         if scan.status not in ("pending", "running"):
             raise HTTPException(status_code=409, detail=f"Scan is already {scan.status}; delete it instead.")
+        target_user_id = str(scan.user_id)
         scan.status = "cancelled"
         scan.completed_at = datetime.now(timezone.utc)
         db.query(ScanSecret).filter(ScanSecret.scan_id == sid).delete()
         db.commit()
     _revoke_scan_task(sid)
-    _delete_cloud_reports(user_id_val, sid, "cancel")
+    _delete_cloud_reports(target_user_id, sid, "cancel")
     return {"status": "cancelled", "message": "Scan has been stopped."}
 
 
@@ -1001,16 +1006,18 @@ def delete_scan(scan_id: UUID, user=Depends(require_user)):
     user_id_val = _user_id(user)
     sid = str(scan_id)
     with SessionLocal() as db:
+        is_admin = resolve_is_admin(user, db)
         scan = db.query(Scan).filter(Scan.id == sid).first()
-        if not scan or str(scan.user_id) != user_id_val:
+        if not scan or (str(scan.user_id) != user_id_val and not is_admin):
             raise HTTPException(status_code=404, detail="Scan not found")
+        target_user_id = str(scan.user_id)
         was_active = scan.status in ("pending", "running")
         db.delete(scan)
         db.commit()
     if was_active:
         _revoke_scan_task(sid)
-    delete_scan_artifacts(user_id_val, sid)
-    _delete_cloud_reports(user_id_val, sid, "delete")
+    delete_scan_artifacts(target_user_id, sid)
+    _delete_cloud_reports(target_user_id, sid, "delete")
     return Response(status_code=204)
 
 
@@ -1058,7 +1065,10 @@ def _canonical_file_type(file_type: str) -> str:
 
 def _owned_completed_scan(scan_id: UUID, user) -> dict:
     scan = get_scan(str(scan_id))
-    if not scan or str(scan.get("user_id")) != _user_id(user):
+    user_id_val = _user_id(user)
+    with SessionLocal() as db:
+        is_admin = resolve_is_admin(user, db)
+    if not scan or (str(scan.get("user_id")) != user_id_val and not is_admin):
         raise HTTPException(status_code=404, detail="Scan not found")
     return scan
 
@@ -1075,7 +1085,7 @@ def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require_user)
     """Download a completed scan's report in the requested format (json, md/markdown, pdf, xlsx)."""
     canonical_ext = _canonical_file_type(file_type)
     scan = _owned_completed_scan(scan_id, user)
-    user_id_val = _user_id(user)
+    target_user_id = str(scan.get("user_id"))
     if scan.get("status") != "completed":
         raise HTTPException(status_code=400, detail="Scan is not completed")
 
@@ -1090,14 +1100,14 @@ def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require_user)
     # 1. Direct download from Supabase Storage (no re-generation)
     try:
         from core.supabase_storage import get_scan_report_file
-        cloud_bytes = get_scan_report_file(user_id_val, sid, canonical_ext)
+        cloud_bytes = get_scan_report_file(target_user_id, sid, canonical_ext)
         if cloud_bytes:
             return Response(content=cloud_bytes, media_type=media_type, headers={**headers, "X-Report-Source": "supabase-storage"})
     except Exception as e:
         logger.debug("Supabase storage direct download check for scan %s: %s", sid, e)
 
     # 2. Local disk, rendering PDF/XLSX from the JSON report when missing
-    results_rel = os.path.join("user_data", user_id_val, "results")
+    results_rel = os.path.join("user_data", target_user_id, "results")
     stored_path = None
     if canonical_ext == "json":
         stored_path = scan.get("json_path")
@@ -1106,14 +1116,14 @@ def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require_user)
     else:
         stored_path = _first_existing(
             os.path.join(results_rel, f"final_qa_report_{sid}.{canonical_ext}"),
-            os.path.join("user_data", user_id_val, f"final_qa_report_{sid}.{canonical_ext}"),
-            os.path.join("user_data", user_id_val, f"qa-report-{sid}.{canonical_ext}"),
+            os.path.join("user_data", target_user_id, f"final_qa_report_{sid}.{canonical_ext}"),
+            os.path.join("user_data", target_user_id, f"qa-report-{sid}.{canonical_ext}"),
             os.path.join("results", f"qa-report-{sid}.{canonical_ext}"),
         )
         if not stored_path and scan.get("json_path"):
             json_resolved = resolve_report_path(scan.get("json_path"))
             if json_resolved and os.path.isfile(json_resolved):
-                target = os.path.join(user_results_dir(user_id_val), f"final_qa_report_{sid}.{canonical_ext}")
+                target = os.path.join(user_results_dir(target_user_id), f"final_qa_report_{sid}.{canonical_ext}")
                 (generate_pdf_from_json if canonical_ext == "pdf" else generate_xlsx_from_json)(json_resolved, target)
                 stored_path = relative_to_root(target)
 
@@ -1130,7 +1140,7 @@ def download_scan_file(scan_id: UUID, file_type: str, user=Depends(require_user)
     def _lazy_upload():
         try:
             from core.supabase_storage import upload_scan_reports
-            upload_scan_reports(user_id_val, sid, {canonical_ext: resolved})
+            upload_scan_reports(target_user_id, sid, {canonical_ext: resolved})
         except Exception as e:
             logger.debug("Lazy upload to Supabase storage note: %s", e)
 

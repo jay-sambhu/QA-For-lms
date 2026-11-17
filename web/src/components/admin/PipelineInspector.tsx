@@ -1,6 +1,7 @@
 "use client";
 
 import React from 'react';
+import Link from 'next/link';
 import { TbActivity, TbLock, TbLockOpen } from 'react-icons/tb';
 import { Surface3D, EmptyState3D } from '../three';
 import a from './admin3d.module.css';
@@ -87,7 +88,11 @@ export const PipelineInspector: React.FC<PipelineInspectorProps> = ({ scans }) =
           <tbody>
             {scans.map((s) => (
               <tr key={s.id}>
-                <td className={`${a.idCell} ${a.mono}`}>{s.id.substring(0, 8)}...</td>
+                <td className={`${a.idCell} ${a.mono}`}>
+                  <Link href={`/dashboard/scan/${s.id}`} style={{ color: 'var(--primary)', textDecoration: 'underline' }}>
+                    {s.id.substring(0, 8)}...
+                  </Link>
+                </td>
                 <td className={a.urlCell} title={s.url}>{s.url}</td>
                 <td>
                   <span className={statusChip(s.status)}>{s.status.toUpperCase()}</span>
