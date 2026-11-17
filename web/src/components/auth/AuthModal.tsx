@@ -21,28 +21,6 @@ import s from './auth3d.module.css';
 
 type AuthMode = 'signin' | 'signup';
 
-type OneTapNotification = {
-  isNotDisplayed?: () => boolean;
-  isSkippedMoment?: () => boolean;
-  isDismissedMoment?: () => boolean;
-  getDismissedReason?: () => string;
-};
-
-type GoogleIdentity = {
-  accounts: {
-    id: {
-      initialize: (config: {
-        client_id: string;
-        callback: (response: { credential?: string; error?: string }) => void;
-      }) => void;
-      prompt: (notification?: (n: OneTapNotification) => void) => void;
-    };
-  };
-};
-
-// One Tap gives no signal when the user ignores the prompt; re-enable the buttons after this.
-const ONE_TAP_TIMEOUT_MS = 20000;
-
 export const AuthModal: React.FC = () => {
   const router = useRouter();
   const { authModalOpen, authMode, closeAuthModal, openAuthModal, fetchUserProfile } = useAuth();
@@ -53,14 +31,6 @@ export const AuthModal: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const reduceMotion = useReducedMotion();
-  const oneTapTimer = useRef<number | null>(null);
-
-  const clearOneTapTimer = () => {
-    if (oneTapTimer.current) window.clearTimeout(oneTapTimer.current);
-    oneTapTimer.current = null;
-  };
-
-  useEffect(() => clearOneTapTimer, []);
 
   const cardMotion = reduceMotion
     ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } }
@@ -86,95 +56,21 @@ export const AuthModal: React.FC = () => {
     setError('');
     setSuccess('');
 
-    const triggerStandardOAuth = async () => {
-      clearOneTapTimer();
-      try {
-        const { error: oauthError } = await supabase!.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : undefined,
-          },
-        });
-        if (oauthError) {
-          setError(oauthError.message || 'Google login failed. Please ensure Google provider is enabled in Supabase.');
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Google sign-in request failed.');
-      } finally {
-        // The browser is navigating away on success; on failure the buttons must come back.
-        setLoading(false);
-      }
-    };
-
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-
-    // If client ID is not configured in hosting environment, use standard Supabase OAuth directly
-    if (!clientId) {
-      await triggerStandardOAuth();
-      return;
-    }
-
     try {
-      // Use Google Identity Services (GIS) popup flow if available
-      const google = (window as unknown as Record<string, unknown>).google as GoogleIdentity | undefined;
-
-      if (!google?.accounts?.id) {
-        await triggerStandardOAuth();
-        return;
-      }
-
-      // Use One Tap / popup to get an ID token, then pass it to Supabase
-      google.accounts.id.initialize({
-        client_id: clientId,
-        callback: async (response: { credential?: string; error?: string }) => {
-          clearOneTapTimer();
-          if (response.error || !response.credential) {
-            await triggerStandardOAuth();
-            return;
-          }
-
-          try {
-            const { error: supabaseError } = await supabase!.auth.signInWithIdToken({
-              provider: 'google',
-              token: response.credential,
-            });
-
-            if (supabaseError) {
-              // If ID token validation fails, fall back to OAuth redirect
-              await triggerStandardOAuth();
-            } else {
-              closeAuthModal();
-              setEmail('');
-              setPassword('');
-            }
-          } catch {
-            await triggerStandardOAuth();
-          } finally {
-            setLoading(false);
-          }
+      const redirectOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${redirectOrigin}/auth/callback`,
         },
       });
-
-      clearOneTapTimer();
-      oneTapTimer.current = window.setTimeout(() => {
-        oneTapTimer.current = null;
+      if (oauthError) {
+        setError(oauthError.message || 'Google login failed. Please ensure Google provider is enabled in Supabase.');
         setLoading(false);
-      }, ONE_TAP_TIMEOUT_MS);
-
-      google.accounts.id.prompt((notification) => {
-        // If One Tap is not displayed or skipped, fall back to standard Supabase OAuth redirect
-        if (notification?.isNotDisplayed?.() || notification?.isSkippedMoment?.()) {
-          triggerStandardOAuth();
-          return;
-        }
-        // The user closed the prompt: nothing else will fire, so release the buttons
-        if (notification?.isDismissedMoment?.() && notification.getDismissedReason?.() !== 'credential_returned') {
-          clearOneTapTimer();
-          setLoading(false);
-        }
-      });
-    } catch {
-      await triggerStandardOAuth();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Google sign-in request failed.');
+      setLoading(false);
     }
   };
 
@@ -226,7 +122,7 @@ export const AuthModal: React.FC = () => {
       let targetUrl = '/dashboard';
       if (signInData.session?.access_token) {
         const profile = await fetchUserProfile(signInData.session.access_token);
-        if (profile?.is_admin || profile?.role === 'admin') {
+        if (profile?.is_admin || profile?.role === 'admin' || profile?.role === 'superuser') {
           targetUrl = '/admin';
         }
       }

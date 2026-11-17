@@ -90,34 +90,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return null;
     }
 
-    const startUserId = sessionRef.current?.user?.id;
+    // Extract user ID from JWT payload to prevent session hydration race conditions
+    let expectedUserId: string | null = sessionRef.current?.user?.id || null;
+    try {
+      const payloadPart = token.split('.')[1];
+      if (payloadPart) {
+        const payload = JSON.parse(atob(payloadPart.replace(/-/g, '+').replace(/_/g, '/')));
+        if (payload?.sub) expectedUserId = payload.sub;
+      }
+    } catch {
+      // ignore decode error
+    }
+
     setRoleLoaded(false);
     try {
       const res = await fetch('/api/v1/auth/me', {
         headers: { Authorization: `Bearer ${token}` },
       });
-      // Ignore late responses if the user changed meanwhile (e.g. signed out / switched account)
-      if (sessionRef.current?.user?.id !== startUserId) return null;
+      // Ignore late responses if a DIFFERENT user is now signed in
+      if (sessionRef.current?.user?.id && expectedUserId && sessionRef.current.user.id !== expectedUserId) {
+        return null;
+      }
       if (res.ok) {
         const data: UserProfile = await res.json();
         setUserProfile(data);
         setUserRole(data.role || (data.is_admin ? 'admin' : 'user'));
         setUserPlan(data.plan_tier || 'free');
-        setRoleLoaded(true);
         return data;
       }
     } catch (e) {
       console.warn('Backend user profile check failed, using fallback:', e);
+    } finally {
+      setRoleLoaded(true);
     }
 
     // Safety fallback if backend is momentarily unreachable. Only trust app_metadata
     // (server-controlled); user_metadata is editable by the user. The backend still
     // enforces admin access on every /api/v1/admin/* call.
     const current = sessionRef.current;
-    if (current?.user && current.user.id === startUserId) {
+    if (current?.user && (!expectedUserId || current.user.id === expectedUserId)) {
       setUserRole(current.user.app_metadata?.role === 'admin' ? 'admin' : 'user');
     }
-    setRoleLoaded(true);
     return null;
   }, []);
 

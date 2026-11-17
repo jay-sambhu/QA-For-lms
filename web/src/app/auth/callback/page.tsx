@@ -58,7 +58,7 @@ export default function AuthCallbackPage() {
           });
           if (res.ok) {
             const profile = await res.json();
-            if (profile.is_admin || profile.role === "admin") {
+            if (profile.is_admin || profile.role === "admin" || profile.role === "superuser") {
               target = "/admin";
             }
           }
@@ -76,25 +76,46 @@ export default function AuthCallbackPage() {
       }
     });
 
-    // 3. Check existing session / trigger token exchange
-    supabase.auth
-      .getSession()
-      .then(({ data, error }) => {
-        if (error) {
-          setErrorMessage(error.message);
-          setIsProcessing(false);
-          return;
-        }
-        if (data.session && !redirected) {
-          routeUserByRole(data.session.access_token);
-        }
-      })
-      .catch((err) => {
-        setErrorMessage(err instanceof Error ? err.message : "Failed to verify session.");
-        setIsProcessing(false);
-      });
+    // 3. Check for PKCE authorization code or existing session
+    const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+    const code = searchParams.get("code");
 
-    // 4. Sane timeout grace period (4.5s) for token hydration
+    if (code) {
+      supabase.auth
+        .exchangeCodeForSession(code)
+        .then(({ data, error }) => {
+          if (error) {
+            console.error("PKCE exchange error:", error);
+            setErrorMessage(error.message);
+            setIsProcessing(false);
+          } else if (data?.session && !redirected) {
+            routeUserByRole(data.session.access_token);
+          }
+        })
+        .catch((err) => {
+          setErrorMessage(err instanceof Error ? err.message : "Code exchange failed.");
+          setIsProcessing(false);
+        });
+    } else {
+      supabase.auth
+        .getSession()
+        .then(({ data, error }) => {
+          if (error) {
+            setErrorMessage(error.message);
+            setIsProcessing(false);
+            return;
+          }
+          if (data.session && !redirected) {
+            routeUserByRole(data.session.access_token);
+          }
+        })
+        .catch((err) => {
+          setErrorMessage(err instanceof Error ? err.message : "Failed to verify session.");
+          setIsProcessing(false);
+        });
+    }
+
+    // 4. Timeout grace period (12s) for token hydration
     const timeout = setTimeout(() => {
       if (!redirected) {
         setIsProcessing(false);
@@ -102,7 +123,7 @@ export default function AuthCallbackPage() {
           "Authentication timed out or session token could not be hydrated. This typically occurs if the callback URL is not listed in Supabase Allowed Redirect URLs."
         );
       }
-    }, 4500);
+    }, 12000);
 
     return () => {
       clearTimeout(timeout);
